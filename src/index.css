@@ -1,0 +1,189 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;1,9..40,300&family=JetBrains+Mono:wght@300;400;500&display=swap');
+@import "tailwindcss";
+
+/* ── Class-based dark mode (matches the .dark / .light class on <html>) ── */
+@custom-variant dark {
+  &:where(.dark, .dark *) {
+    @slot;
+  }
+}
+
+/* ─────────────────────────────────────────────
+   Semantic design tokens — light-dark()
+   Every visual color flows through these.
+   ───────────────────────────────────────────── */
+@theme static {
+  --font-sans: "DM Sans", system-ui, -apple-system, sans-serif;
+  --font-mono: "JetBrains Mono", "SF Mono", "Fira Code", monospace;
+
+  /* ── Surfaces ── */
+  --color-app:              light-dark(var(--color-zinc-50),  var(--color-zinc-950));
+  --color-surface:          light-dark(var(--color-white),    var(--color-zinc-950));
+  --color-surface-raised:   light-dark(var(--color-white),    color-mix(in srgb, var(--color-zinc-950) 80%, var(--color-zinc-900)));
+  --color-surface-muted:    light-dark(var(--color-zinc-100), var(--color-zinc-900));
+  --color-surface-sunken:   light-dark(
+    color-mix(in srgb, var(--color-zinc-100) 60%, var(--color-zinc-50)),
+    color-mix(in srgb, var(--color-zinc-900) 50%, var(--color-zinc-950))
+  );
+  --color-surface-overlay:  light-dark(var(--color-white),    var(--color-zinc-950));
+  --color-surface-invert:   light-dark(var(--color-zinc-900), var(--color-zinc-100));
+  --color-surface-black:    light-dark(var(--color-zinc-100), var(--color-black));
+
+  /* ── Text ── */
+  --color-text:             light-dark(var(--color-zinc-900), var(--color-zinc-200));
+  --color-text-secondary:   light-dark(var(--color-zinc-600), var(--color-zinc-400));
+  --color-text-muted:       light-dark(var(--color-zinc-500), var(--color-zinc-500));
+  --color-text-faint:       light-dark(var(--color-zinc-400), var(--color-zinc-600));
+  --color-text-invert:      light-dark(var(--color-white),    var(--color-zinc-950));
+
+  /* ── Borders ── */
+  --color-border:           light-dark(var(--color-zinc-200), color-mix(in srgb, var(--color-zinc-800) 80%, transparent));
+  --color-border-subtle:    light-dark(
+    color-mix(in srgb, var(--color-zinc-300) 40%, transparent),
+    color-mix(in srgb, var(--color-zinc-700) 50%, transparent)
+  );
+  --color-border-strong:    light-dark(var(--color-zinc-300), var(--color-zinc-600));
+  --color-border-focus:     light-dark(var(--color-zinc-500), var(--color-zinc-400));
+
+  /* ── Controls (buttons) ── */
+  --color-control-primary:         light-dark(var(--color-zinc-900), var(--color-zinc-100));
+  --color-control-primary-hover:   light-dark(var(--color-zinc-800), var(--color-white));
+  --color-control-primary-text:    light-dark(var(--color-white),    var(--color-zinc-950));
+
+  --color-control-secondary:       light-dark(var(--color-zinc-100), var(--color-zinc-800));
+  --color-control-secondary-hover: light-dark(var(--color-zinc-200), var(--color-zinc-700));
+  --color-control-secondary-text:  light-dark(var(--color-zinc-700), var(--color-zinc-300));
+  --color-control-secondary-border:light-dark(var(--color-zinc-300), color-mix(in srgb, var(--color-zinc-700) 50%, transparent));
+
+  --color-control-ghost-hover:     light-dark(
+    color-mix(in srgb, var(--color-zinc-200) 70%, transparent),
+    color-mix(in srgb, var(--color-zinc-800) 60%, transparent)
+  );
+
+  /* ── Inputs / selects ── */
+  --color-input:            light-dark(var(--color-white),    var(--color-zinc-900));
+  --color-input-border:     light-dark(var(--color-zinc-300), color-mix(in srgb, var(--color-zinc-700) 60%, transparent));
+  --color-input-placeholder:light-dark(var(--color-zinc-400), var(--color-zinc-600));
+
+  /* ── Slider ── */
+  --color-slider-track:     light-dark(var(--color-zinc-200), var(--color-zinc-800));
+  --color-slider-range:     light-dark(var(--color-zinc-600), var(--color-zinc-400));
+  --color-slider-thumb:     light-dark(var(--color-white),    var(--color-zinc-200));
+  --color-slider-thumb-border: light-dark(var(--color-zinc-400), var(--color-zinc-600));
+
+  /* ── Switch ── */
+  --color-switch-off:       light-dark(var(--color-zinc-200), var(--color-zinc-800));
+  --color-switch-on:        light-dark(var(--color-zinc-800), var(--color-zinc-300));
+  --color-switch-thumb:     light-dark(var(--color-white),    var(--color-zinc-400));
+  --color-switch-thumb-on:  light-dark(var(--color-white),    var(--color-zinc-950));
+
+  /* ── Tabs ── */
+  --color-tab-list:         light-dark(var(--color-zinc-100), var(--color-zinc-900));
+  --color-tab-list-border:  light-dark(var(--color-zinc-200), color-mix(in srgb, var(--color-zinc-800) 60%, transparent));
+  --color-tab-text:         light-dark(var(--color-zinc-500), var(--color-zinc-500));
+  --color-tab-active:       light-dark(var(--color-white),    var(--color-zinc-800));
+  --color-tab-active-text:  light-dark(var(--color-zinc-900), var(--color-zinc-100));
+
+  /* ── Overlay / scrim ── */
+  --color-scrim:            light-dark(
+    color-mix(in srgb, var(--color-black) 30%, transparent),
+    color-mix(in srgb, var(--color-black) 60%, transparent)
+  );
+
+  /* ── Scrollbar ── */
+  --color-scrollbar:        light-dark(
+    color-mix(in srgb, var(--color-zinc-400) 30%, transparent),
+    color-mix(in srgb, var(--color-zinc-500) 20%, transparent)
+  );
+  --color-scrollbar-hover:  light-dark(
+    color-mix(in srgb, var(--color-zinc-500) 40%, transparent),
+    color-mix(in srgb, var(--color-zinc-400) 35%, transparent)
+  );
+
+  /* ── Preview stage ── */
+  --color-preview-bg:       light-dark(var(--color-zinc-100), var(--color-black));
+  --color-preview-canvas:   light-dark(var(--color-zinc-50),  var(--color-zinc-950));
+  --color-preview-badge:    light-dark(
+    color-mix(in srgb, var(--color-white) 80%, transparent),
+    color-mix(in srgb, var(--color-black) 70%, transparent)
+  );
+
+  /* ── Status bar ── */
+  --color-status-bar:       light-dark(var(--color-zinc-100), var(--color-black));
+  --color-status-bar-border:light-dark(var(--color-zinc-200), color-mix(in srgb, var(--color-zinc-800) 40%, transparent));
+
+  /* ── Shadows ── */
+  --shadow-card:
+    0 1px 3px light-dark(
+      color-mix(in srgb, var(--color-black) 8%, transparent),
+      color-mix(in srgb, var(--color-black) 40%, transparent)
+    );
+  --shadow-control:
+    0 1px 2px light-dark(
+      color-mix(in srgb, var(--color-black) 6%, transparent),
+      color-mix(in srgb, var(--color-black) 20%, transparent)
+    );
+}
+
+/* ── Color-scheme wiring ── */
+:root {
+  color-scheme: light dark;
+}
+
+.light {
+  color-scheme: light;
+}
+
+.dark {
+  color-scheme: dark;
+}
+
+/* ── Base styles ── */
+@layer base {
+  html {
+    background-color: var(--color-app);
+  }
+
+  body {
+    margin: 0;
+    min-width: 1280px;
+    min-height: 100dvh;
+    background-color: var(--color-app);
+    color: var(--color-text);
+    font-family: var(--font-sans);
+    line-height: 1.5;
+    font-weight: 400;
+    font-synthesis: none;
+    text-rendering: optimizeLegibility;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
+  button,
+  input,
+  select,
+  textarea {
+    font: inherit;
+  }
+}
+
+/* ── Scrollbar ── */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-scrollbar);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-scrollbar-hover);
+}

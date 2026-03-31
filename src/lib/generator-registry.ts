@@ -1,0 +1,348 @@
+import type {
+  GeometryShape,
+  LayoutFamily,
+  ProjectDocument,
+  RenderRect,
+  RenderSlice,
+  SourceAsset,
+  SourceAssignmentStrategy,
+} from "@/types/project";
+import { mulberry32 } from "@/lib/rng";
+import { clamp, lerp } from "@/lib/utils";
+
+interface GeneratorContext {
+  project: ProjectDocument;
+  assets: SourceAsset[];
+}
+
+interface LayoutCell extends RenderRect {
+  shape: Exclude<GeometryShape, "mixed">;
+}
+
+function assignShape(index: number, shapeMode: GeometryShape) {
+  if (shapeMode !== "mixed") return shapeMode;
+  const cycle: Exclude<GeometryShape, "mixed">[] = ["rect", "triangle", "ring", "wedge"];
+  return cycle[index % cycle.length]!;
+}
+
+function insetRect(rect: RenderRect, amount: number): RenderRect {
+  return {
+    x: rect.x + amount,
+    y: rect.y + amount,
+    width: Math.max(1, rect.width - amount * 2),
+    height: Math.max(1, rect.height - amount * 2),
+  };
+}
+
+function generateGrid(context: GeneratorContext) {
+  const {
+    project: { canvas, layout, compositing },
+  } = context;
+  const cells: LayoutCell[] = [];
+  const innerWidth = canvas.width - canvas.inset * 2;
+  const innerHeight = canvas.height - canvas.inset * 2;
+  const columnWidth = innerWidth / layout.columns;
+  const rowHeight = innerHeight / layout.rows;
+
+  for (let row = 0; row < layout.rows; row += 1) {
+    for (let column = 0; column < layout.columns; column += 1) {
+      const rect = {
+        x: canvas.inset + column * columnWidth,
+        y: canvas.inset + row * rowHeight,
+        width: columnWidth,
+        height: rowHeight,
+      };
+      cells.push({
+        ...insetRect(rect, layout.gutter * (1 - compositing.overlap)),
+        shape: assignShape(row * layout.columns + column, layout.shapeMode),
+      });
+    }
+  }
+
+  return cells;
+}
+
+function generateStrips(context: GeneratorContext) {
+  const {
+    project: { canvas, layout, compositing },
+  } = context;
+  const rng = mulberry32(context.project.activeSeed + 17);
+  const count = Math.max(4, Math.round(4 + layout.density * 16));
+  const isHorizontal =
+    layout.stripOrientation === "mixed"
+      ? rng.next() > 0.5
+      : layout.stripOrientation === "horizontal";
+  const cells: LayoutCell[] = [];
+
+  let cursor = canvas.inset;
+  const length = isHorizontal ? canvas.height - canvas.inset * 2 : canvas.width - canvas.inset * 2;
+
+  for (let index = 0; index < count; index += 1) {
+    const remaining = count - index;
+    const size = remaining === 1 ? length - cursor + canvas.inset : length / count + rng.next() * layout.randomness * 40;
+    const rect = isHorizontal
+      ? { x: canvas.inset, y: cursor, width: canvas.width - canvas.inset * 2, height: size }
+      : { x: cursor, y: canvas.inset, width: size, height: canvas.height - canvas.inset * 2 };
+    cells.push({
+      ...insetRect(rect, layout.gutter * (1 - compositing.overlap)),
+      shape: assignShape(index, layout.shapeMode),
+    });
+    cursor += size;
+  }
+
+  return cells;
+}
+
+function subdivide(rect: RenderRect, depth: number, rng: ReturnType<typeof mulberry32>, cells: LayoutCell[], shapeMode: GeometryShape, overlap: number) {
+  if (depth === 0 || rect.width < 140 || rect.height < 140) {
+    cells.push({
+      ...insetRect(rect, 6 * (1 - overlap)),
+      shape: assignShape(cells.length, shapeMode),
+    });
+    return;
+  }
+
+  const splitVertical = rect.width > rect.height ? true : rng.next() > 0.5;
+  const split = lerp(0.32, 0.68, rng.next());
+
+  if (splitVertical) {
+    const widthA = rect.width * split;
+    subdivide({ x: rect.x, y: rect.y, width: widthA, height: rect.height }, depth - 1, rng, cells, shapeMode, overlap);
+    subdivide(
+      { x: rect.x + widthA, y: rect.y, width: rect.width - widthA, height: rect.height },
+      depth - 1,
+      rng,
+      cells,
+      shapeMode,
+      overlap,
+    );
+  } else {
+    const heightA = rect.height * split;
+    subdivide({ x: rect.x, y: rect.y, width: rect.width, height: heightA }, depth - 1, rng, cells, shapeMode, overlap);
+    subdivide(
+      { x: rect.x, y: rect.y + heightA, width: rect.width, height: rect.height - heightA },
+      depth - 1,
+      rng,
+      cells,
+      shapeMode,
+      overlap,
+    );
+  }
+}
+
+function generateBlocks(context: GeneratorContext) {
+  const {
+    project: { canvas, layout, compositing, activeSeed },
+  } = context;
+  const rng = mulberry32(activeSeed + 101);
+  const cells: LayoutCell[] = [];
+  subdivide(
+    {
+      x: canvas.inset,
+      y: canvas.inset,
+      width: canvas.width - canvas.inset * 2,
+      height: canvas.height - canvas.inset * 2,
+    },
+    layout.blockDepth,
+    rng,
+    cells,
+    layout.shapeMode,
+    compositing.overlap,
+  );
+  return cells;
+}
+
+function generateRadial(context: GeneratorContext) {
+  const {
+    project: { canvas, layout },
+  } = context;
+  const centerX = canvas.width / 2;
+  const centerY = canvas.height / 2;
+  const radius = Math.min(canvas.width, canvas.height) / 2 - canvas.inset;
+  const cells: LayoutCell[] = [];
+
+  for (let ring = 0; ring < layout.radialRings; ring += 1) {
+    const ringOuter = radius * ((ring + 1) / layout.radialRings);
+    const ringInner = radius * (ring / layout.radialRings);
+    for (let segment = 0; segment < layout.radialSegments; segment += 1) {
+      const angle = (Math.PI * 2 * segment) / layout.radialSegments;
+      const nextAngle = (Math.PI * 2 * (segment + 1)) / layout.radialSegments;
+      const x = centerX + Math.cos(angle) * ringInner;
+      const y = centerY + Math.sin(angle) * ringInner;
+      const x2 = centerX + Math.cos(nextAngle) * ringOuter;
+      const y2 = centerY + Math.sin(nextAngle) * ringOuter;
+      cells.push({
+        x: Math.min(x, x2),
+        y: Math.min(y, y2),
+        width: Math.max(64, Math.abs(x2 - x)),
+        height: Math.max(64, Math.abs(y2 - y)),
+        shape: assignShape(segment + ring, layout.shapeMode === "mixed" ? "wedge" : layout.shapeMode),
+      });
+    }
+  }
+
+  return cells;
+}
+
+const layoutRegistry: Record<LayoutFamily, (context: GeneratorContext) => LayoutCell[]> = {
+  grid: generateGrid,
+  strips: generateStrips,
+  blocks: generateBlocks,
+  radial: generateRadial,
+};
+
+function assetByStrategy(
+  strategy: SourceAssignmentStrategy,
+  assets: SourceAsset[],
+  index: number,
+  rng: ReturnType<typeof mulberry32>,
+  project: ProjectDocument,
+) {
+  if (assets.length === 0) {
+    throw new Error("No source assets available.");
+  }
+
+  if (strategy === "sequential") {
+    return assets[index % assets.length]!;
+  }
+
+  if (strategy === "luminance") {
+    const ordered = [...assets].sort((a, b) =>
+      project.sourceMapping.luminanceSort === "ascending"
+        ? a.luminance - b.luminance
+        : b.luminance - a.luminance,
+    );
+    return ordered[index % ordered.length]!;
+  }
+
+  if (strategy === "palette") {
+    const weighted = [...assets].sort(
+      (a, b) =>
+        b.palette.length * project.sourceMapping.paletteEmphasis - a.palette.length * project.sourceMapping.paletteEmphasis,
+    );
+    return weighted[index % weighted.length]!;
+  }
+
+  if (strategy === "symmetry") {
+    return assets[index % Math.max(1, Math.ceil(assets.length / 2))]!;
+  }
+
+  if (strategy === "weighted") {
+    const weights = assets.map((asset, assetIndex) =>
+      clamp(asset.palette.length * project.sourceMapping.sourceBias + (assetIndex + 1), 1, 100),
+    );
+    const sum = weights.reduce((total, weight) => total + weight, 0);
+    let cursor = rng.next() * sum;
+    for (let weightIndex = 0; weightIndex < weights.length; weightIndex += 1) {
+      cursor -= weights[weightIndex]!;
+      if (cursor <= 0) return assets[weightIndex]!;
+    }
+  }
+
+  return rng.pick(assets);
+}
+
+function reflectSlices(slices: RenderSlice[], project: ProjectDocument) {
+  const { symmetryMode, symmetryCopies } = project.layout;
+  if (symmetryMode === "none") return slices;
+
+  const clones = [...slices];
+  const centerX = project.canvas.width / 2;
+  const centerY = project.canvas.height / 2;
+
+  for (const slice of slices) {
+    if (symmetryMode === "mirror-x" || symmetryMode === "quad") {
+      clones.push({
+        ...slice,
+        id: `${slice.id}_mx`,
+        rect: {
+          ...slice.rect,
+          x: centerX + (centerX - slice.rect.x - slice.rect.width),
+        },
+        mirrorAxis: "x",
+      });
+    }
+
+    if (symmetryMode === "mirror-y" || symmetryMode === "quad") {
+      clones.push({
+        ...slice,
+        id: `${slice.id}_my`,
+        rect: {
+          ...slice.rect,
+          y: centerY + (centerY - slice.rect.y - slice.rect.height),
+        },
+        mirrorAxis: "y",
+      });
+    }
+  }
+
+  if (symmetryMode === "radial") {
+    const radialClones: RenderSlice[] = [];
+    for (let copyIndex = 1; copyIndex < symmetryCopies; copyIndex += 1) {
+      const angle = (Math.PI * 2 * copyIndex) / symmetryCopies;
+      for (const slice of slices) {
+        const x = slice.rect.x - centerX;
+        const y = slice.rect.y - centerY;
+        radialClones.push({
+          ...slice,
+          id: `${slice.id}_r${copyIndex}`,
+          rect: {
+            ...slice.rect,
+            x: centerX + x * Math.cos(angle) - y * Math.sin(angle),
+            y: centerY + x * Math.sin(angle) + y * Math.cos(angle),
+          },
+          rotation: slice.rotation + angle,
+        });
+      }
+    }
+    clones.push(...radialClones);
+  }
+
+  return clones;
+}
+
+export function buildRenderSlices(project: ProjectDocument, assets: SourceAsset[]) {
+  if (assets.length === 0) {
+    return [];
+  }
+
+  const layoutCells = layoutRegistry[project.layout.family]({ project, assets });
+  const rng = mulberry32(project.activeSeed);
+  const overlapSize = Math.min(project.canvas.width, project.canvas.height) * project.compositing.overlap * 0.08;
+
+  const slices = layoutCells.map<RenderSlice>((cell, index) => {
+    const asset = assetByStrategy(
+      project.sourceMapping.strategy,
+      assets,
+      index,
+      rng,
+      project,
+    );
+    const rotationNoise = (rng.next() - 0.5) * project.effects.rotationJitter;
+    const scaleNoise = 1 + (rng.next() - 0.5) * project.effects.scaleJitter;
+    const displacement = project.effects.displacement * (rng.next() - 0.5);
+
+    return {
+      id: `slice_${index}`,
+      shape: cell.shape,
+      assetId: asset.id,
+      rect: {
+        x: cell.x - overlapSize * rng.next(),
+        y: cell.y - overlapSize * rng.next(),
+        width: cell.width + overlapSize,
+        height: cell.height + overlapSize,
+      },
+      rotation: (rotationNoise * Math.PI) / 180,
+      scale: scaleNoise,
+      opacity: project.compositing.opacity,
+      blendMode: project.compositing.blendMode,
+      clipInset: project.compositing.feather,
+      displacementOffset: { x: displacement, y: displacement * (rng.next() - 0.5) },
+      distortion: project.effects.distortion * rng.next(),
+      mirrorAxis: "none",
+      depth: rng.next(),
+    };
+  });
+
+  return reflectSlices(slices, project).sort((a, b) => a.depth - b.depth);
+}

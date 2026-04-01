@@ -1,4 +1,4 @@
-import { useDeferredValue, useEffect, useState } from "react";
+import { useDeferredValue, useEffect } from "react";
 
 import { buildBitmapMap, renderProjectToCanvas } from "@/lib/render";
 import { readBlob } from "@/lib/opfs";
@@ -17,7 +17,6 @@ export function PreviewStage({
   assets,
   onRenderState,
 }: PreviewStageProps) {
-  const [rendering, setRendering] = useState(false);
   const deferredProject = useDeferredValue(project);
   const assetSignature = assets.map((asset) => asset.id).join("|");
 
@@ -27,7 +26,6 @@ export function PreviewStage({
     async function render() {
       if (!canvasRef.current) return;
 
-      setRendering(true);
       onRenderState?.({ ready: false, count: assets.length });
 
       const bitmapMap = await buildBitmapMap(assets, (asset) =>
@@ -44,7 +42,6 @@ export function PreviewStage({
       );
 
       if (cancelled) return;
-      setRendering(false);
       onRenderState?.({ ready: true, count: assets.length });
     }
 
@@ -56,10 +53,7 @@ export function PreviewStage({
   }, [assetSignature, canvasRef, deferredProject, onRenderState]);
 
   return (
-    <div className="relative overflow-hidden rounded-lg border border-border bg-preview-bg p-3">
-      <div className="absolute left-3 top-3 z-10 font-mono rounded-md bg-preview-badge px-2 py-0.5 text-[10px] uppercase tracking-[0.08em] text-text-muted backdrop-blur-sm border border-border-subtle">
-        {rendering ? "rendering…" : "preview"}
-      </div>
+    <div className="relative overflow-hidden rounded-lg bg-preview-bg">
       <canvas
         ref={canvasRef}
         className="aspect-[3/2] w-full rounded-md bg-preview-canvas object-contain"

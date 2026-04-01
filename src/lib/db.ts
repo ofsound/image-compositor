@@ -32,6 +32,42 @@ export class ImageGridDb extends Dexie {
       kv: "&key",
       blobs: "&path",
     });
+    this.version(2)
+      .stores({
+        assets: "id, projectId, createdAt, name, mimeType",
+        projects: "id, updatedAt, deletedAt, title",
+        versions: "id, projectId, createdAt",
+        kv: "&key",
+        blobs: "&path",
+      })
+      .upgrade(async (tx) => {
+        const projectsTable = tx.table<ProjectDocument, string>("projects");
+        const assetsTable = tx.table<SourceAsset, string>("assets");
+        const projects = await projectsTable.toArray();
+        const ownership = new Map<string, string>();
+
+        for (const project of projects) {
+          const normalizedProject = {
+            ...project,
+            deletedAt: project.deletedAt ?? null,
+          };
+          await projectsTable.put(normalizedProject);
+
+          for (const sourceId of project.sourceIds) {
+            if (!ownership.has(sourceId)) {
+              ownership.set(sourceId, project.id);
+            }
+          }
+        }
+
+        const assets = await assetsTable.toArray();
+        for (const asset of assets) {
+          await assetsTable.put({
+            ...asset,
+            projectId: asset.projectId ?? ownership.get(asset.id) ?? "",
+          });
+        }
+      });
   }
 }
 

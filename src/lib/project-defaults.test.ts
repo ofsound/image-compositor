@@ -8,6 +8,7 @@ describe("createProjectDocument", () => {
 
     expect(project.title).toBe("Study");
     expect(project.id.startsWith("project_")).toBe(true);
+    expect(project.deletedAt).toBeNull();
     expect(project.sourceIds).toEqual([]);
     expect(project.passes.map((pass) => pass.type)).toEqual([
       "layout",

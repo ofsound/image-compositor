@@ -1,14 +1,27 @@
 import { create } from "zustand";
 
-import { persistProcessedAsset } from "@/lib/assets";
+import { duplicateSourceAsset, persistProcessedAsset } from "@/lib/assets";
 import { db } from "@/lib/db";
 import { downloadBlob } from "@/lib/download";
 import { processImageFile } from "@/lib/image-worker-client";
+import { makeId } from "@/lib/id";
+import { deleteBlob } from "@/lib/opfs";
 import { createProjectDocument } from "@/lib/project-defaults";
 import { exportProjectImage } from "@/lib/render";
-import { exportProjectBundle, importProjectBundle } from "@/lib/serializer";
-import type { ProjectDocument, ProjectVersion, SourceAsset } from "@/types/project";
-import { makeId } from "@/lib/id";
+import {
+  createImportCopy,
+  exportProjectBundle,
+  loadProjectBundle,
+  persistImportedProjectBundle,
+} from "@/lib/serializer";
+import type {
+  BundleImportInspection,
+  ProjectDocument,
+  ProjectVersion,
+  SourceAsset,
+} from "@/types/project";
+
+type BundleImportResolution = "replace" | "copy";
 
 interface AppState {
   ready: boolean;
@@ -21,6 +34,11 @@ interface AppState {
   bootstrap: () => Promise<void>;
   setStatus: (status: string) => void;
   createProject: () => Promise<void>;
+  renameProject: (projectId: string, title: string) => Promise<void>;
+  duplicateProject: (projectId: string, title: string) => Promise<void>;
+  trashProject: (projectId: string) => Promise<void>;
+  restoreProject: (projectId: string) => Promise<void>;
+  purgeProject: (projectId: string) => Promise<void>;
   setActiveProject: (projectId: string) => Promise<void>;
   updateProject: (
     updater: (project: ProjectDocument) => ProjectDocument,
@@ -33,20 +51,131 @@ interface AppState {
     bitmapLookup: (asset: SourceAsset) => Promise<Blob | null>,
   ) => Promise<void>;
   exportCurrentBundle: () => Promise<void>;
-  importBundleFile: (file: File) => Promise<void>;
+  inspectBundleImport: (file: File) => Promise<BundleImportInspection>;
+  resolveBundleImport: (
+    inspection: BundleImportInspection,
+    resolution: BundleImportResolution,
+  ) => Promise<void>;
 }
 
 function sortByUpdated(projects: ProjectDocument[]) {
   return [...projects].sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
 
-function getActiveProject(state: Pick<AppState, "projects" | "activeProjectId">) {
-  return state.projects.find((project) => project.id === state.activeProjectId) ?? null;
+function sortAssetsByCreated(assets: SourceAsset[]) {
+  return [...assets].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
-async function persistProject(project: ProjectDocument) {
-  await db.projects.put(project);
-  await db.kv.put({ key: "activeProjectId", value: project.id });
+function sortVersionsByCreated(versions: ProjectVersion[]) {
+  return [...versions].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+function normalizeProject(project: ProjectDocument) {
+  return {
+    ...project,
+    deletedAt: project.deletedAt ?? null,
+  };
+}
+
+function getLiveProjects(projects: ProjectDocument[]) {
+  return projects.filter((project) => project.deletedAt === null);
+}
+
+function getActiveProject(state: Pick<AppState, "projects" | "activeProjectId">) {
+  return (
+    state.projects.find(
+      (project) => project.id === state.activeProjectId && project.deletedAt === null,
+    ) ?? null
+  );
+}
+
+function getNextProjectTitle(projects: ProjectDocument[]) {
+  return `Study ${getLiveProjects(projects).length + 1}`;
+}
+
+async function persistActiveProjectId(projectId: string | null) {
+  if (!projectId) return;
+  await db.kv.put({ key: "activeProjectId", value: projectId });
+}
+
+async function loadWorkspaceSnapshot(preferredActiveProjectId?: string | null) {
+  const [storedProjects, storedAssets, storedVersions, activeRecord] = await Promise.all([
+    db.projects.toArray(),
+    db.assets.toArray(),
+    db.versions.toArray(),
+    db.kv.get("activeProjectId"),
+  ]);
+
+  let projects = sortByUpdated(storedProjects.map(normalizeProject));
+  const assets = sortAssetsByCreated(storedAssets);
+  const versions = sortVersionsByCreated(storedVersions);
+  let activeProjectId = preferredActiveProjectId ?? activeRecord?.value ?? null;
+  const liveProjects = getLiveProjects(projects);
+
+  if (!liveProjects.some((project) => project.id === activeProjectId)) {
+    activeProjectId = sortByUpdated(liveProjects)[0]?.id ?? null;
+  }
+
+  if (liveProjects.length === 0) {
+    const project = createProjectDocument(
+      projects.length === 0 ? "Launch Study" : getNextProjectTitle(projects),
+    );
+    await db.projects.put(project);
+    projects = sortByUpdated([project, ...projects]);
+    activeProjectId = project.id;
+  }
+
+  await persistActiveProjectId(activeProjectId);
+
+  return {
+    projects,
+    assets,
+    versions,
+    activeProjectId,
+  };
+}
+
+async function syncWorkspace(
+  set: (partial: Partial<AppState>) => void,
+  options: {
+    activeProjectId?: string | null;
+    busy?: boolean;
+    ready?: boolean;
+    status: string;
+  },
+) {
+  const snapshot = await loadWorkspaceSnapshot(options.activeProjectId);
+  set({
+    ...snapshot,
+    busy: options.busy ?? false,
+    ready: options.ready ?? true,
+    status: options.status,
+  });
+}
+
+async function deleteProjectData(projectId: string) {
+  const [assets, versions] = await Promise.all([
+    db.assets.where("projectId").equals(projectId).toArray(),
+    db.versions.where("projectId").equals(projectId).toArray(),
+  ]);
+
+  await Promise.all([
+    ...assets.flatMap((asset) => [
+      deleteBlob(asset.originalPath),
+      deleteBlob(asset.normalizedPath),
+      deleteBlob(asset.previewPath),
+    ]),
+    ...versions
+      .map((version) => version.thumbnailPath)
+      .filter((path): path is string => Boolean(path))
+      .map((path) => deleteBlob(path)),
+  ]);
+
+  await Promise.all([
+    db.assets.bulkDelete(assets.map((asset) => asset.id)),
+    db.versions.bulkDelete(versions.map((version) => version.id)),
+    db.projects.delete(projectId),
+  ]);
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -60,39 +189,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   async bootstrap() {
     set({ busy: true, status: "Loading local workspace…" });
-    const [projects, assets, versions, activeProject] = await Promise.all([
-      db.projects.toArray(),
-      db.assets.toArray(),
-      db.versions.toArray(),
-      db.kv.get("activeProjectId"),
-    ]);
-
-    if (projects.length === 0) {
-      const project = createProjectDocument("Launch Study");
-      await persistProject(project);
-      set({
-        projects: [project],
-        assets,
-        versions,
-        activeProjectId: project.id,
-        ready: true,
-        busy: false,
-        status: "Ready.",
-      });
-      return;
-    }
-
-    const activeProjectId =
-      activeProject?.value ?? sortByUpdated(projects)[0]?.id ?? null;
-    set({
-      projects: sortByUpdated(projects),
-      assets,
-      versions: [...versions].sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
-      activeProjectId,
-      ready: true,
-      busy: false,
-      status: "Ready.",
-    });
+    await syncWorkspace(set, { busy: false, ready: true, status: "Ready." });
   },
 
   setStatus(status) {
@@ -100,17 +197,120 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   async createProject() {
-    const project = createProjectDocument(`Study ${get().projects.length + 1}`);
-    await persistProject(project);
-    set((state) => ({
-      projects: sortByUpdated([project, ...state.projects]),
+    const project = createProjectDocument(getNextProjectTitle(get().projects));
+    await Promise.all([db.projects.put(project), persistActiveProjectId(project.id)]);
+    await syncWorkspace(set, {
       activeProjectId: project.id,
       status: "Created a new project.",
-    }));
+    });
+  },
+
+  async renameProject(projectId, title) {
+    const nextTitle = title.trim() || "Untitled Composition";
+    const project = get().projects.find((entry) => entry.id === projectId);
+    if (!project) return;
+
+    await db.projects.put({
+      ...project,
+      title: nextTitle,
+      updatedAt: new Date().toISOString(),
+    });
+
+    await syncWorkspace(set, {
+      activeProjectId: get().activeProjectId,
+      status: "Project renamed.",
+    });
+  },
+
+  async duplicateProject(projectId, title) {
+    const sourceProject = get().projects.find(
+      (entry) => entry.id === projectId && entry.deletedAt === null,
+    );
+    if (!sourceProject) return;
+
+    set({ busy: true, status: "Duplicating project…" });
+    const nextProjectId = makeId("project");
+    const nextTitle = title.trim() || `${sourceProject.title} Copy`;
+    const projectAssets = get().assets.filter((asset) => asset.projectId === sourceProject.id);
+    const duplicatedAssets = await Promise.all(
+      projectAssets.map((asset) => duplicateSourceAsset(asset, nextProjectId)),
+    );
+    const sourceIdMap = new Map(projectAssets.map((asset, index) => [asset.id, duplicatedAssets[index]?.id ?? asset.id]));
+    const now = new Date().toISOString();
+    const duplicateProject: ProjectDocument = {
+      ...sourceProject,
+      id: nextProjectId,
+      title: nextTitle,
+      sourceIds: sourceProject.sourceIds.map((sourceId) => sourceIdMap.get(sourceId) ?? sourceId),
+      currentVersionId: null,
+      deletedAt: null,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    await Promise.all([
+      db.projects.put(duplicateProject),
+      db.assets.bulkPut(duplicatedAssets),
+      persistActiveProjectId(duplicateProject.id),
+    ]);
+
+    await syncWorkspace(set, {
+      activeProjectId: duplicateProject.id,
+      busy: false,
+      status: "Project duplicated.",
+    });
+  },
+
+  async trashProject(projectId) {
+    const project = get().projects.find(
+      (entry) => entry.id === projectId && entry.deletedAt === null,
+    );
+    if (!project) return;
+
+    await db.projects.put({
+      ...project,
+      deletedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+
+    await syncWorkspace(set, {
+      activeProjectId: get().activeProjectId === projectId ? null : get().activeProjectId,
+      status: "Project moved to trash.",
+    });
+  },
+
+  async restoreProject(projectId) {
+    const project = get().projects.find((entry) => entry.id === projectId);
+    if (!project) return;
+
+    await db.projects.put({
+      ...project,
+      deletedAt: null,
+      updatedAt: new Date().toISOString(),
+    });
+
+    await syncWorkspace(set, {
+      activeProjectId: get().activeProjectId,
+      status: "Project restored.",
+    });
+  },
+
+  async purgeProject(projectId) {
+    set({ busy: true, status: "Deleting project permanently…" });
+    await deleteProjectData(projectId);
+    await syncWorkspace(set, {
+      activeProjectId: get().activeProjectId === projectId ? null : get().activeProjectId,
+      busy: false,
+      status: "Project deleted permanently.",
+    });
   },
 
   async setActiveProject(projectId) {
-    await db.kv.put({ key: "activeProjectId", value: projectId });
+    const project = get().projects.find(
+      (entry) => entry.id === projectId && entry.deletedAt === null,
+    );
+    if (!project) return;
+    await persistActiveProjectId(projectId);
     set({ activeProjectId: projectId, status: "Project loaded." });
   },
 
@@ -123,11 +323,11 @@ export const useAppStore = create<AppState>((set, get) => ({
       updatedAt: new Date().toISOString(),
     });
 
-    await persistProject(updatedProject);
+    await db.projects.put(updatedProject);
     set((state) => ({
       projects: sortByUpdated(
         state.projects.map((entry) =>
-          entry.id === updatedProject.id ? updatedProject : entry,
+          entry.id === updatedProject.id ? normalizeProject(updatedProject) : entry,
         ),
       ),
       status: "Draft saved locally.",
@@ -146,23 +346,26 @@ export const useAppStore = create<AppState>((set, get) => ({
       const importedAssets: SourceAsset[] = [];
       for (const file of fileList) {
         const payload = await processImageFile(file);
-        const asset = await persistProcessedAsset(file, payload);
+        const asset = await persistProcessedAsset(file, payload, activeProject.id);
         importedAssets.push(asset);
         await db.assets.put(asset);
       }
 
       const nextProject = {
         ...activeProject,
-        sourceIds: [...new Set([...activeProject.sourceIds, ...importedAssets.map((asset) => asset.id)])],
+        sourceIds: [
+          ...new Set([
+            ...activeProject.sourceIds,
+            ...importedAssets.map((asset) => asset.id),
+          ]),
+        ],
         updatedAt: new Date().toISOString(),
       };
 
-      await persistProject(nextProject);
+      await db.projects.put(nextProject);
 
       set((state) => ({
-        assets: [...state.assets, ...importedAssets].sort((a, b) =>
-          b.createdAt.localeCompare(a.createdAt),
-        ),
+        assets: sortAssetsByCreated([...state.assets, ...importedAssets]),
         projects: sortByUpdated(
           state.projects.map((entry) => (entry.id === nextProject.id ? nextProject : entry)),
         ),
@@ -222,10 +425,10 @@ export const useAppStore = create<AppState>((set, get) => ({
       updatedAt: new Date().toISOString(),
     };
 
-    await Promise.all([db.versions.put(version), persistProject(updatedProject)]);
+    await Promise.all([db.versions.put(version), db.projects.put(updatedProject)]);
 
     set((state) => ({
-      versions: [version, ...state.versions].sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
+      versions: sortVersionsByCreated([version, ...state.versions]),
       projects: sortByUpdated(
         state.projects.map((entry) => (entry.id === updatedProject.id ? updatedProject : entry)),
       ),
@@ -245,7 +448,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       updatedAt: new Date().toISOString(),
     };
 
-    await persistProject(updatedProject);
+    await db.projects.put(updatedProject);
     set((state) => ({
       projects: sortByUpdated(
         state.projects.map((entry) => (entry.id === updatedProject.id ? updatedProject : entry)),
@@ -257,7 +460,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   async exportCurrentImage(bitmapLookup) {
     const project = getActiveProject(get());
     if (!project) return;
-    const assets = get().assets.filter((asset) => project.sourceIds.includes(asset.id));
+    const assets = get().assets.filter((asset) => asset.projectId === project.id);
     const { buildBitmapMap } = await import("@/lib/render");
     set({ busy: true, status: "Rendering export…" });
     const bitmaps = await buildBitmapMap(assets, bitmapLookup);
@@ -271,30 +474,58 @@ export const useAppStore = create<AppState>((set, get) => ({
     const project = getActiveProject(get());
     if (!project) return;
     const versions = get().versions.filter((version) => version.projectId === project.id);
-    const assets = get().assets.filter((asset) => project.sourceIds.includes(asset.id));
+    const assets = get().assets.filter((asset) => asset.projectId === project.id);
     set({ busy: true, status: "Packaging project bundle…" });
     const blob = await exportProjectBundle(project, versions, assets);
     downloadBlob(blob, `${project.title.toLowerCase().replace(/\s+/g, "-")}.image-grid.zip`);
     set({ busy: false, status: "Project bundle exported." });
   },
 
-  async importBundleFile(file) {
-    set({ busy: true, status: "Importing project bundle…" });
-    const { projectDoc, versionDocs, assetDocs } = await importProjectBundle(file);
-    const [projects, versions, assets] = await Promise.all([
-      db.projects.toArray(),
-      db.versions.toArray(),
-      db.assets.toArray(),
-    ]);
+  async inspectBundleImport(file) {
+    set({ busy: true, status: "Inspecting project bundle…" });
+    const bundle = await loadProjectBundle(file);
+    const conflictProject = normalizeProject(
+      (await db.projects.get(bundle.projectDoc.id)) ?? bundle.projectDoc,
+    );
+
+    const inspection: BundleImportInspection = {
+      fileName: file.name,
+      projectId: bundle.projectDoc.id,
+      projectTitle: bundle.projectDoc.title,
+      bundle,
+      conflictProject:
+        conflictProject.id === bundle.projectDoc.id && (await db.projects.get(bundle.projectDoc.id))
+          ? conflictProject
+          : null,
+    };
+
     set({
-      projects: sortByUpdated(projects),
-      versions: [...versions].sort((a, b) => b.createdAt.localeCompare(a.createdAt)),
-      assets,
-      activeProjectId: projectDoc.id,
       busy: false,
-      status: `Imported ${projectDoc.title}.`,
+      status: inspection.conflictProject
+        ? "Import needs confirmation."
+        : "Bundle ready to import.",
     });
-    void versionDocs;
-    void assetDocs;
+
+    return inspection;
+  },
+
+  async resolveBundleImport(inspection, resolution) {
+    set({ busy: true, status: "Importing project bundle…" });
+
+    if (resolution === "replace" && inspection.conflictProject) {
+      await deleteProjectData(inspection.conflictProject.id);
+    }
+
+    const bundle = resolution === "copy" ? createImportCopy(inspection.bundle) : inspection.bundle;
+    await persistImportedProjectBundle(bundle);
+
+    await syncWorkspace(set, {
+      activeProjectId: bundle.projectDoc.id,
+      busy: false,
+      status:
+        resolution === "copy"
+          ? `Imported ${bundle.projectDoc.title} as a copy.`
+          : `Imported ${bundle.projectDoc.title}.`,
+    });
   },
 }));

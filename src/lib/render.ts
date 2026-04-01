@@ -7,6 +7,10 @@ interface AssetBitmapEntry {
   bitmap: ImageBitmap;
 }
 
+interface RenderOptions {
+  includeBackground?: boolean;
+}
+
 const bitmapCache = new Map<string, Promise<ImageBitmap>>();
 
 async function loadBitmap(asset: SourceAsset, blob: Blob) {
@@ -198,6 +202,7 @@ export async function renderProjectToCanvas(
   assets: SourceAsset[],
   bitmaps: Map<string, AssetBitmapEntry>,
   canvas: HTMLCanvasElement | OffscreenCanvas,
+  options: RenderOptions = {},
 ) {
   const context = canvas.getContext("2d");
   if (!context) throw new Error("Unable to acquire a canvas context.");
@@ -205,7 +210,9 @@ export async function renderProjectToCanvas(
   canvas.width = project.canvas.width;
   canvas.height = project.canvas.height;
 
-  drawBackground(context, project);
+  if (options.includeBackground ?? true) {
+    drawBackground(context, project);
+  }
   const slices = buildRenderSlices(project, assets);
 
   for (const slice of slices) {
@@ -248,9 +255,12 @@ export async function exportProjectImage(
       height,
     },
   };
-  await renderProjectToCanvas(exportProject, assets, bitmaps, canvas);
+  const includeBackground = project.export.format !== "image/png-transparent";
+  await renderProjectToCanvas(exportProject, assets, bitmaps, canvas, {
+    includeBackground,
+  });
   return canvas.convertToBlob({
-    type: project.export.format,
+    type: project.export.format === "image/jpeg" ? "image/jpeg" : "image/png",
     quality: project.export.quality,
   });
 }

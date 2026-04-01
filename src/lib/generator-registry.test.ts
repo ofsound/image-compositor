@@ -7,6 +7,7 @@ import type { SourceAsset } from "@/types/project";
 const assets: SourceAsset[] = [
   {
     id: "asset_a",
+    projectId: "project_test",
     name: "A",
     originalFileName: "a.jpg",
     mimeType: "image/jpeg",
@@ -23,6 +24,7 @@ const assets: SourceAsset[] = [
   },
   {
     id: "asset_b",
+    projectId: "project_test",
     name: "B",
     originalFileName: "b.jpg",
     mimeType: "image/jpeg",

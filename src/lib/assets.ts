@@ -1,6 +1,6 @@
 import type { ProcessedAssetPayload, SourceAsset } from "@/types/project";
 import { makeId } from "@/lib/id";
-import { writeBlob } from "@/lib/opfs";
+import { readBlob, writeBlob } from "@/lib/opfs";
 
 const COMMON_EXTENSIONS = [
   ".jpg",
@@ -18,15 +18,26 @@ const COMMON_EXTENSIONS = [
 
 export const ACCEPTED_IMAGE_TYPES = COMMON_EXTENSIONS.join(",");
 
+function getAssetExtension(fileName: string) {
+  return fileName.split(".").pop() || "bin";
+}
+
+export function getAssetStoragePaths(assetId: string, originalFileName: string) {
+  const extension = getAssetExtension(originalFileName);
+  return {
+    originalPath: `assets/original/${assetId}.${extension}`,
+    normalizedPath: `assets/normalized/${assetId}.png`,
+    previewPath: `assets/previews/${assetId}.webp`,
+  };
+}
+
 export async function persistProcessedAsset(
   file: File,
   payload: ProcessedAssetPayload,
+  projectId: string,
 ) {
   const assetId = makeId("asset");
-  const extension = file.name.split(".").pop() || "bin";
-  const originalPath = `assets/original/${assetId}.${extension}`;
-  const normalizedPath = `assets/normalized/${assetId}.png`;
-  const previewPath = `assets/previews/${assetId}.webp`;
+  const { originalPath, normalizedPath, previewPath } = getAssetStoragePaths(assetId, file.name);
 
   await Promise.all([
     writeBlob(originalPath, payload.blob),
@@ -36,6 +47,7 @@ export async function persistProcessedAsset(
 
   const asset: SourceAsset = {
     id: assetId,
+    projectId,
     name: file.name.replace(/\.[^.]+$/, ""),
     originalFileName: file.name,
     mimeType: payload.mimeType,
@@ -52,4 +64,34 @@ export async function persistProcessedAsset(
   };
 
   return asset;
+}
+
+export async function duplicateSourceAsset(asset: SourceAsset, projectId: string) {
+  const assetId = makeId("asset");
+  const { originalPath, normalizedPath, previewPath } = getAssetStoragePaths(
+    assetId,
+    asset.originalFileName,
+  );
+
+  const [original, normalized, preview] = await Promise.all([
+    readBlob(asset.originalPath),
+    readBlob(asset.normalizedPath),
+    readBlob(asset.previewPath),
+  ]);
+
+  await Promise.all([
+    original ? writeBlob(originalPath, original) : Promise.resolve(),
+    normalized ? writeBlob(normalizedPath, normalized) : Promise.resolve(),
+    preview ? writeBlob(previewPath, preview) : Promise.resolve(),
+  ]);
+
+  return {
+    ...asset,
+    id: assetId,
+    projectId,
+    originalPath,
+    normalizedPath,
+    previewPath,
+    createdAt: new Date().toISOString(),
+  } satisfies SourceAsset;
 }

@@ -117,6 +117,7 @@ export function createProjectDocument(title = "Untitled Composition"): ProjectDo
     id: makeId("project"),
     title,
     currentVersionId: null,
+    deletedAt: null,
     createdAt: now,
     updatedAt: now,
     ...createSnapshot(),

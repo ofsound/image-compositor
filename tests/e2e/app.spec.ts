@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 
 test("boots and imports a source image", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByText("Local generative compositor")).toBeVisible({
+  await expect(page.getByText("Image Grid")).toBeVisible({
     timeout: 15_000,
   });
   await page.locator('input[type="file"]').nth(0).evaluate(async (node) => {
@@ -34,7 +34,7 @@ test("boots and imports a source image", async ({ page }) => {
   });
 
   await expect(page.getByText("spec")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Export Image" })).toBeEnabled({
+  await expect(page.getByRole("button", { name: "Export" })).toBeEnabled({
     timeout: 15_000,
   });
 });

@@ -7,7 +7,7 @@ export type SourceAssignmentStrategy =
   | "luminance"
   | "palette"
   | "symmetry";
-export type ExportFormat = "image/png" | "image/jpeg";
+export type ExportFormat = "image/png" | "image/jpeg" | "image/png-transparent";
 export type BlendMode =
   | "source-over"
   | "multiply"
@@ -21,6 +21,7 @@ export type BlendMode =
 
 export interface SourceAsset {
   id: string;
+  projectId: string;
   name: string;
   originalFileName: string;
   mimeType: string;
@@ -127,6 +128,7 @@ export interface ProjectDocument extends ProjectSnapshot {
   id: string;
   title: string;
   currentVersionId: string | null;
+  deletedAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -146,6 +148,23 @@ export interface ProjectBundleManifest {
   exportedAt: string;
   assetIds: string[];
   versionIds: string[];
+}
+
+export interface ImportedProjectBundle {
+  manifest: ProjectBundleManifest;
+  projectDoc: ProjectDocument;
+  versionDocs: ProjectVersion[];
+  assetDocs: SourceAsset[];
+  assetBlobs: Record<string, Blob>;
+  versionBlobs: Record<string, Blob>;
+}
+
+export interface BundleImportInspection {
+  fileName: string;
+  projectId: string;
+  projectTitle: string;
+  bundle: ImportedProjectBundle;
+  conflictProject: ProjectDocument | null;
 }
 
 export interface RenderAsset {

@@ -1,13 +1,16 @@
 import { startTransition, useDeferredValue, useEffect, useRef, useState } from "react";
 import {
+  CopyPlus,
   Download,
   FolderOpen,
   ImagePlus,
   Layers,
+  Pencil,
   Plus,
   RefreshCw,
   Save,
   Sparkles,
+  Trash2,
 } from "lucide-react";
 import { Toaster } from "sonner";
 
@@ -39,7 +42,15 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ACCEPTED_IMAGE_TYPES } from "@/lib/assets";
 import { readBlob } from "@/lib/opfs";
 import { useAppStore } from "@/state/use-app-store";
-import type { BlendMode, GeometryShape, LayoutFamily, SourceAssignmentStrategy } from "@/types/project";
+import type {
+  BlendMode,
+  BundleImportInspection,
+  GeometryShape,
+  LayoutFamily,
+  ProjectDocument,
+  SourceAsset,
+  SourceAssignmentStrategy,
+} from "@/types/project";
 
 function useObjectUrl(path: string | null) {
   const [url, setUrl] = useState<string | null>(null);
@@ -137,11 +148,49 @@ function SliderField({
   );
 }
 
+function ProjectRow({
+  project,
+  current,
+  actions,
+}: {
+  project: ProjectDocument;
+  current: boolean;
+  actions: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-md border border-border-subtle bg-surface-sunken p-3">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="truncate text-sm font-medium text-text">{project.title}</div>
+          <div className="font-mono text-[10px] text-text-faint">
+            updated {new Date(project.updatedAt).toLocaleString()}
+          </div>
+          {current ? (
+            <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.08em] text-text-muted">
+              current
+            </div>
+          ) : null}
+        </div>
+        <div className="flex flex-wrap items-center justify-end gap-2">{actions}</div>
+      </div>
+    </div>
+  );
+}
+
 function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const uploadInputRef = useRef<HTMLInputElement>(null);
   const bundleInputRef = useRef<HTMLInputElement>(null);
   const [renderState, setRenderState] = useState({ ready: false, count: 0 });
+  const [renameDialogOpen, setRenameDialogOpen] = useState(false);
+  const [duplicateDialogOpen, setDuplicateDialogOpen] = useState(false);
+  const [manageProjectsOpen, setManageProjectsOpen] = useState(false);
+  const [trashDialogOpen, setTrashDialogOpen] = useState(false);
+  const [purgeDialogProjectId, setPurgeDialogProjectId] = useState<string | null>(null);
+  const [importConflictOpen, setImportConflictOpen] = useState(false);
+  const [renameValue, setRenameValue] = useState("");
+  const [duplicateValue, setDuplicateValue] = useState("");
+  const [pendingImportInspection, setPendingImportInspection] = useState<BundleImportInspection | null>(null);
 
   const {
     ready,
@@ -153,6 +202,11 @@ function App() {
     activeProjectId,
     bootstrap,
     createProject,
+    renameProject,
+    duplicateProject,
+    trashProject,
+    restoreProject,
+    purgeProject,
     setActiveProject,
     updateProject,
     importFiles,
@@ -161,22 +215,36 @@ function App() {
     restoreVersion,
     exportCurrentImage,
     exportCurrentBundle,
-    importBundleFile,
+    inspectBundleImport,
+    resolveBundleImport,
   } = useAppStore();
 
   useEffect(() => {
     void bootstrap();
   }, [bootstrap]);
 
+  const activeProjects = projects.filter((project) => project.deletedAt === null);
+  const trashedProjects = projects.filter((project) => project.deletedAt !== null);
   const activeProject =
-    projects.find((project) => project.id === activeProjectId) ?? null;
+    activeProjects.find((project) => project.id === activeProjectId) ?? null;
+  const deferredProject = useDeferredValue(activeProject);
+
+  useEffect(() => {
+    if (!activeProject) return;
+    setRenameValue(activeProject.title);
+    setDuplicateValue(`${activeProject.title} Copy`);
+  }, [activeProject]);
+
   const activeAssets = activeProject
-    ? assets.filter((asset) => activeProject.sourceIds.includes(asset.id))
+    ? activeProject.sourceIds
+        .map((sourceId) => assets.find((asset) => asset.id === sourceId && asset.projectId === activeProject.id))
+        .filter((asset): asset is SourceAsset => Boolean(asset))
     : [];
   const activeVersions = activeProject
     ? versions.filter((version) => version.projectId === activeProject.id)
     : [];
-  const deferredProject = useDeferredValue(activeProject);
+  const purgeDialogProject =
+    projects.find((project) => project.id === purgeDialogProjectId) ?? null;
 
   if (!ready || !activeProject || !deferredProject) {
     return (
@@ -209,13 +277,44 @@ function App() {
     await saveVersion(label, thumbnail);
   };
 
-  const bitmapLookup = (asset: (typeof activeAssets)[number]) => readBlob(asset.normalizedPath);
+  const bitmapLookup = (asset: SourceAsset) => readBlob(asset.normalizedPath);
+
+  const submitRename = async () => {
+    await renameProject(activeProject.id, renameValue);
+    setRenameDialogOpen(false);
+  };
+
+  const submitDuplicate = async () => {
+    await duplicateProject(activeProject.id, duplicateValue);
+    setDuplicateDialogOpen(false);
+  };
+
+  const submitTrash = async () => {
+    await trashProject(activeProject.id);
+    setTrashDialogOpen(false);
+  };
+
+  const handleBundleImport = async (file: File) => {
+    const inspection = await inspectBundleImport(file);
+    if (inspection.conflictProject) {
+      setPendingImportInspection(inspection);
+      setImportConflictOpen(true);
+      return;
+    }
+    await resolveBundleImport(inspection, "replace");
+  };
+
+  const resolveImportConflict = async (resolution: "replace" | "copy") => {
+    if (!pendingImportInspection) return;
+    await resolveBundleImport(pendingImportInspection, resolution);
+    setPendingImportInspection(null);
+    setImportConflictOpen(false);
+  };
 
   return (
     <div className="min-h-screen bg-app text-text">
       <Toaster richColors position="top-right" />
       <div className="mx-auto flex min-h-screen max-w-[1800px] flex-col gap-3 p-3">
-        {/* ── Top toolbar ── */}
         <div className="flex items-center justify-between gap-4 rounded-lg border border-border bg-surface-raised px-4 py-2.5 backdrop-blur-sm">
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-3">
@@ -228,7 +327,7 @@ function App() {
 
             <div className="h-6 w-px bg-border" />
 
-            <div className="min-w-[200px]">
+            <div className="min-w-[220px]">
               <Select
                 value={activeProject.id}
                 onValueChange={(value) => void setActiveProject(value)}
@@ -237,7 +336,7 @@ function App() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {projects.map((project) => (
+                  {activeProjects.map((project) => (
                     <SelectItem key={project.id} value={project.id}>
                       {project.title}
                     </SelectItem>
@@ -251,6 +350,22 @@ function App() {
             <Button variant="ghost" size="sm" onClick={() => void createProject()}>
               <Plus className="h-3.5 w-3.5" />
               New
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => setRenameDialogOpen(true)}>
+              <Pencil className="h-3.5 w-3.5" />
+              Rename
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => setDuplicateDialogOpen(true)}>
+              <CopyPlus className="h-3.5 w-3.5" />
+              Save as
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => setManageProjectsOpen(true)}>
+              <Layers className="h-3.5 w-3.5" />
+              Projects
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => setTrashDialogOpen(true)}>
+              <Trash2 className="h-3.5 w-3.5" />
+              Trash
             </Button>
             <Button variant="ghost" size="sm" onClick={() => uploadInputRef.current?.click()}>
               <ImagePlus className="h-3.5 w-3.5" />
@@ -282,9 +397,7 @@ function App() {
           </div>
         </div>
 
-        {/* ── Main three-column layout ── */}
         <div className="grid flex-1 grid-cols-[280px_minmax(0,1fr)_320px] gap-3">
-          {/* ── Left: Source pool ── */}
           <Card className="flex min-h-[720px] flex-col">
             <CardHeader>
               <CardTitle>Sources</CardTitle>
@@ -294,7 +407,7 @@ function App() {
             </CardHeader>
             <CardContent className="flex flex-1 flex-col gap-3">
               <div className="rounded-md border border-dashed border-border-subtle bg-surface-sunken p-3">
-                <div className="font-mono text-[10px] text-text-faint leading-relaxed">
+                <div className="font-mono text-[10px] leading-relaxed text-text-faint">
                   JPG · PNG · WebP · GIF · BMP · TIFF · AVIF · HEIC
                 </div>
                 <Button
@@ -330,7 +443,7 @@ function App() {
                   </div>
                 ))}
                 {activeAssets.length === 0 ? (
-                  <div className="rounded-md bg-surface-sunken p-4 text-xs text-text-faint leading-relaxed">
+                  <div className="rounded-md bg-surface-sunken p-4 text-xs leading-relaxed text-text-faint">
                     Upload images to begin. Assets are preserved as immutable originals.
                   </div>
                 ) : null}
@@ -338,9 +451,8 @@ function App() {
             </CardContent>
           </Card>
 
-          {/* ── Center: Preview ── */}
           <div className="flex min-h-[720px] flex-col gap-3">
-            <Card className="overflow-hidden flex-1">
+            <Card className="flex-1 overflow-hidden">
               <CardHeader className="flex-row items-end justify-between gap-4">
                 <div>
                   <CardTitle>{activeProject.title}</CardTitle>
@@ -380,7 +492,7 @@ function App() {
                   onRenderState={setRenderState}
                 />
 
-                <div className="flex items-center justify-between rounded-lg bg-status-bar border border-status-bar-border px-4 py-3">
+                <div className="flex items-center justify-between rounded-lg border border-status-bar-border bg-status-bar px-4 py-3">
                   <div>
                     <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-faint">
                       Local-first engine
@@ -440,7 +552,6 @@ function App() {
             </Dialog>
           </div>
 
-          {/* ── Right: Inspector ── */}
           <Card className="min-h-[720px]">
             <CardHeader>
               <CardTitle>Inspector</CardTitle>
@@ -896,6 +1007,7 @@ function App() {
                       <SelectContent>
                         <SelectItem value="image/png">PNG</SelectItem>
                         <SelectItem value="image/jpeg">JPEG</SelectItem>
+                        <SelectItem value="image/png-transparent">Transparent PNG</SelectItem>
                       </SelectContent>
                     </Select>
                   </ControlBlock>
@@ -947,6 +1059,246 @@ function App() {
         </div>
       </div>
 
+      <Dialog open={renameDialogOpen} onOpenChange={setRenameDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Rename project</DialogTitle>
+            <DialogDescription>
+              Update the project name used in the selector, preview header, and export filenames.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="rename-project">Project name</Label>
+            <Input
+              id="rename-project"
+              value={renameValue}
+              onChange={(event) => setRenameValue(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  void submitRename();
+                }
+              }}
+            />
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setRenameDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={() => void submitRename()} disabled={!renameValue.trim()}>
+              Save name
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={duplicateDialogOpen} onOpenChange={setDuplicateDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Save project as</DialogTitle>
+            <DialogDescription>
+              Create a new project from the current draft with copied source assets.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label htmlFor="duplicate-project">New project name</Label>
+            <Input
+              id="duplicate-project"
+              value={duplicateValue}
+              onChange={(event) => setDuplicateValue(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.preventDefault();
+                  void submitDuplicate();
+                }
+              }}
+            />
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setDuplicateDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={() => void submitDuplicate()} disabled={!duplicateValue.trim()}>
+              Create copy
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={trashDialogOpen} onOpenChange={setTrashDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Move project to trash</DialogTitle>
+            <DialogDescription>
+              {`"${activeProject.title}" will be removed from the active project list but can still be restored from the project manager.`}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setTrashDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button variant="secondary" onClick={() => void submitTrash()}>
+              Move to trash
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={manageProjectsOpen} onOpenChange={setManageProjectsOpen}>
+        <DialogContent className="max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Manage projects</DialogTitle>
+            <DialogDescription>
+              Browse active projects, restore trashed work, and permanently remove discarded projects.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <div className="font-mono text-[10px] uppercase tracking-[0.08em] text-text-muted">
+                Active projects
+              </div>
+              {activeProjects.map((project) => (
+                <ProjectRow
+                  key={project.id}
+                  project={project}
+                  current={project.id === activeProject.id}
+                  actions={
+                    <>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        disabled={project.id === activeProject.id}
+                        onClick={() => void setActiveProject(project.id)}
+                      >
+                        Open
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => void trashProject(project.id)}
+                      >
+                        Trash
+                      </Button>
+                    </>
+                  }
+                />
+              ))}
+            </div>
+
+            <Separator />
+
+            <div className="space-y-2">
+              <div className="font-mono text-[10px] uppercase tracking-[0.08em] text-text-muted">
+                Trash
+              </div>
+              {trashedProjects.length === 0 ? (
+                <div className="rounded-md bg-surface-sunken p-4 text-xs text-text-faint">
+                  Trash is empty.
+                </div>
+              ) : (
+                trashedProjects.map((project) => (
+                  <ProjectRow
+                    key={project.id}
+                    project={project}
+                    current={false}
+                    actions={
+                      <>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => void restoreProject(project.id)}
+                        >
+                          Restore
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => setPurgeDialogProjectId(project.id)}
+                        >
+                          Delete permanently
+                        </Button>
+                      </>
+                    }
+                  />
+                ))
+              )}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(purgeDialogProject) && manageProjectsOpen}
+        onOpenChange={(open) => {
+          if (!open) setPurgeDialogProjectId(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete project permanently</DialogTitle>
+            <DialogDescription>
+              {purgeDialogProject
+                ? `This permanently removes "${purgeDialogProject.title}", its saved versions, and its copied source files.`
+                : "This permanently removes the project and its files."}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setPurgeDialogProjectId(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                if (!purgeDialogProjectId) return;
+                void purgeProject(purgeDialogProjectId);
+                setPurgeDialogProjectId(null);
+              }}
+            >
+              Delete permanently
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={importConflictOpen}
+        onOpenChange={(open) => {
+          setImportConflictOpen(open);
+          if (!open) setPendingImportInspection(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Import conflict</DialogTitle>
+            <DialogDescription>
+              {pendingImportInspection?.conflictProject
+                ? `The bundle "${pendingImportInspection.fileName}" matches the existing project "${pendingImportInspection.conflictProject.title}".`
+                : "Choose how to import this project bundle."}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="rounded-md bg-surface-sunken p-3 text-xs text-text-muted">
+            Replace will overwrite the existing local project with the bundle contents. Import as copy will preserve the existing project and create a new project with remapped IDs.
+          </div>
+          <div className="flex justify-end gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setPendingImportInspection(null);
+                setImportConflictOpen(false);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button variant="outline" onClick={() => void resolveImportConflict("copy")}>
+              Import as copy
+            </Button>
+            <Button variant="secondary" onClick={() => void resolveImportConflict("replace")}>
+              Replace existing
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <input
         ref={uploadInputRef}
         type="file"
@@ -967,7 +1319,7 @@ function App() {
         onChange={(event) => {
           const file = event.target.files?.[0];
           if (!file) return;
-          void importBundleFile(file);
+          void handleBundleImport(file);
           event.currentTarget.value = "";
         }}
       />

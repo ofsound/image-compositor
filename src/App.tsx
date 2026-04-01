@@ -1,4 +1,10 @@
-import { startTransition, useDeferredValue, useEffect, useRef, useState } from "react";
+import {
+  startTransition,
+  useDeferredValue,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import {
   CopyPlus,
   Download,
@@ -17,7 +23,13 @@ import { Toaster } from "sonner";
 import { PreviewStage } from "@/components/app/preview-stage";
 import { ThemeToggle } from "@/components/app/theme-toggle";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import {
   Dialog,
   DialogContent,
@@ -38,7 +50,6 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ACCEPTED_IMAGE_TYPES } from "@/lib/assets";
 import { readBlob } from "@/lib/opfs";
 import { useAppStore } from "@/state/use-app-store";
@@ -83,7 +94,13 @@ function useObjectUrl(path: string | null) {
   return url;
 }
 
-function SourceThumbnail({ previewPath, label }: { previewPath: string; label: string }) {
+function SourceThumbnail({
+  previewPath,
+  label,
+}: {
+  previewPath: string;
+  label: string;
+}) {
   const previewUrl = useObjectUrl(previewPath);
 
   return previewUrl ? (
@@ -112,7 +129,9 @@ function ControlBlock({
     <div className="space-y-2.5 rounded-lg border border-border-subtle bg-surface-sunken p-3">
       <div className="flex items-center justify-between gap-3">
         <Label>{label}</Label>
-        {value ? <span className="font-mono text-[10px] text-text-muted">{value}</span> : null}
+        {value ? (
+          <span className="font-mono text-[10px] text-text-muted">{value}</span>
+        ) : null}
       </div>
       {children}
     </div>
@@ -162,7 +181,9 @@ function ProjectRow({
     <div className="rounded-md border border-border-subtle bg-surface-sunken p-3">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="truncate text-sm font-medium text-text">{project.title}</div>
+          <div className="truncate text-sm font-medium text-text">
+            {project.title}
+          </div>
           <div className="font-mono text-[10px] text-text-faint">
             updated {new Date(project.updatedAt).toLocaleString()}
           </div>
@@ -172,7 +193,9 @@ function ProjectRow({
             </div>
           ) : null}
         </div>
-        <div className="flex flex-wrap items-center justify-end gap-2">{actions}</div>
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {actions}
+        </div>
       </div>
     </div>
   );
@@ -187,11 +210,14 @@ function App() {
   const [duplicateDialogOpen, setDuplicateDialogOpen] = useState(false);
   const [manageProjectsOpen, setManageProjectsOpen] = useState(false);
   const [trashDialogOpen, setTrashDialogOpen] = useState(false);
-  const [purgeDialogProjectId, setPurgeDialogProjectId] = useState<string | null>(null);
+  const [purgeDialogProjectId, setPurgeDialogProjectId] = useState<
+    string | null
+  >(null);
   const [importConflictOpen, setImportConflictOpen] = useState(false);
   const [renameValue, setRenameValue] = useState("");
   const [duplicateValue, setDuplicateValue] = useState("");
-  const [pendingImportInspection, setPendingImportInspection] = useState<BundleImportInspection | null>(null);
+  const [pendingImportInspection, setPendingImportInspection] =
+    useState<BundleImportInspection | null>(null);
 
   const {
     ready,
@@ -224,8 +250,12 @@ function App() {
     void bootstrap();
   }, [bootstrap]);
 
-  const activeProjects = projects.filter((project) => project.deletedAt === null);
-  const trashedProjects = projects.filter((project) => project.deletedAt !== null);
+  const activeProjects = projects.filter(
+    (project) => project.deletedAt === null,
+  );
+  const trashedProjects = projects.filter(
+    (project) => project.deletedAt !== null,
+  );
   const activeProject =
     activeProjects.find((project) => project.id === activeProjectId) ?? null;
   const deferredProject = useDeferredValue(activeProject);
@@ -238,7 +268,12 @@ function App() {
 
   const activeAssets = activeProject
     ? activeProject.sourceIds
-        .map((sourceId) => assets.find((asset) => asset.id === sourceId && asset.projectId === activeProject.id))
+        .map((sourceId) =>
+          assets.find(
+            (asset) =>
+              asset.id === sourceId && asset.projectId === activeProject.id,
+          ),
+        )
         .filter((asset): asset is SourceAsset => Boolean(asset))
     : [];
   const activeVersions = activeProject
@@ -272,7 +307,10 @@ function App() {
     });
 
   const openSaveVersion = async () => {
-    const label = window.prompt("Version label", `Snapshot ${new Date().toLocaleTimeString()}`);
+    const label = window.prompt(
+      "Version label",
+      `Snapshot ${new Date().toLocaleTimeString()}`,
+    );
     if (!label) return;
     const thumbnail = await captureThumbnail();
     await saveVersion(label, thumbnail);
@@ -318,13 +356,7 @@ function App() {
       <div className="mx-auto flex min-h-screen max-w-[1800px] flex-col gap-3 p-3">
         <div className="flex items-center justify-between gap-4 rounded-lg border border-border bg-surface-raised px-4 py-2.5 backdrop-blur-sm">
           <div className="flex items-center gap-4">
-            <div className="flex items-center gap-3">
-              <div className="font-mono text-[10px] uppercase tracking-[0.12em] text-text-muted">
-                Image Grid
-              </div>
-              <div className="h-4 w-px bg-border" />
-              <div className="text-xs text-text-secondary">compositor</div>
-            </div>
+            <div className="text-xs text-text-secondary">compositor</div>
 
             <div className="h-6 w-px bg-border" />
 
@@ -348,171 +380,38 @@ function App() {
           </div>
 
           <div className="flex flex-wrap items-center justify-end gap-1.5">
-            <Button variant="ghost" size="sm" onClick={() => void createProject()}>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => void createProject()}
+            >
               <Plus className="h-3.5 w-3.5" />
               New
             </Button>
-            <Button variant="ghost" size="sm" onClick={() => setRenameDialogOpen(true)}>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setRenameDialogOpen(true)}
+            >
               <Pencil className="h-3.5 w-3.5" />
               Rename
             </Button>
-            <Button variant="ghost" size="sm" onClick={() => setDuplicateDialogOpen(true)}>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setDuplicateDialogOpen(true)}
+            >
               <CopyPlus className="h-3.5 w-3.5" />
               Save as
             </Button>
-            <Button variant="ghost" size="sm" onClick={() => setManageProjectsOpen(true)}>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setManageProjectsOpen(true)}
+            >
               <Layers className="h-3.5 w-3.5" />
               Projects
             </Button>
-            <Button variant="ghost" size="sm" onClick={() => setTrashDialogOpen(true)}>
-              <Trash2 className="h-3.5 w-3.5" />
-              Trash
-            </Button>
-            <Button variant="ghost" size="sm" onClick={() => uploadInputRef.current?.click()}>
-              <ImagePlus className="h-3.5 w-3.5" />
-              Sources
-            </Button>
-            <Button variant="ghost" size="sm" onClick={() => bundleInputRef.current?.click()}>
-              <FolderOpen className="h-3.5 w-3.5" />
-              Import
-            </Button>
-            <div className="h-4 w-px bg-border" />
-            <Button variant="secondary" size="sm" onClick={() => void randomizeSeed()}>
-              <Sparkles className="h-3.5 w-3.5" />
-              Randomize
-            </Button>
-            <Button variant="secondary" size="sm" onClick={() => void openSaveVersion()}>
-              <Save className="h-3.5 w-3.5" />
-              Save
-            </Button>
-            <Button
-              size="sm"
-              onClick={() => void exportCurrentImage(bitmapLookup)}
-              disabled={busy || activeAssets.length === 0}
-            >
-              <Download className="h-3.5 w-3.5" />
-              Export
-            </Button>
-            <div className="h-4 w-px bg-border" />
-            <ThemeToggle />
-          </div>
-        </div>
-
-        <div className="grid flex-1 grid-cols-[280px_minmax(0,1fr)_320px] gap-3">
-          <Card className="flex min-h-[720px] flex-col">
-            <CardHeader>
-              <CardTitle>Sources</CardTitle>
-              <CardDescription>
-                Immutable originals. Local previews & metadata.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="flex flex-1 flex-col gap-3">
-              <div className="rounded-md border border-dashed border-border-subtle bg-surface-sunken p-3">
-                <div className="font-mono text-[10px] leading-relaxed text-text-faint">
-                  JPG · PNG · WebP · GIF · BMP · TIFF · AVIF · HEIC
-                </div>
-                <Button
-                  className="mt-3 w-full"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => uploadInputRef.current?.click()}
-                >
-                  <ImagePlus className="h-3.5 w-3.5" />
-                  Add to pool
-                </Button>
-              </div>
-
-              <div className="space-y-2 overflow-y-auto pr-1">
-                {activeAssets.map((asset) => (
-                  <div
-                    key={asset.id}
-                    className="rounded-md border border-border-subtle bg-surface-sunken p-2"
-                  >
-                    <SourceThumbnail previewPath={asset.previewPath} label={asset.name} />
-                    <div className="mt-2 flex items-start justify-between gap-2">
-                      <div>
-                        <div className="text-xs font-medium text-text">{asset.name}</div>
-                        <div className="font-mono text-[10px] text-text-faint">
-                          {asset.width} × {asset.height}
-                        </div>
-                      </div>
-                      <div
-                        className="h-5 w-5 rounded-full border border-border"
-                        style={{ background: asset.averageColor }}
-                      />
-                    </div>
-                  </div>
-                ))}
-                {activeAssets.length === 0 ? (
-                  <div className="rounded-md bg-surface-sunken p-4 text-xs leading-relaxed text-text-faint">
-                    Upload images to begin. Assets are preserved as immutable originals.
-                  </div>
-                ) : null}
-              </div>
-            </CardContent>
-          </Card>
-
-          <div className="flex min-h-[720px] flex-col gap-3">
-            <Card className="flex-1 overflow-hidden">
-              <CardHeader className="flex-row items-end justify-between gap-4">
-                <div>
-                  <CardTitle>{activeProject.title}</CardTitle>
-                  <CardDescription>
-                    <span className="font-mono">seed {activeProject.activeSeed}</span> · {renderState.count} assets
-                  </CardDescription>
-                </div>
-                <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.08em] text-text-faint">
-                  <span>{renderState.ready ? "synced" : "updating"}</span>
-                  <RefreshCw className={`h-3 w-3 ${busy ? "animate-spin" : ""}`} />
-                </div>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <div className="grid gap-2 sm:grid-cols-3">
-                  <div className="rounded-md bg-surface-muted px-3 py-2.5">
-                    <Label>Layout</Label>
-                    <div className="mt-1 font-mono text-xs capitalize text-text">{activeProject.layout.family}</div>
-                  </div>
-                  <div className="rounded-md bg-surface-muted px-3 py-2.5">
-                    <Label>Assignment</Label>
-                    <div className="mt-1 font-mono text-xs capitalize text-text">
-                      {activeProject.sourceMapping.strategy}
-                    </div>
-                  </div>
-                  <div className="rounded-md bg-surface-muted px-3 py-2.5">
-                    <Label>Blend</Label>
-                    <div className="mt-1 font-mono text-xs capitalize text-text">
-                      {activeProject.compositing.blendMode}
-                    </div>
-                  </div>
-                </div>
-
-                <PreviewStage
-                  canvasRef={canvasRef}
-                  project={deferredProject}
-                  assets={activeAssets}
-                  onRenderState={setRenderState}
-                />
-
-                <div className="flex items-center justify-between rounded-lg border border-status-bar-border bg-status-bar px-4 py-3">
-                  <div>
-                    <div className="font-mono text-[10px] uppercase tracking-[0.1em] text-text-faint">
-                      Local-first engine
-                    </div>
-                    <div className="text-xs text-text-muted">{status}</div>
-                  </div>
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={() => void exportCurrentBundle()}
-                    disabled={busy}
-                  >
-                    <Layers className="h-3.5 w-3.5" />
-                    Bundle
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-
             <Dialog>
               <DialogTrigger asChild>
                 <Button variant="outline" size="sm">
@@ -535,7 +434,9 @@ function App() {
                       onClick={() => void restoreVersion(version.id)}
                     >
                       <div>
-                        <div className="text-sm font-medium text-text">{version.label}</div>
+                        <div className="text-sm font-medium text-text">
+                          {version.label}
+                        </div>
                         <div className="font-mono text-[10px] text-text-faint">
                           {new Date(version.createdAt).toLocaleString()}
                         </div>
@@ -551,6 +452,158 @@ function App() {
                 </div>
               </DialogContent>
             </Dialog>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setTrashDialogOpen(true)}
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+              Trash
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => uploadInputRef.current?.click()}
+            >
+              <ImagePlus className="h-3.5 w-3.5" />
+              Sources
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => bundleInputRef.current?.click()}
+            >
+              <FolderOpen className="h-3.5 w-3.5" />
+              Import
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => void exportCurrentBundle()}
+              disabled={busy}
+            >
+              <Layers className="h-3.5 w-3.5" />
+              Bundle
+            </Button>
+            <div className="h-4 w-px bg-border" />
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => void randomizeSeed()}
+            >
+              <Sparkles className="h-3.5 w-3.5" />
+              Randomize
+            </Button>
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={() => void openSaveVersion()}
+            >
+              <Save className="h-3.5 w-3.5" />
+              Save
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => void exportCurrentImage(bitmapLookup)}
+              disabled={busy || activeAssets.length === 0}
+            >
+              <Download className="h-3.5 w-3.5" />
+              Export
+            </Button>
+            <div className="h-4 w-px bg-border" />
+            <ThemeToggle />
+          </div>
+        </div>
+
+        <div className="grid flex-1 grid-cols-[minmax(0,1fr)_minmax(960px,1fr)] gap-3">
+          <div className="flex min-h-[720px] flex-col gap-3">
+            <Card className="flex min-h-[280px] flex-1 flex-col overflow-hidden">
+              <CardHeader className="flex-row items-end justify-between gap-4">
+                <div>
+                  <CardTitle>{activeProject.title}</CardTitle>
+                  <CardDescription>
+                    <span className="font-mono">
+                      seed {activeProject.activeSeed}
+                    </span>{" "}
+                    · {renderState.count} assets
+                  </CardDescription>
+                </div>
+                <div className="flex items-center gap-2 font-mono text-[10px] uppercase tracking-[0.08em] text-text-faint">
+                  <span>{renderState.ready ? "synced" : "updating"}</span>
+                  <RefreshCw
+                    className={`h-3 w-3 ${busy ? "animate-spin" : ""}`}
+                  />
+                </div>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <PreviewStage
+                  canvasRef={canvasRef}
+                  project={deferredProject}
+                  assets={activeAssets}
+                  onRenderState={setRenderState}
+                />
+              </CardContent>
+            </Card>
+
+            <Card className="shrink-0">
+              <CardHeader>
+                <CardTitle>Sources</CardTitle>
+                <CardDescription>
+                  Immutable originals. Local previews & metadata.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="flex flex-col gap-3">
+                <div className="rounded-md border border-dashed border-border-subtle bg-surface-sunken p-3">
+                  <div className="font-mono text-[10px] leading-relaxed text-text-faint">
+                    JPG · PNG · WebP · GIF · BMP · TIFF · AVIF · HEIC
+                  </div>
+                  <Button
+                    className="mt-3 w-full"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => uploadInputRef.current?.click()}
+                  >
+                    <ImagePlus className="h-3.5 w-3.5" />
+                    Add to pool
+                  </Button>
+                </div>
+
+                {activeAssets.length === 0 ? (
+                  <div className="rounded-md bg-surface-sunken p-4 text-xs leading-relaxed text-text-faint">
+                    Upload images to begin. Assets are preserved as immutable
+                    originals.
+                  </div>
+                ) : (
+                  <div className="flex gap-2 overflow-x-auto overflow-y-hidden pb-1">
+                    {activeAssets.map((asset) => (
+                      <div
+                        key={asset.id}
+                        className="w-[140px] flex-shrink-0 rounded-md border border-border-subtle bg-surface-sunken p-2"
+                      >
+                        <SourceThumbnail
+                          previewPath={asset.previewPath}
+                          label={asset.name}
+                        />
+                        <div className="mt-2 flex items-start justify-between gap-2">
+                          <div className="min-w-0 flex-1">
+                            <div className="truncate text-xs font-medium text-text">
+                              {asset.name}
+                            </div>
+                            <div className="font-mono text-[10px] text-text-faint">
+                              {asset.width} × {asset.height}
+                            </div>
+                          </div>
+                          <div
+                            className="h-5 w-5 flex-shrink-0 rounded-full border border-border"
+                            style={{ background: asset.averageColor }}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </div>
 
           <Card className="min-h-[720px]">
@@ -561,30 +614,35 @@ function App() {
               </CardDescription>
             </CardHeader>
             <CardContent className="overflow-y-auto">
-              <Tabs defaultValue="layout">
-                <TabsList className="grid w-full grid-cols-3">
-                  <TabsTrigger value="layout">Layout</TabsTrigger>
-                  <TabsTrigger value="mapping">Mapping</TabsTrigger>
-                  <TabsTrigger value="effects">Effects</TabsTrigger>
-                </TabsList>
-                <TabsContent value="layout" className="space-y-2.5">
+              <div className="grid grid-cols-3 gap-4">
+                <div className="min-w-0 space-y-2.5">
+                  <div className="border-b border-border-subtle pb-2 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-text-muted">
+                    Layout
+                  </div>
                   <ControlBlock label="Family">
                     <Select
                       value={activeProject.layout.family}
                       onValueChange={(value) =>
                         patchProject((project) => ({
                           ...project,
-                          layout: { ...project.layout, family: value as LayoutFamily },
+                          layout: {
+                            ...project.layout,
+                            family: value as LayoutFamily,
+                          },
                         }))
                       }
                     >
-                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
                       <SelectContent>
-                        {["blocks", "grid", "strips", "radial"].map((option) => (
-                          <SelectItem key={option} value={option}>
-                            {option}
-                          </SelectItem>
-                        ))}
+                        {["blocks", "grid", "strips", "radial"].map(
+                          (option) => (
+                            <SelectItem key={option} value={option}>
+                              {option}
+                            </SelectItem>
+                          ),
+                        )}
                       </SelectContent>
                     </Select>
                   </ControlBlock>
@@ -601,13 +659,17 @@ function App() {
                         }))
                       }
                     >
-                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
                       <SelectContent>
-                        {["mixed", "rect", "triangle", "ring", "wedge"].map((option) => (
-                          <SelectItem key={option} value={option}>
-                            {option}
-                          </SelectItem>
-                        ))}
+                        {["mixed", "rect", "triangle", "ring", "wedge"].map(
+                          (option) => (
+                            <SelectItem key={option} value={option}>
+                              {option}
+                            </SelectItem>
+                          ),
+                        )}
                       </SelectContent>
                     </Select>
                   </ControlBlock>
@@ -634,7 +696,10 @@ function App() {
                     onChange={(value) =>
                       patchProject((project) => ({
                         ...project,
-                        layout: { ...project.layout, columns: Math.round(value) },
+                        layout: {
+                          ...project.layout,
+                          columns: Math.round(value),
+                        },
                       }))
                     }
                   />
@@ -674,18 +739,23 @@ function App() {
                           ...project,
                           layout: {
                             ...project.layout,
-                            symmetryMode: value as typeof project.layout.symmetryMode,
+                            symmetryMode:
+                              value as typeof project.layout.symmetryMode,
                           },
                         }))
                       }
                     >
-                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
                       <SelectContent>
-                        {["none", "mirror-x", "mirror-y", "quad", "radial"].map((option) => (
-                          <SelectItem key={option} value={option}>
-                            {option}
-                          </SelectItem>
-                        ))}
+                        {["none", "mirror-x", "mirror-y", "quad", "radial"].map(
+                          (option) => (
+                            <SelectItem key={option} value={option}>
+                              {option}
+                            </SelectItem>
+                          ),
+                        )}
                       </SelectContent>
                     </Select>
                   </ControlBlock>
@@ -699,7 +769,10 @@ function App() {
                     onChange={(value) =>
                       patchProject((project) => ({
                         ...project,
-                        layout: { ...project.layout, symmetryCopies: Math.round(value) },
+                        layout: {
+                          ...project.layout,
+                          symmetryCopies: Math.round(value),
+                        },
                       }))
                     }
                   />
@@ -727,13 +800,19 @@ function App() {
                     onChange={(value) =>
                       patchProject((project) => ({
                         ...project,
-                        canvas: { ...project.canvas, height: Math.round(value) },
+                        canvas: {
+                          ...project.canvas,
+                          height: Math.round(value),
+                        },
                       }))
                     }
                   />
-                </TabsContent>
+                </div>
 
-                <TabsContent value="mapping" className="space-y-2.5">
+                <div className="min-w-0 space-y-2.5">
+                  <div className="border-b border-border-subtle pb-2 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-text-muted">
+                    Mapping
+                  </div>
                   <ControlBlock label="Source Assignment">
                     <Select
                       value={activeProject.sourceMapping.strategy}
@@ -747,9 +826,18 @@ function App() {
                         }))
                       }
                     >
-                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
                       <SelectContent>
-                        {["random", "weighted", "sequential", "luminance", "palette", "symmetry"].map((option) => (
+                        {[
+                          "random",
+                          "weighted",
+                          "sequential",
+                          "luminance",
+                          "palette",
+                          "symmetry",
+                        ].map((option) => (
                           <SelectItem key={option} value={option}>
                             {option}
                           </SelectItem>
@@ -770,7 +858,9 @@ function App() {
                         }))
                       }
                     >
-                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="center">Centered</SelectItem>
                         <SelectItem value="distributed">Distributed</SelectItem>
@@ -786,7 +876,10 @@ function App() {
                     onChange={(value) =>
                       patchProject((project) => ({
                         ...project,
-                        sourceMapping: { ...project.sourceMapping, cropZoom: value },
+                        sourceMapping: {
+                          ...project.sourceMapping,
+                          cropZoom: value,
+                        },
                       }))
                     }
                   />
@@ -799,7 +892,10 @@ function App() {
                     onChange={(value) =>
                       patchProject((project) => ({
                         ...project,
-                        sourceMapping: { ...project.sourceMapping, sourceBias: value },
+                        sourceMapping: {
+                          ...project.sourceMapping,
+                          sourceBias: value,
+                        },
                       }))
                     }
                   />
@@ -821,7 +917,9 @@ function App() {
                   />
                   <ControlBlock label="Preserve Aspect">
                     <div className="flex items-center justify-between rounded-md bg-surface-muted px-3 py-2.5">
-                      <span className="text-xs text-text-muted">Center crop, no stretch</span>
+                      <span className="text-xs text-text-muted">
+                        Center crop, no stretch
+                      </span>
                       <Switch
                         checked={activeProject.sourceMapping.preserveAspect}
                         onCheckedChange={(checked) =>
@@ -849,7 +947,9 @@ function App() {
                         }))
                       }
                     >
-                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
                       <SelectContent>
                         {[
                           "source-over",
@@ -895,9 +995,12 @@ function App() {
                       }))
                     }
                   />
-                </TabsContent>
+                </div>
 
-                <TabsContent value="effects" className="space-y-2.5">
+                <div className="min-w-0 space-y-2.5">
+                  <div className="border-b border-border-subtle pb-2 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-text-muted">
+                    Effects
+                  </div>
                   <SliderField
                     label="Blur"
                     min={0}
@@ -998,7 +1101,9 @@ function App() {
                   />
                   <ControlBlock label="Mirror Overlay">
                     <div className="flex items-center justify-between rounded-md bg-surface-muted px-3 py-2.5">
-                      <span className="text-xs text-text-muted">Mirror passes on base</span>
+                      <span className="text-xs text-text-muted">
+                        Mirror passes on base
+                      </span>
                       <Switch
                         checked={activeProject.effects.mirror}
                         onCheckedChange={(checked) =>
@@ -1024,11 +1129,15 @@ function App() {
                         }))
                       }
                     >
-                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="image/png">PNG</SelectItem>
                         <SelectItem value="image/jpeg">JPEG</SelectItem>
-                        <SelectItem value="image/png-transparent">Transparent PNG</SelectItem>
+                        <SelectItem value="image/png-transparent">
+                          Transparent PNG
+                        </SelectItem>
                       </SelectContent>
                     </Select>
                   </ControlBlock>
@@ -1056,7 +1165,10 @@ function App() {
                     onChange={(value) =>
                       patchProject((project) => ({
                         ...project,
-                        export: { ...project.export, height: Math.round(value) },
+                        export: {
+                          ...project.export,
+                          height: Math.round(value),
+                        },
                       }))
                     }
                   />
@@ -1073,8 +1185,8 @@ function App() {
                       }))
                     }
                   />
-                </TabsContent>
-              </Tabs>
+                </div>
+              </div>
             </CardContent>
           </Card>
         </div>
@@ -1085,7 +1197,8 @@ function App() {
           <DialogHeader>
             <DialogTitle>Rename project</DialogTitle>
             <DialogDescription>
-              Update the project name used in the selector, preview header, and export filenames.
+              Update the project name used in the selector, preview header, and
+              export filenames.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2">
@@ -1103,10 +1216,16 @@ function App() {
             />
           </div>
           <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setRenameDialogOpen(false)}>
+            <Button
+              variant="outline"
+              onClick={() => setRenameDialogOpen(false)}
+            >
               Cancel
             </Button>
-            <Button onClick={() => void submitRename()} disabled={!renameValue.trim()}>
+            <Button
+              onClick={() => void submitRename()}
+              disabled={!renameValue.trim()}
+            >
               Save name
             </Button>
           </div>
@@ -1118,7 +1237,8 @@ function App() {
           <DialogHeader>
             <DialogTitle>Save project as</DialogTitle>
             <DialogDescription>
-              Create a new project from the current draft with copied source assets.
+              Create a new project from the current draft with copied source
+              assets.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-2">
@@ -1136,10 +1256,16 @@ function App() {
             />
           </div>
           <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setDuplicateDialogOpen(false)}>
+            <Button
+              variant="outline"
+              onClick={() => setDuplicateDialogOpen(false)}
+            >
               Cancel
             </Button>
-            <Button onClick={() => void submitDuplicate()} disabled={!duplicateValue.trim()}>
+            <Button
+              onClick={() => void submitDuplicate()}
+              disabled={!duplicateValue.trim()}
+            >
               Create copy
             </Button>
           </div>
@@ -1170,7 +1296,8 @@ function App() {
           <DialogHeader>
             <DialogTitle>Manage projects</DialogTitle>
             <DialogDescription>
-              Browse active projects, restore trashed work, and permanently remove discarded projects.
+              Browse active projects, restore trashed work, and permanently
+              remove discarded projects.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
@@ -1264,7 +1391,10 @@ function App() {
             </DialogDescription>
           </DialogHeader>
           <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setPurgeDialogProjectId(null)}>
+            <Button
+              variant="outline"
+              onClick={() => setPurgeDialogProjectId(null)}
+            >
               Cancel
             </Button>
             <Button
@@ -1298,7 +1428,9 @@ function App() {
             </DialogDescription>
           </DialogHeader>
           <div className="rounded-md bg-surface-sunken p-3 text-xs text-text-muted">
-            Replace will overwrite the existing local project with the bundle contents. Import as copy will preserve the existing project and create a new project with remapped IDs.
+            Replace will overwrite the existing local project with the bundle
+            contents. Import as copy will preserve the existing project and
+            create a new project with remapped IDs.
           </div>
           <div className="flex justify-end gap-2">
             <Button
@@ -1310,10 +1442,16 @@ function App() {
             >
               Cancel
             </Button>
-            <Button variant="outline" onClick={() => void resolveImportConflict("copy")}>
+            <Button
+              variant="outline"
+              onClick={() => void resolveImportConflict("copy")}
+            >
               Import as copy
             </Button>
-            <Button variant="secondary" onClick={() => void resolveImportConflict("replace")}>
+            <Button
+              variant="secondary"
+              onClick={() => void resolveImportConflict("replace")}
+            >
               Replace existing
             </Button>
           </div>

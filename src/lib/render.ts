@@ -58,6 +58,49 @@ function drawShapePath(
   context.roundRect(x, y, width, height, Math.max(8, Math.min(width, height) * 0.08));
 }
 
+function getSourceRect(slice: RenderSlice, asset: SourceAsset, project: ProjectDocument) {
+  if (slice.sourceCrop) {
+    return {
+      sourceX: slice.sourceCrop.x * asset.width,
+      sourceY: slice.sourceCrop.y * asset.height,
+      sourceWidth: slice.sourceCrop.width * asset.width,
+      sourceHeight: slice.sourceCrop.height * asset.height,
+    };
+  }
+
+  const zoom = project.sourceMapping.cropZoom;
+  const assetRatio = asset.width / asset.height;
+  const rectRatio = slice.rect.width / slice.rect.height;
+  let sourceWidth = asset.width;
+  let sourceHeight = asset.height;
+  let sourceX = 0;
+  let sourceY = 0;
+
+  if (project.sourceMapping.preserveAspect) {
+    if (assetRatio > rectRatio) {
+      sourceHeight = asset.height;
+      sourceWidth = sourceHeight * rectRatio;
+      sourceX = (asset.width - sourceWidth) / 2;
+    } else {
+      sourceWidth = asset.width;
+      sourceHeight = sourceWidth / rectRatio;
+      sourceY = (asset.height - sourceHeight) / 2;
+    }
+  }
+
+  sourceWidth /= zoom;
+  sourceHeight /= zoom;
+  sourceX = clamp(sourceX + (asset.width - sourceWidth) / 2, 0, asset.width - sourceWidth);
+  sourceY = clamp(sourceY + (asset.height - sourceHeight) / 2, 0, asset.height - sourceHeight);
+
+  return {
+    sourceX,
+    sourceY,
+    sourceWidth,
+    sourceHeight,
+  };
+}
+
 function applySharpen(
   context: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
   canvas: HTMLCanvasElement | OffscreenCanvas,
@@ -98,30 +141,7 @@ async function drawSlice(
   project: ProjectDocument,
 ) {
   const { x, y, width, height } = slice.rect;
-  const zoom = project.sourceMapping.cropZoom;
-  const assetRatio = asset.width / asset.height;
-  const rectRatio = width / height;
-  let sourceWidth = asset.width;
-  let sourceHeight = asset.height;
-  let sourceX = 0;
-  let sourceY = 0;
-
-  if (project.sourceMapping.preserveAspect) {
-    if (assetRatio > rectRatio) {
-      sourceHeight = asset.height;
-      sourceWidth = sourceHeight * rectRatio;
-      sourceX = (asset.width - sourceWidth) / 2;
-    } else {
-      sourceWidth = asset.width;
-      sourceHeight = sourceWidth / rectRatio;
-      sourceY = (asset.height - sourceHeight) / 2;
-    }
-  }
-
-  sourceWidth /= zoom;
-  sourceHeight /= zoom;
-  sourceX = clamp(sourceX + (asset.width - sourceWidth) / 2, 0, asset.width - sourceWidth);
-  sourceY = clamp(sourceY + (asset.height - sourceHeight) / 2, 0, asset.height - sourceHeight);
+  const { sourceX, sourceY, sourceWidth, sourceHeight } = getSourceRect(slice, asset, project);
 
   context.save();
   context.globalAlpha = slice.opacity;

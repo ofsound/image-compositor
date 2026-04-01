@@ -6,7 +6,11 @@ import { downloadBlob } from "@/lib/download";
 import { processImageFile } from "@/lib/image-worker-client";
 import { makeId } from "@/lib/id";
 import { deleteBlob } from "@/lib/opfs";
-import { createProjectDocument } from "@/lib/project-defaults";
+import {
+  createProjectDocument,
+  normalizeProjectDocument,
+  normalizeProjectVersion,
+} from "@/lib/project-defaults";
 import { exportProjectImage } from "@/lib/render";
 import {
   createImportCopy,
@@ -70,13 +74,6 @@ function sortVersionsByCreated(versions: ProjectVersion[]) {
   return [...versions].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
-function normalizeProject(project: ProjectDocument) {
-  return {
-    ...project,
-    deletedAt: project.deletedAt ?? null,
-  };
-}
-
 function getLiveProjects(projects: ProjectDocument[]) {
   return projects.filter((project) => project.deletedAt === null);
 }
@@ -106,9 +103,11 @@ async function loadWorkspaceSnapshot(preferredActiveProjectId?: string | null) {
     db.kv.get("activeProjectId"),
   ]);
 
-  let projects = sortByUpdated(storedProjects.map(normalizeProject));
+  let projects = sortByUpdated(storedProjects.map((project) => normalizeProjectDocument(project)));
   const assets = sortAssetsByCreated(storedAssets);
-  const versions = sortVersionsByCreated(storedVersions);
+  const versions = sortVersionsByCreated(
+    storedVersions.map((version) => normalizeProjectVersion(version)),
+  );
   let activeProjectId = preferredActiveProjectId ?? activeRecord?.value ?? null;
   const liveProjects = getLiveProjects(projects);
 
@@ -327,7 +326,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     set((state) => ({
       projects: sortByUpdated(
         state.projects.map((entry) =>
-          entry.id === updatedProject.id ? normalizeProject(updatedProject) : entry,
+          entry.id === updatedProject.id ? normalizeProjectDocument(updatedProject) : entry,
         ),
       ),
       status: "Draft saved locally.",
@@ -440,11 +439,12 @@ export const useAppStore = create<AppState>((set, get) => ({
     const version = get().versions.find((entry) => entry.id === versionId);
     const project = getActiveProject(get());
     if (!version || !project) return;
+    const normalizedVersion = normalizeProjectVersion(version);
 
     const updatedProject: ProjectDocument = {
       ...project,
-      ...structuredClone(version.snapshot),
-      currentVersionId: version.id,
+      ...structuredClone(normalizedVersion.snapshot),
+      currentVersionId: normalizedVersion.id,
       updatedAt: new Date().toISOString(),
     };
 
@@ -453,7 +453,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       projects: sortByUpdated(
         state.projects.map((entry) => (entry.id === updatedProject.id ? updatedProject : entry)),
       ),
-      status: `Restored "${version.label}".`,
+      status: `Restored "${normalizedVersion.label}".`,
     }));
   },
 
@@ -484,7 +484,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   async inspectBundleImport(file) {
     set({ busy: true, status: "Inspecting project bundle…" });
     const bundle = await loadProjectBundle(file);
-    const conflictProject = normalizeProject(
+    const conflictProject = normalizeProjectDocument(
       (await db.projects.get(bundle.projectDoc.id)) ?? bundle.projectDoc,
     );
 

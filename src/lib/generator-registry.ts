@@ -1,6 +1,7 @@
 import type {
   GeometryShape,
   LayoutFamily,
+  NormalizedRect,
   ProjectDocument,
   RenderRect,
   RenderSlice,
@@ -301,6 +302,115 @@ function reflectSlices(slices: RenderSlice[], project: ProjectDocument) {
   return clones;
 }
 
+function fitCropToAspect(cell: NormalizedRect, aspectRatio: number) {
+  if (!Number.isFinite(aspectRatio) || aspectRatio <= 0) {
+    return cell;
+  }
+
+  const cellAspectRatio = cell.width / cell.height;
+  if (cellAspectRatio > aspectRatio) {
+    const width = cell.height * aspectRatio;
+    return {
+      x: cell.x + (cell.width - width) / 2,
+      y: cell.y,
+      width,
+      height: cell.height,
+    };
+  }
+
+  const height = cell.width / aspectRatio;
+  return {
+    x: cell.x,
+    y: cell.y + (cell.height - height) / 2,
+    width: cell.width,
+    height,
+  };
+}
+
+function applyCropZoom(crop: NormalizedRect, bounds: NormalizedRect, zoom: number) {
+  const safeZoom = Math.max(1, zoom);
+  const width = crop.width / safeZoom;
+  const height = crop.height / safeZoom;
+
+  return {
+    x: clamp(crop.x + (crop.width - width) / 2, bounds.x, bounds.x + bounds.width - width),
+    y: clamp(crop.y + (crop.height - height) / 2, bounds.y, bounds.y + bounds.height - height),
+    width,
+    height,
+  };
+}
+
+function getAtlasDimensions(
+  project: ProjectDocument,
+  asset: SourceAsset,
+  sliceCount: number,
+) {
+  const totalGridCells = project.layout.columns * project.layout.rows;
+  if (project.layout.family === "grid" && sliceCount === totalGridCells) {
+    return {
+      columns: project.layout.columns,
+      rows: project.layout.rows,
+    };
+  }
+
+  const columns = Math.max(1, Math.ceil(Math.sqrt(sliceCount * (asset.width / asset.height))));
+  return {
+    columns,
+    rows: Math.max(1, Math.ceil(sliceCount / columns)),
+  };
+}
+
+function assignDistributedCrops(
+  slices: RenderSlice[],
+  project: ProjectDocument,
+  assets: SourceAsset[],
+) {
+  if (project.sourceMapping.cropDistribution !== "distributed") {
+    return slices.map((slice) => ({ ...slice, sourceCrop: null }));
+  }
+
+  const slicesByAsset = new Map<string, RenderSlice[]>();
+  for (const slice of slices) {
+    const assetSlices = slicesByAsset.get(slice.assetId);
+    if (assetSlices) {
+      assetSlices.push(slice);
+    } else {
+      slicesByAsset.set(slice.assetId, [slice]);
+    }
+  }
+
+  const cropBySliceId = new Map<string, NormalizedRect>();
+  for (const asset of assets) {
+    const assetSlices = slicesByAsset.get(asset.id);
+    if (!assetSlices || assetSlices.length === 0) continue;
+
+    const atlas = getAtlasDimensions(project, asset, assetSlices.length);
+    for (let index = 0; index < assetSlices.length; index += 1) {
+      const slice = assetSlices[index]!;
+      const column = index % atlas.columns;
+      const row = Math.floor(index / atlas.columns);
+      const atlasCell: NormalizedRect = {
+        x: column / atlas.columns,
+        y: row / atlas.rows,
+        width: 1 / atlas.columns,
+        height: 1 / atlas.rows,
+      };
+      const baseCrop = project.sourceMapping.preserveAspect
+        ? fitCropToAspect(atlasCell, slice.rect.width / slice.rect.height)
+        : atlasCell;
+      cropBySliceId.set(
+        slice.id,
+        applyCropZoom(baseCrop, atlasCell, project.sourceMapping.cropZoom),
+      );
+    }
+  }
+
+  return slices.map((slice) => ({
+    ...slice,
+    sourceCrop: cropBySliceId.get(slice.id) ?? null,
+  }));
+}
+
 export function buildRenderSlices(project: ProjectDocument, assets: SourceAsset[]) {
   if (assets.length === 0) {
     return [];
@@ -339,10 +449,13 @@ export function buildRenderSlices(project: ProjectDocument, assets: SourceAsset[
       clipInset: project.compositing.feather,
       displacementOffset: { x: displacement, y: displacement * (rng.next() - 0.5) },
       distortion: project.effects.distortion * rng.next(),
+      sourceCrop: null,
       mirrorAxis: "none",
       depth: rng.next(),
     };
   });
 
-  return reflectSlices(slices, project).sort((a, b) => a.depth - b.depth);
+  return assignDistributedCrops(reflectSlices(slices, project), project, assets).sort(
+    (a, b) => a.depth - b.depth,
+  );
 }

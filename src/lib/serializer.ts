@@ -4,6 +4,10 @@ import { getAssetStoragePaths } from "@/lib/assets";
 import { db } from "@/lib/db";
 import { readBlob, writeBlob } from "@/lib/opfs";
 import { makeId } from "@/lib/id";
+import {
+  normalizeProjectDocument,
+  normalizeProjectVersion,
+} from "@/lib/project-defaults";
 import type {
   ImportedProjectBundle,
   ProjectBundleManifest,
@@ -65,8 +69,10 @@ export async function loadProjectBundle(bundle: Blob) {
   }
 
   const parsedManifest = JSON.parse(manifest) as ProjectBundleManifest;
-  const projectDoc = JSON.parse(project) as ProjectDocument;
-  const versionDocs = JSON.parse(versions) as ProjectVersion[];
+  const projectDoc = normalizeProjectDocument(JSON.parse(project) as ProjectDocument);
+  const versionDocs = (JSON.parse(versions) as ProjectVersion[]).map((version) =>
+    normalizeProjectVersion(version),
+  );
   const assetDocs = JSON.parse(assets) as SourceAsset[];
   const assetBlobs: Record<string, Blob> = {};
   const versionBlobs: Record<string, Blob> = {};

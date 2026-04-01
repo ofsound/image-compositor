@@ -1,6 +1,7 @@
+import JSZip from "jszip";
 import { describe, expect, it } from "vitest";
 
-import { createImportCopy } from "@/lib/serializer";
+import { createImportCopy, loadProjectBundle } from "@/lib/serializer";
 import type { ImportedProjectBundle } from "@/types/project";
 
 const bundle: ImportedProjectBundle = {
@@ -39,6 +40,7 @@ const bundle: ImportedProjectBundle = {
       strategy: "random",
       sourceBias: 0.5,
       preserveAspect: true,
+      cropDistribution: "distributed",
       cropZoom: 1,
       luminanceSort: "ascending",
       paletteEmphasis: 0.5,
@@ -100,6 +102,7 @@ const bundle: ImportedProjectBundle = {
           strategy: "random",
           sourceBias: 0.5,
           preserveAspect: true,
+          cropDistribution: "distributed",
           cropZoom: 1,
           luminanceSort: "ascending",
           paletteEmphasis: 0.5,
@@ -183,5 +186,57 @@ describe("createImportCopy", () => {
       copy.assetDocs[0]?.previewPath,
     ]);
     expect(Object.keys(copy.versionBlobs)).toEqual([copy.versionDocs[0]?.thumbnailPath]);
+  });
+});
+
+describe("loadProjectBundle", () => {
+  it("normalizes legacy bundles without crop distribution to centered mode", async () => {
+    const zip = new JSZip();
+    zip.file("manifest.json", JSON.stringify(bundle.manifest));
+    zip.file(
+      "project.json",
+      JSON.stringify({
+        ...bundle.projectDoc,
+        sourceMapping: {
+          strategy: "random",
+          sourceBias: 0.5,
+          preserveAspect: true,
+          cropZoom: 1,
+          luminanceSort: "ascending",
+          paletteEmphasis: 0.5,
+        },
+      }),
+    );
+    zip.file(
+      "versions.json",
+      JSON.stringify([
+        {
+          ...bundle.versionDocs[0],
+          snapshot: {
+            ...bundle.versionDocs[0]?.snapshot,
+            sourceMapping: {
+              strategy: "random",
+              sourceBias: 0.5,
+              preserveAspect: true,
+              cropZoom: 1,
+              luminanceSort: "ascending",
+              paletteEmphasis: 0.5,
+            },
+          },
+        },
+      ]),
+    );
+    zip.file("assets.json", JSON.stringify(bundle.assetDocs));
+    for (const [path, blob] of Object.entries(bundle.assetBlobs)) {
+      zip.file(path, blob);
+    }
+    for (const [path, blob] of Object.entries(bundle.versionBlobs)) {
+      zip.file(path, blob);
+    }
+
+    const loaded = await loadProjectBundle(await zip.generateAsync({ type: "blob" }));
+
+    expect(loaded.projectDoc.sourceMapping.cropDistribution).toBe("center");
+    expect(loaded.versionDocs[0]?.snapshot.sourceMapping.cropDistribution).toBe("center");
   });
 });

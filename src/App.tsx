@@ -45,6 +45,7 @@ import { useAppStore } from "@/state/use-app-store";
 import type {
   BlendMode,
   BundleImportInspection,
+  CropDistribution,
   GeometryShape,
   LayoutFamily,
   ProjectDocument,
@@ -753,6 +754,26 @@ function App() {
                             {option}
                           </SelectItem>
                         ))}
+                      </SelectContent>
+                    </Select>
+                  </ControlBlock>
+                  <ControlBlock label="Crop Distribution">
+                    <Select
+                      value={activeProject.sourceMapping.cropDistribution}
+                      onValueChange={(value) =>
+                        patchProject((project) => ({
+                          ...project,
+                          sourceMapping: {
+                            ...project.sourceMapping,
+                            cropDistribution: value as CropDistribution,
+                          },
+                        }))
+                      }
+                    >
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="center">Centered</SelectItem>
+                        <SelectItem value="distributed">Distributed</SelectItem>
                       </SelectContent>
                     </Select>
                   </ControlBlock>

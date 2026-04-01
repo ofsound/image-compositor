@@ -1,5 +1,6 @@
 export type GeometryShape = "rect" | "triangle" | "ring" | "wedge" | "mixed";
 export type LayoutFamily = "grid" | "strips" | "blocks" | "radial";
+export type CropDistribution = "center" | "distributed";
 export type SourceAssignmentStrategy =
   | "random"
   | "weighted"
@@ -64,6 +65,7 @@ export interface SourceMappingSettings {
   strategy: SourceAssignmentStrategy;
   sourceBias: number;
   preserveAspect: boolean;
+  cropDistribution: CropDistribution;
   cropZoom: number;
   luminanceSort: "ascending" | "descending";
   paletteEmphasis: number;
@@ -179,6 +181,13 @@ export interface RenderRect {
   height: number;
 }
 
+export interface NormalizedRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 export interface RenderSlice {
   id: string;
   shape: Exclude<GeometryShape, "mixed">;
@@ -191,6 +200,7 @@ export interface RenderSlice {
   clipInset: number;
   displacementOffset: { x: number; y: number };
   distortion: number;
+  sourceCrop: NormalizedRect | null;
   mirrorAxis: "none" | "x" | "y";
   depth: number;
 }

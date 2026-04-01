@@ -1,5 +1,6 @@
 import type {
   CanvasSettings,
+  CropDistribution,
   CompositingSettings,
   EffectSettings,
   ExportSettings,
@@ -7,6 +8,7 @@ import type {
   LayoutSettings,
   ProjectDocument,
   ProjectSnapshot,
+  ProjectVersion,
   RenderPass,
   SourceMappingSettings,
 } from "@/types/project";
@@ -39,6 +41,7 @@ export const DEFAULT_SOURCE_MAPPING: SourceMappingSettings = {
   strategy: "palette",
   sourceBias: 0.62,
   preserveAspect: true,
+  cropDistribution: "distributed",
   cropZoom: 1,
   luminanceSort: "descending",
   paletteEmphasis: 0.72,
@@ -95,6 +98,52 @@ export const DEFAULT_PRESETS: GeneratorPreset[] = [
     params: { density: 0.5, symmetry: "radial" },
   },
 ];
+
+export function normalizeSourceMapping(
+  sourceMapping: Partial<SourceMappingSettings> | undefined,
+  fallbackCropDistribution: CropDistribution = "center",
+): SourceMappingSettings {
+  return {
+    strategy: sourceMapping?.strategy ?? DEFAULT_SOURCE_MAPPING.strategy,
+    sourceBias: sourceMapping?.sourceBias ?? DEFAULT_SOURCE_MAPPING.sourceBias,
+    preserveAspect: sourceMapping?.preserveAspect ?? DEFAULT_SOURCE_MAPPING.preserveAspect,
+    cropDistribution: sourceMapping?.cropDistribution ?? fallbackCropDistribution,
+    cropZoom: sourceMapping?.cropZoom ?? DEFAULT_SOURCE_MAPPING.cropZoom,
+    luminanceSort: sourceMapping?.luminanceSort ?? DEFAULT_SOURCE_MAPPING.luminanceSort,
+    paletteEmphasis: sourceMapping?.paletteEmphasis ?? DEFAULT_SOURCE_MAPPING.paletteEmphasis,
+  };
+}
+
+export function normalizeProjectSnapshot(
+  snapshot: ProjectSnapshot,
+  fallbackCropDistribution: CropDistribution = "center",
+): ProjectSnapshot {
+  return {
+    ...snapshot,
+    sourceMapping: normalizeSourceMapping(snapshot.sourceMapping, fallbackCropDistribution),
+  };
+}
+
+export function normalizeProjectDocument(
+  project: ProjectDocument,
+  fallbackCropDistribution: CropDistribution = "center",
+): ProjectDocument {
+  return {
+    ...project,
+    deletedAt: project.deletedAt ?? null,
+    sourceMapping: normalizeSourceMapping(project.sourceMapping, fallbackCropDistribution),
+  };
+}
+
+export function normalizeProjectVersion(
+  version: ProjectVersion,
+  fallbackCropDistribution: CropDistribution = "center",
+): ProjectVersion {
+  return {
+    ...version,
+    snapshot: normalizeProjectSnapshot(version.snapshot, fallbackCropDistribution),
+  };
+}
 
 export function createSnapshot(): ProjectSnapshot {
   return {

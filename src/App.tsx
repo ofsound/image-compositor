@@ -21,6 +21,7 @@ import {
 import { Toaster } from "sonner";
 
 import { PreviewStage } from "@/components/app/preview-stage";
+import { SourceAssetCard } from "@/components/app/source-asset-card";
 import { ThemeToggle } from "@/components/app/theme-toggle";
 import { Button } from "@/components/ui/button";
 import {
@@ -52,6 +53,7 @@ import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { ACCEPTED_IMAGE_TYPES } from "@/lib/assets";
 import { readBlob } from "@/lib/opfs";
+import { toggleSourceId } from "@/lib/source-selection";
 import { useAppStore } from "@/state/use-app-store";
 import type {
   BlendMode,
@@ -266,13 +268,13 @@ function App() {
     setDuplicateValue(`${activeProject.title} Copy`);
   }, [activeProject]);
 
+  const projectAssets = activeProject
+    ? assets.filter((asset) => asset.projectId === activeProject.id)
+    : [];
   const activeAssets = activeProject
     ? activeProject.sourceIds
         .map((sourceId) =>
-          assets.find(
-            (asset) =>
-              asset.id === sourceId && asset.projectId === activeProject.id,
-          ),
+          projectAssets.find((asset) => asset.id === sourceId),
         )
         .filter((asset): asset is SourceAsset => Boolean(asset))
     : [];
@@ -317,6 +319,12 @@ function App() {
   };
 
   const bitmapLookup = (asset: SourceAsset) => readBlob(asset.normalizedPath);
+  const toggleAssetEnabled = (assetId: string) => {
+    patchProject((project) => ({
+      ...project,
+      sourceIds: toggleSourceId(project.sourceIds, assetId),
+    }));
+  };
 
   const submitRename = async () => {
     await renameProject(activeProject.id, renameValue);
@@ -548,37 +556,26 @@ function App() {
                   </Button>
                 </CardHeader>
                 <CardContent className="flex flex-col gap-3">
-                  {activeAssets.length === 0 ? (
+                  {projectAssets.length === 0 ? (
                     <div className="rounded-md bg-surface-sunken p-4 text-xs leading-relaxed text-text-faint">
                       Upload images to begin. Assets are preserved as immutable
                       originals.
                     </div>
                   ) : (
                     <div className="flex gap-2 overflow-x-auto overflow-y-hidden pb-1">
-                      {activeAssets.map((asset) => (
-                        <div
+                      {projectAssets.map((asset) => (
+                        <SourceAssetCard
                           key={asset.id}
-                          className="w-[140px] flex-shrink-0 rounded-md border border-border-subtle bg-surface-sunken p-2"
-                        >
-                          <SourceThumbnail
-                            previewPath={asset.previewPath}
-                            label={asset.name}
-                          />
-                          <div className="mt-2 flex items-start justify-between gap-2">
-                            <div className="min-w-0 flex-1">
-                              <div className="truncate text-xs font-medium text-text">
-                                {asset.name}
-                              </div>
-                              <div className="font-mono text-[10px] text-text-faint">
-                                {asset.width} × {asset.height}
-                              </div>
-                            </div>
-                            <div
-                              className="h-5 w-5 flex-shrink-0 rounded-full border border-border"
-                              style={{ background: asset.averageColor }}
+                          asset={asset}
+                          enabled={activeProject.sourceIds.includes(asset.id)}
+                          onToggle={toggleAssetEnabled}
+                          thumbnail={
+                            <SourceThumbnail
+                              previewPath={asset.previewPath}
+                              label={asset.name}
                             />
-                          </div>
-                        </div>
+                          }
+                        />
                       ))}
                     </div>
                   )}

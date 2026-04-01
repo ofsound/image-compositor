@@ -174,6 +174,11 @@ export interface RenderAsset {
   bitmap: CanvasImageSource;
 }
 
+export interface RenderedPreviewSnapshot {
+  project: ProjectDocument;
+  assetIds: string[];
+}
+
 export interface RenderRect {
   x: number;
   y: number;

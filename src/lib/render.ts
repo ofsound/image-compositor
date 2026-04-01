@@ -1,5 +1,6 @@
 import type { ProjectDocument, RenderSlice, SourceAsset } from "@/types/project";
 import { buildRenderSlices } from "@/lib/generator-registry";
+import { lockExportDimensionsToCanvas } from "@/lib/export-sizing";
 import { clamp } from "@/lib/utils";
 
 interface AssetBitmapEntry {
@@ -11,7 +12,14 @@ interface RenderOptions {
   includeBackground?: boolean;
 }
 
+type RenderCanvas = HTMLCanvasElement;
+type RenderContext = CanvasRenderingContext2D;
+
 const bitmapCache = new Map<string, Promise<ImageBitmap>>();
+const RENDER_CONTEXT_OPTIONS = {
+  alpha: true,
+  colorSpace: "srgb",
+} as CanvasRenderingContext2DSettings & { colorSpace?: "srgb" };
 
 async function loadBitmap(asset: SourceAsset, blob: Blob) {
   const cacheKey = `${asset.id}:${blob.size}:${blob.type}`;
@@ -22,7 +30,7 @@ async function loadBitmap(asset: SourceAsset, blob: Blob) {
 }
 
 function drawShapePath(
-  context: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
+  context: RenderContext,
   slice: RenderSlice,
 ) {
   const { x, y, width, height } = slice.rect;
@@ -102,8 +110,8 @@ function getSourceRect(slice: RenderSlice, asset: SourceAsset, project: ProjectD
 }
 
 function applySharpen(
-  context: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
-  canvas: HTMLCanvasElement | OffscreenCanvas,
+  context: RenderContext,
+  canvas: RenderCanvas,
   amount: number,
 ) {
   if (amount <= 0) return;
@@ -134,7 +142,7 @@ function applySharpen(
 }
 
 async function drawSlice(
-  context: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
+  context: RenderContext,
   slice: RenderSlice,
   bitmap: ImageBitmap,
   asset: SourceAsset,
@@ -180,7 +188,7 @@ async function drawSlice(
 }
 
 function drawBackground(
-  context: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D,
+  context: RenderContext,
   project: ProjectDocument,
 ) {
   const gradient = context.createLinearGradient(0, 0, project.canvas.width, project.canvas.height);
@@ -217,18 +225,47 @@ export async function buildBitmapMap(
   return new Map<string, AssetBitmapEntry>(entries.filter(Boolean) as [string, AssetBitmapEntry][]);
 }
 
+function createRenderCanvas(width: number, height: number) {
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  return canvas;
+}
+
+function getRenderContext(canvas: RenderCanvas) {
+  const context = canvas.getContext("2d", RENDER_CONTEXT_OPTIONS);
+  if (!context) throw new Error("Unable to acquire a canvas context.");
+  context.imageSmoothingEnabled = true;
+  context.imageSmoothingQuality = "high";
+  return context;
+}
+
+function toBlob(
+  canvas: RenderCanvas,
+  type: string,
+  quality?: number,
+) {
+  return new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (!blob) {
+        reject(new Error("Unable to create export blob."));
+        return;
+      }
+      resolve(blob);
+    }, type, quality);
+  });
+}
+
 export async function renderProjectToCanvas(
   project: ProjectDocument,
   assets: SourceAsset[],
   bitmaps: Map<string, AssetBitmapEntry>,
-  canvas: HTMLCanvasElement | OffscreenCanvas,
+  canvas: RenderCanvas,
   options: RenderOptions = {},
 ) {
-  const context = canvas.getContext("2d");
-  if (!context) throw new Error("Unable to acquire a canvas context.");
-
   canvas.width = project.canvas.width;
   canvas.height = project.canvas.height;
+  const context = getRenderContext(canvas);
 
   if (options.includeBackground ?? true) {
     drawBackground(context, project);
@@ -264,23 +301,26 @@ export async function exportProjectImage(
   assets: SourceAsset[],
   bitmaps: Map<string, AssetBitmapEntry>,
 ) {
-  const width = Math.min(7680, Math.round(project.export.width * project.export.scale));
-  const height = Math.min(7680, Math.round(project.export.height * project.export.scale));
-  const canvas = new OffscreenCanvas(width, height);
-  const exportProject: ProjectDocument = {
-    ...project,
-    canvas: {
-      ...project.canvas,
-      width,
-      height,
+  const sceneCanvas = createRenderCanvas(project.canvas.width, project.canvas.height);
+  const { width, height } = lockExportDimensionsToCanvas(
+    project.canvas,
+    {
+      width: Math.round(project.export.width * project.export.scale),
+      height: Math.round(project.export.height * project.export.scale),
     },
-  };
+    "width",
+  );
   const includeBackground = project.export.format !== "image/png-transparent";
-  await renderProjectToCanvas(exportProject, assets, bitmaps, canvas, {
+  await renderProjectToCanvas(project, assets, bitmaps, sceneCanvas, {
     includeBackground,
   });
-  return canvas.convertToBlob({
-    type: project.export.format === "image/jpeg" ? "image/jpeg" : "image/png",
-    quality: project.export.quality,
-  });
+  const exportCanvas = createRenderCanvas(width, height);
+  const exportContext = getRenderContext(exportCanvas);
+  exportContext.drawImage(sceneCanvas, 0, 0, width, height);
+
+  return toBlob(
+    exportCanvas,
+    project.export.format === "image/jpeg" ? "image/jpeg" : "image/png",
+    project.export.quality,
+  );
 }

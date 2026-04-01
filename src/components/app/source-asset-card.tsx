@@ -39,9 +39,9 @@ export function SourceAssetCard({
         <div className={cn(!enabled && "opacity-55")}>{thumbnail}</div>
         <Button
           type="button"
-          variant="secondary"
-          size="icon"
-          className="absolute right-1 top-1 h-7 w-7 rounded-full border border-border bg-surface-raised/90 p-0 text-text-muted shadow-sm backdrop-blur-sm hover:text-text"
+          variant="ghost"
+          size="sm"
+          className="absolute right-1 top-1 h-7 w-auto min-w-[1.75rem] rounded-md border-0 bg-surface-raised/35 px-1.5 py-0 text-text-muted shadow-none backdrop-blur-sm hover:bg-surface-raised/55 hover:text-text"
           aria-label={`${enabled ? "Disable" : "Enable"} ${asset.name}`}
           onClick={handleToggle}
         >

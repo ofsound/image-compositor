@@ -1,14 +1,23 @@
-import { useDeferredValue, useEffect } from "react";
+import { useEffect } from "react";
 
 import { buildBitmapMap, renderProjectToCanvas } from "@/lib/render";
 import { readBlob } from "@/lib/opfs";
-import type { ProjectDocument, SourceAsset } from "@/types/project";
+import type {
+  ProjectDocument,
+  RenderedPreviewSnapshot,
+  SourceAsset,
+} from "@/types/project";
+
+export interface PreviewRenderState {
+  ready: boolean;
+  lastRenderedPreview: RenderedPreviewSnapshot | null;
+}
 
 interface PreviewStageProps {
   canvasRef: React.RefObject<HTMLCanvasElement | null>;
   project: ProjectDocument;
   assets: SourceAsset[];
-  onRenderState?: (state: { ready: boolean; count: number }) => void;
+  onRenderState?: (state: PreviewRenderState) => void;
 }
 
 export function PreviewStage({
@@ -17,7 +26,6 @@ export function PreviewStage({
   assets,
   onRenderState,
 }: PreviewStageProps) {
-  const deferredProject = useDeferredValue(project);
   const assetSignature = assets.map((asset) => asset.id).join("|");
 
   useEffect(() => {
@@ -26,7 +34,7 @@ export function PreviewStage({
     async function render() {
       if (!canvasRef.current) return;
 
-      onRenderState?.({ ready: false, count: assets.length });
+      onRenderState?.({ ready: false, lastRenderedPreview: null });
 
       const bitmapMap = await buildBitmapMap(assets, (asset) =>
         readBlob(asset.normalizedPath),
@@ -34,15 +42,16 @@ export function PreviewStage({
 
       if (cancelled || !canvasRef.current) return;
 
-      await renderProjectToCanvas(
-        deferredProject,
-        assets,
-        bitmapMap,
-        canvasRef.current,
-      );
+      await renderProjectToCanvas(project, assets, bitmapMap, canvasRef.current);
 
       if (cancelled) return;
-      onRenderState?.({ ready: true, count: assets.length });
+      onRenderState?.({
+        ready: true,
+        lastRenderedPreview: {
+          project: structuredClone(project),
+          assetIds: assets.map((asset) => asset.id),
+        },
+      });
     }
 
     void render();
@@ -50,7 +59,7 @@ export function PreviewStage({
     return () => {
       cancelled = true;
     };
-  }, [assetSignature, canvasRef, deferredProject, onRenderState]);
+  }, [assetSignature, canvasRef, onRenderState, project]);
 
   return (
     <div className="relative overflow-hidden rounded-lg bg-preview-bg">

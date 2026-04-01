@@ -21,6 +21,7 @@ import {
 import { Toaster } from "sonner";
 
 import { PreviewStage } from "@/components/app/preview-stage";
+import type { PreviewRenderState } from "@/components/app/preview-stage";
 import { SourceAssetCard } from "@/components/app/source-asset-card";
 import { ThemeToggle } from "@/components/app/theme-toggle";
 import { Button } from "@/components/ui/button";
@@ -52,6 +53,7 @@ import { Separator } from "@/components/ui/separator";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { ACCEPTED_IMAGE_TYPES } from "@/lib/assets";
+import { lockExportDimensionsToCanvas } from "@/lib/export-sizing";
 import { readBlob } from "@/lib/opfs";
 import { toggleSourceId } from "@/lib/source-selection";
 import { useAppStore } from "@/state/use-app-store";
@@ -207,7 +209,10 @@ function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const uploadInputRef = useRef<HTMLInputElement>(null);
   const bundleInputRef = useRef<HTMLInputElement>(null);
-  const [renderState, setRenderState] = useState({ ready: false, count: 0 });
+  const [renderState, setRenderState] = useState<PreviewRenderState>({
+    ready: false,
+    lastRenderedPreview: null,
+  });
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
   const [duplicateDialogOpen, setDuplicateDialogOpen] = useState(false);
   const [manageProjectsOpen, setManageProjectsOpen] = useState(false);
@@ -261,6 +266,16 @@ function App() {
   const activeProject =
     activeProjects.find((project) => project.id === activeProjectId) ?? null;
   const deferredProject = useDeferredValue(activeProject);
+  const deferredProjectAssets = deferredProject
+    ? assets.filter((asset) => asset.projectId === deferredProject.id)
+    : [];
+  const previewAssets = deferredProject
+    ? deferredProject.sourceIds
+        .map((sourceId) =>
+          deferredProjectAssets.find((asset) => asset.id === sourceId),
+        )
+        .filter((asset): asset is SourceAsset => Boolean(asset))
+    : [];
 
   useEffect(() => {
     if (!activeProject) return;
@@ -273,16 +288,22 @@ function App() {
     : [];
   const activeAssets = activeProject
     ? activeProject.sourceIds
-        .map((sourceId) =>
-          projectAssets.find((asset) => asset.id === sourceId),
-        )
+        .map((sourceId) => projectAssets.find((asset) => asset.id === sourceId))
         .filter((asset): asset is SourceAsset => Boolean(asset))
     : [];
   const activeVersions = activeProject
     ? versions.filter((version) => version.projectId === activeProject.id)
     : [];
+  const activeAssetSignature = activeAssets.map((asset) => asset.id).join("|");
   const purgeDialogProject =
     projects.find((project) => project.id === purgeDialogProjectId) ?? null;
+
+  useEffect(() => {
+    setRenderState({
+      ready: false,
+      lastRenderedPreview: null,
+    });
+  }, [activeAssetSignature, activeProject?.id, activeProject?.updatedAt]);
 
   if (!ready || !activeProject || !deferredProject) {
     return (
@@ -324,6 +345,15 @@ function App() {
       ...project,
       sourceIds: toggleSourceId(project.sourceIds, assetId),
     }));
+  };
+  const handleExport = async () => {
+    const renderedPreview = renderState.lastRenderedPreview;
+    if (!renderedPreview) return;
+    const renderedAssets = renderedPreview.assetIds
+      .map((assetId) => projectAssets.find((asset) => asset.id === assetId))
+      .filter((asset): asset is SourceAsset => Boolean(asset));
+    if (renderedAssets.length === 0) return;
+    await exportCurrentImage(renderedPreview.project, renderedAssets, bitmapLookup);
   };
 
   const submitRename = async () => {
@@ -368,22 +398,33 @@ function App() {
 
             <div className="h-6 w-px bg-border" />
 
-            <div className="min-w-[220px]">
-              <Select
-                value={activeProject.id}
-                onValueChange={(value) => void setActiveProject(value)}
-              >
-                <SelectTrigger className="h-8 text-xs">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {activeProjects.map((project) => (
-                    <SelectItem key={project.id} value={project.id}>
-                      {project.title}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="min-w-[220px] shrink-0">
+                <Select
+                  value={activeProject.id}
+                  onValueChange={(value) => void setActiveProject(value)}
+                >
+                  <SelectTrigger className="h-8 text-xs">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {activeProjects.map((project) => (
+                      <SelectItem key={project.id} value={project.id}>
+                        {project.title}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              {!renderState.ready ? (
+                <div
+                  className="shrink-0 rounded-md bg-red-600 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.08em] text-white"
+                  role="status"
+                  aria-live="polite"
+                >
+                  Rendering
+                </div>
+              ) : null}
             </div>
           </div>
 
@@ -512,8 +553,13 @@ function App() {
             </Button>
             <Button
               size="sm"
-              onClick={() => void exportCurrentImage(bitmapLookup)}
-              disabled={busy || activeAssets.length === 0}
+              onClick={() => void handleExport()}
+              disabled={
+                busy ||
+                activeAssets.length === 0 ||
+                !renderState.ready ||
+                !renderState.lastRenderedPreview
+              }
             >
               <Download className="h-3.5 w-3.5" />
               Export
@@ -527,16 +573,11 @@ function App() {
           <div className="grid flex-1 grid-cols-[minmax(0,1fr)_minmax(0,640px)] gap-3">
             <div className="flex min-h-[720px] flex-col gap-3">
               <Card className="flex min-h-[280px] flex-1 flex-col overflow-hidden rounded-none border-0 bg-transparent shadow-none backdrop-blur-none">
-                <CardHeader className="flex-row items-center justify-end gap-4 p-0">
-                  <div className="shrink-0 font-mono rounded-md bg-preview-badge px-2 py-0.5 text-[10px] uppercase tracking-[0.08em] text-text-muted backdrop-blur-sm border border-border-subtle">
-                    {renderState.ready ? "preview" : "rendering…"}
-                  </div>
-                </CardHeader>
                 <CardContent className="space-y-3 p-0">
                   <PreviewStage
                     canvasRef={canvasRef}
                     project={deferredProject}
-                    assets={activeAssets}
+                    assets={previewAssets}
                     onRenderState={setRenderState}
                   />
                 </CardContent>
@@ -768,13 +809,24 @@ function App() {
                       value={activeProject.canvas.width}
                       formatter={(value) => `${Math.round(value)} px`}
                       onChange={(value) =>
-                        patchProject((project) => ({
-                          ...project,
-                          canvas: {
+                        patchProject((project) => {
+                          const canvas = {
                             ...project.canvas,
                             width: Math.round(value),
-                          },
-                        }))
+                          };
+                          return {
+                            ...project,
+                            canvas,
+                            export: {
+                              ...project.export,
+                              ...lockExportDimensionsToCanvas(
+                                canvas,
+                                project.export,
+                                "width",
+                              ),
+                            },
+                          };
+                        })
                       }
                     />
                     <SliderField
@@ -785,13 +837,24 @@ function App() {
                       value={activeProject.canvas.height}
                       formatter={(value) => `${Math.round(value)} px`}
                       onChange={(value) =>
-                        patchProject((project) => ({
-                          ...project,
-                          canvas: {
+                        patchProject((project) => {
+                          const canvas = {
                             ...project.canvas,
                             height: Math.round(value),
-                          },
-                        }))
+                          };
+                          return {
+                            ...project,
+                            canvas,
+                            export: {
+                              ...project.export,
+                              ...lockExportDimensionsToCanvas(
+                                canvas,
+                                project.export,
+                                "width",
+                              ),
+                            },
+                          };
+                        })
                       }
                     />
                   </div>
@@ -1151,7 +1214,14 @@ function App() {
                           ...project,
                           export: {
                             ...project.export,
-                            width: Math.round(value),
+                            ...lockExportDimensionsToCanvas(
+                              project.canvas,
+                              {
+                                ...project.export,
+                                width: Math.round(value),
+                              },
+                              "width",
+                            ),
                           },
                         }))
                       }
@@ -1168,7 +1238,14 @@ function App() {
                           ...project,
                           export: {
                             ...project.export,
-                            height: Math.round(value),
+                            ...lockExportDimensionsToCanvas(
+                              project.canvas,
+                              {
+                                ...project.export,
+                                height: Math.round(value),
+                              },
+                              "height",
+                            ),
                           },
                         }))
                       }

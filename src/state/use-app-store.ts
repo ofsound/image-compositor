@@ -52,6 +52,8 @@ interface AppState {
   saveVersion: (label: string, thumbnailBlob?: Blob | null) => Promise<void>;
   restoreVersion: (versionId: string) => Promise<void>;
   exportCurrentImage: (
+    project: ProjectDocument,
+    assets: SourceAsset[],
     bitmapLookup: (asset: SourceAsset) => Promise<Blob | null>,
   ) => Promise<void>;
   exportCurrentBundle: () => Promise<void>;
@@ -457,10 +459,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     }));
   },
 
-  async exportCurrentImage(bitmapLookup) {
-    const project = getActiveProject(get());
-    if (!project) return;
-    const assets = get().assets.filter((asset) => asset.projectId === project.id);
+  async exportCurrentImage(project, assets, bitmapLookup) {
     const { buildBitmapMap } = await import("@/lib/render");
     set({ busy: true, status: "Rendering export…" });
     const bitmaps = await buildBitmapMap(assets, bitmapLookup);

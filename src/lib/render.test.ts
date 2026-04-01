@@ -68,6 +68,10 @@ describe("renderProjectToCanvas", () => {
       includeBackground: false,
     });
 
+    expect(canvas.getContext).toHaveBeenCalledWith(
+      "2d",
+      expect.objectContaining({ colorSpace: "srgb" }),
+    );
     expect(context.fillRect).not.toHaveBeenCalled();
   });
 
@@ -170,42 +174,55 @@ describe("renderProjectToCanvas", () => {
 describe("exportProjectImage", () => {
   it("exports transparent png projects as image/png blobs", async () => {
     const project = createProjectDocument("Transparent PNG");
+    project.canvas.width = 1800;
+    project.canvas.height = 1200;
     project.export.format = "image/png-transparent";
-    project.export.width = 64;
-    project.export.height = 48;
+    project.export.width = 3840;
+    project.export.height = 2560;
     project.export.scale = 1;
     project.effects.sharpen = 0;
     project.effects.kaleidoscopeSegments = 1;
 
-    const context = createMockContext();
-    const convertToBlob = vi.fn(async ({ type }: { type: string }) => new Blob(["png"], { type }));
-
-    const previousOffscreenCanvas = globalThis.OffscreenCanvas;
-    Object.defineProperty(globalThis, "OffscreenCanvas", {
-      configurable: true,
-      writable: true,
-      value: class {
-        width = 0;
-        height = 0;
-
-        getContext() {
-          return context;
-        }
-
-        convertToBlob = convertToBlob;
-      },
-    });
+    const sceneContext = createMockContext();
+    const exportContext = createMockContext();
+    const sceneCanvas = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn(() => sceneContext),
+      toBlob: vi.fn(),
+    } as unknown as HTMLCanvasElement;
+    const exportCanvas = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn(() => exportContext),
+      toBlob: vi.fn((callback: BlobCallback, type?: string) =>
+        callback(new Blob(["png"], { type })),
+      ),
+    } as unknown as HTMLCanvasElement;
+    const createElementSpy = vi
+      .spyOn(document, "createElement")
+      .mockReturnValueOnce(sceneCanvas)
+      .mockReturnValueOnce(exportCanvas);
 
     try {
       const blob = await exportProjectImage(project, [], new Map());
       expect(blob.type).toBe("image/png");
-      expect(context.fillRect).not.toHaveBeenCalled();
+      expect(sceneCanvas.getContext).toHaveBeenCalledWith(
+        "2d",
+        expect.objectContaining({ colorSpace: "srgb" }),
+      );
+      expect(exportCanvas.getContext).toHaveBeenCalledWith(
+        "2d",
+        expect.objectContaining({ colorSpace: "srgb" }),
+      );
+      expect(sceneCanvas.width).toBe(1800);
+      expect(sceneCanvas.height).toBe(1200);
+      expect(exportCanvas.width).toBe(3840);
+      expect(exportCanvas.height).toBe(2560);
+      expect(sceneContext.fillRect).not.toHaveBeenCalled();
+      expect(exportContext.drawImage).toHaveBeenCalledWith(sceneCanvas, 0, 0, 3840, 2560);
     } finally {
-      Object.defineProperty(globalThis, "OffscreenCanvas", {
-        configurable: true,
-        writable: true,
-        value: previousOffscreenCanvas,
-      });
+      createElementSpy.mockRestore();
     }
   });
 });

@@ -1,4 +1,5 @@
 import type { ProjectDocument, RenderSlice, SourceAsset } from "@/types/project";
+import { withAlpha } from "@/lib/color";
 import { buildRenderSlices } from "@/lib/generator-registry";
 import { lockExportDimensionsToCanvas } from "@/lib/export-sizing";
 import { clamp } from "@/lib/utils";
@@ -191,22 +192,11 @@ function drawBackground(
   context: RenderContext,
   project: ProjectDocument,
 ) {
-  const gradient = context.createLinearGradient(0, 0, project.canvas.width, project.canvas.height);
-  gradient.addColorStop(0, project.canvas.background);
-  gradient.addColorStop(1, "#efe3cc");
-  context.fillStyle = gradient;
+  context.fillStyle = withAlpha(
+    project.canvas.background,
+    project.canvas.backgroundAlpha,
+  );
   context.fillRect(0, 0, project.canvas.width, project.canvas.height);
-
-  context.save();
-  context.globalAlpha = 0.1;
-  context.strokeStyle = "#7b6a59";
-  for (let index = 0; index < 18; index += 1) {
-    context.beginPath();
-    context.moveTo(index * 120, 0);
-    context.lineTo(index * 120 - 240, project.canvas.height);
-    context.stroke();
-  }
-  context.restore();
 }
 
 export async function buildBitmapMap(
@@ -310,9 +300,8 @@ export async function exportProjectImage(
     },
     "width",
   );
-  const includeBackground = project.export.format !== "image/png-transparent";
   await renderProjectToCanvas(project, assets, bitmaps, sceneCanvas, {
-    includeBackground,
+    includeBackground: true,
   });
   const exportCanvas = createRenderCanvas(width, height);
   const exportContext = getRenderContext(exportCanvas);

@@ -1,5 +1,6 @@
 import Dexie, { type Table } from "dexie";
 
+import { normalizeSourceAsset } from "@/lib/assets";
 import type {
   ProjectDocument,
   ProjectVersion,
@@ -66,6 +67,22 @@ export class ImageGridDb extends Dexie {
             ...asset,
             projectId: asset.projectId ?? ownership.get(asset.id) ?? "",
           });
+        }
+      });
+    this.version(3)
+      .stores({
+        assets: "id, projectId, createdAt, name, mimeType, kind",
+        projects: "id, updatedAt, deletedAt, title",
+        versions: "id, projectId, createdAt",
+        kv: "&key",
+        blobs: "&path",
+      })
+      .upgrade(async (tx) => {
+        const assetsTable = tx.table<SourceAsset, string>("assets");
+        const assets = await assetsTable.toArray();
+
+        for (const asset of assets) {
+          await assetsTable.put(normalizeSourceAsset(asset));
         }
       });
   }

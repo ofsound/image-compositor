@@ -42,6 +42,21 @@ describe("createProjectDocument", () => {
     expect(normalizeProjectDocument(legacyProject).sourceMapping.cropDistribution).toBe("center");
   });
 
+  it("normalizes legacy projects without background alpha to transparent", () => {
+    const project = createProjectDocument("Legacy Background");
+    const legacyProject = {
+      ...project,
+      canvas: {
+        width: project.canvas.width,
+        height: project.canvas.height,
+        background: project.canvas.background,
+        inset: project.canvas.inset,
+      },
+    } as unknown as ProjectDocument;
+
+    expect(normalizeProjectDocument(legacyProject).canvas.backgroundAlpha).toBe(0);
+  });
+
   it("normalizes legacy version snapshots without crop distribution to centered mode", () => {
     const project = createProjectDocument("Legacy Version");
     const legacyVersion = {

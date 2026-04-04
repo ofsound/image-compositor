@@ -1,5 +1,24 @@
 import { clamp } from "@/lib/utils";
 
+export function normalizeHexColor(value: string, fallback = "#000000") {
+  const candidate = value.trim();
+  const normalized = candidate.startsWith("#") ? candidate.slice(1) : candidate;
+
+  if (/^[\da-fA-F]{6}$/.test(normalized)) {
+    return `#${normalized.toLowerCase()}`;
+  }
+
+  if (/^[\da-fA-F]{3}$/.test(normalized)) {
+    return `#${normalized
+      .split("")
+      .map((char) => `${char}${char}`)
+      .join("")
+      .toLowerCase()}`;
+  }
+
+  return fallback;
+}
+
 export function rgbToHex(r: number, g: number, b: number) {
   return `#${[r, g, b]
     .map((value) => clamp(Math.round(value), 0, 255).toString(16).padStart(2, "0"))

@@ -2,9 +2,11 @@ import { expect, test } from "@playwright/test";
 
 test("boots and imports a source image", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByText("Image Grid")).toBeVisible({
+  await expect(page.getByRole("button", { name: "Add Source" }).first()).toBeVisible({
     timeout: 15_000,
   });
+  await page.getByRole("button", { name: "Add Source" }).first().click();
+  await expect(page.getByRole("button", { name: "Choose images" })).toBeVisible();
   await page.locator('input[type="file"]').nth(0).evaluate(async (node) => {
     const input = node as HTMLInputElement;
     const canvas = document.createElement("canvas");
@@ -33,8 +35,8 @@ test("boots and imports a source image", async ({ page }) => {
     input.dispatchEvent(new Event("change", { bubbles: true }));
   });
 
-  await expect(page.getByText("spec")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Export" })).toBeEnabled({
+  await expect(page.getByText("spec", { exact: true })).toBeVisible();
+  await expect(page.getByLabel("Disable spec")).toBeVisible({
     timeout: 15_000,
   });
 });

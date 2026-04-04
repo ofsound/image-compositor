@@ -1,6 +1,12 @@
 export type GeometryShape = "rect" | "triangle" | "ring" | "wedge" | "mixed";
 export type LayoutFamily = "grid" | "strips" | "blocks" | "radial";
 export type CropDistribution = "center" | "distributed";
+export type SourceKind = "image" | "solid" | "gradient";
+export type GradientDirection =
+  | "horizontal"
+  | "vertical"
+  | "diagonal-down"
+  | "diagonal-up";
 export type SourceAssignmentStrategy =
   | "random"
   | "weighted"
@@ -20,7 +26,7 @@ export type BlendMode =
   | "color-dodge"
   | "luminosity";
 
-export interface SourceAsset {
+export interface BaseSourceAsset {
   id: string;
   projectId: string;
   name: string;
@@ -38,10 +44,36 @@ export interface SourceAsset {
   createdAt: string;
 }
 
+export interface ImageSourceAsset extends BaseSourceAsset {
+  kind: "image";
+}
+
+export interface SolidSourceAsset extends BaseSourceAsset {
+  kind: "solid";
+  recipe: {
+    color: string;
+  };
+}
+
+export interface GradientSourceAsset extends BaseSourceAsset {
+  kind: "gradient";
+  recipe: {
+    from: string;
+    to: string;
+    direction: GradientDirection;
+  };
+}
+
+export type SourceAsset =
+  | ImageSourceAsset
+  | SolidSourceAsset
+  | GradientSourceAsset;
+
 export interface CanvasSettings {
   width: number;
   height: number;
   background: string;
+  backgroundAlpha: number;
   inset: number;
 }
 

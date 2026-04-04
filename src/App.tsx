@@ -52,7 +52,13 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
-import { ACCEPTED_IMAGE_TYPES } from "@/lib/assets";
+import {
+  ACCEPTED_IMAGE_TYPES,
+  getDefaultGradientDirection,
+  normalizeGradientInput,
+  normalizeSolidInput,
+} from "@/lib/assets";
+import { normalizeHexColor } from "@/lib/color";
 import { lockExportDimensionsToCanvas } from "@/lib/export-sizing";
 import { readBlob } from "@/lib/opfs";
 import { toggleSourceId } from "@/lib/source-selection";
@@ -61,12 +67,17 @@ import type {
   BlendMode,
   BundleImportInspection,
   CropDistribution,
+  GradientDirection,
+  GradientSourceAsset,
   GeometryShape,
   LayoutFamily,
   ProjectDocument,
+  SolidSourceAsset,
   SourceAsset,
   SourceAssignmentStrategy,
+  SourceKind,
 } from "@/types/project";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 function useObjectUrl(path: string | null) {
   const [url, setUrl] = useState<string | null>(null);
@@ -116,6 +127,58 @@ function SourceThumbnail({
   ) : (
     <div className="flex h-20 items-center justify-center rounded-md bg-surface-muted font-mono text-[10px] uppercase tracking-[0.1em] text-text-faint">
       Loading
+    </div>
+  );
+}
+
+const SOURCE_DIALOG_MODES: SourceKind[] = ["image", "solid", "gradient"];
+const GRADIENT_DIRECTIONS: GradientDirection[] = [
+  "horizontal",
+  "vertical",
+  "diagonal-down",
+  "diagonal-up",
+];
+
+function formatSourceModeLabel(mode: SourceKind) {
+  if (mode === "solid") return "Solid";
+  if (mode === "gradient") return "Gradient";
+  return "Image";
+}
+
+function formatGradientDirectionLabel(direction: GradientDirection) {
+  if (direction === "diagonal-down") return "Diagonal down";
+  if (direction === "diagonal-up") return "Diagonal up";
+  return direction[0]!.toUpperCase() + direction.slice(1);
+}
+
+function SourceColorField({
+  id,
+  label,
+  value,
+  onChange,
+}: {
+  id: string;
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div className="space-y-2">
+      <Label htmlFor={id}>{label}</Label>
+      <div className="flex items-center gap-2">
+        <Input
+          id={id}
+          type="color"
+          value={value}
+          className="h-9 w-14 cursor-pointer p-1"
+          onChange={(event) => onChange(event.target.value)}
+        />
+        <Input
+          value={value}
+          className="font-mono uppercase"
+          onChange={(event) => onChange(normalizeHexColor(event.target.value, value))}
+        />
+      </div>
     </div>
   );
 }
@@ -217,12 +280,22 @@ function App() {
   const [duplicateDialogOpen, setDuplicateDialogOpen] = useState(false);
   const [manageProjectsOpen, setManageProjectsOpen] = useState(false);
   const [trashDialogOpen, setTrashDialogOpen] = useState(false);
+  const [sourceDialogOpen, setSourceDialogOpen] = useState(false);
+  const [sourceDialogMode, setSourceDialogMode] = useState<SourceKind>("image");
+  const [editingSourceId, setEditingSourceId] = useState<string | null>(null);
   const [purgeDialogProjectId, setPurgeDialogProjectId] = useState<
     string | null
   >(null);
   const [importConflictOpen, setImportConflictOpen] = useState(false);
   const [renameValue, setRenameValue] = useState("");
   const [duplicateValue, setDuplicateValue] = useState("");
+  const [solidSourceName, setSolidSourceName] = useState("");
+  const [solidSourceColor, setSolidSourceColor] = useState("#0f172a");
+  const [gradientSourceName, setGradientSourceName] = useState("");
+  const [gradientSourceFrom, setGradientSourceFrom] = useState("#0f172a");
+  const [gradientSourceTo, setGradientSourceTo] = useState("#f97316");
+  const [gradientSourceDirection, setGradientSourceDirection] =
+    useState<GradientDirection>(getDefaultGradientDirection());
   const [pendingImportInspection, setPendingImportInspection] =
     useState<BundleImportInspection | null>(null);
 
@@ -244,6 +317,9 @@ function App() {
     setActiveProject,
     updateProject,
     importFiles,
+    addSolidSource,
+    addGradientSource,
+    updateGeneratedSource,
     randomizeSeed,
     saveVersion,
     restoreVersion,
@@ -286,6 +362,9 @@ function App() {
   const projectAssets = activeProject
     ? assets.filter((asset) => asset.projectId === activeProject.id)
     : [];
+  const editingSource = editingSourceId
+    ? projectAssets.find((asset) => asset.id === editingSourceId) ?? null
+    : null;
   const activeAssets = activeProject
     ? activeProject.sourceIds
         .map((sourceId) => projectAssets.find((asset) => asset.id === sourceId))
@@ -386,6 +465,82 @@ function App() {
     await resolveBundleImport(pendingImportInspection, resolution);
     setPendingImportInspection(null);
     setImportConflictOpen(false);
+  };
+
+  const resetGeneratedSourceForms = () => {
+    setSolidSourceName("");
+    setSolidSourceColor("#0f172a");
+    setGradientSourceName("");
+    setGradientSourceFrom("#0f172a");
+    setGradientSourceTo("#f97316");
+    setGradientSourceDirection(getDefaultGradientDirection());
+  };
+
+  const openAddSourceDialog = (mode: SourceKind = "image") => {
+    setEditingSourceId(null);
+    setSourceDialogMode(mode);
+    resetGeneratedSourceForms();
+    setSourceDialogOpen(true);
+  };
+
+  const openEditSourceDialog = (assetId: string) => {
+    const asset = projectAssets.find(
+      (entry): entry is SolidSourceAsset | GradientSourceAsset =>
+        entry.id === assetId && entry.kind !== "image",
+    );
+    if (!asset) return;
+
+    setEditingSourceId(asset.id);
+    setSourceDialogMode(asset.kind);
+    if (asset.kind === "solid") {
+      setSolidSourceName(asset.name);
+      setSolidSourceColor(asset.recipe.color);
+    } else {
+      setGradientSourceName(asset.name);
+      setGradientSourceFrom(asset.recipe.from);
+      setGradientSourceTo(asset.recipe.to);
+      setGradientSourceDirection(asset.recipe.direction);
+    }
+    setSourceDialogOpen(true);
+  };
+
+  const openImagePicker = () => {
+    setSourceDialogOpen(false);
+    uploadInputRef.current?.click();
+  };
+
+  const submitGeneratedSource = async () => {
+    if (sourceDialogMode === "image") {
+      openImagePicker();
+      return;
+    }
+
+    if (sourceDialogMode === "solid") {
+      const input = normalizeSolidInput({
+        name: solidSourceName,
+        color: solidSourceColor,
+      });
+      if (editingSource?.kind === "solid") {
+        await updateGeneratedSource(editingSource.id, input);
+      } else {
+        await addSolidSource(input);
+      }
+      setSourceDialogOpen(false);
+      return;
+    }
+
+    const input = normalizeGradientInput({
+      name: gradientSourceName,
+      from: gradientSourceFrom,
+      to: gradientSourceTo,
+      direction: gradientSourceDirection,
+    });
+    if (editingSource?.kind === "gradient") {
+      await updateGeneratedSource(editingSource.id, input);
+    } else {
+      await addGradientSource(input);
+    }
+    setSourceDialogOpen(false);
   };
 
   return (
@@ -512,10 +667,10 @@ function App() {
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => uploadInputRef.current?.click()}
+              onClick={() => openAddSourceDialog("image")}
             >
               <ImagePlus className="h-3.5 w-3.5" />
-              Sources
+              Add Source
             </Button>
             <Button
               variant="ghost"
@@ -590,17 +745,18 @@ function App() {
                     className="w-fit shrink-0"
                     variant="outline"
                     size="sm"
-                    onClick={() => uploadInputRef.current?.click()}
+                    onClick={() => openAddSourceDialog("image")}
                   >
                     <ImagePlus className="h-3.5 w-3.5" />
-                    Add to pool
+                    Add Source
                   </Button>
                 </CardHeader>
                 <CardContent className="flex flex-col gap-3">
                   {projectAssets.length === 0 ? (
                     <div className="rounded-md bg-surface-sunken p-4 text-xs leading-relaxed text-text-faint">
-                      Upload images to begin. Assets are preserved as immutable
-                      originals.
+                      Add image, solid, or gradient sources to begin.
+                      Imported images stay immutable, while generated sources
+                      can be edited later.
                     </div>
                   ) : (
                     <div className="flex gap-2 overflow-x-auto overflow-y-hidden pb-1">
@@ -610,6 +766,11 @@ function App() {
                           asset={asset}
                           enabled={activeProject.sourceIds.includes(asset.id)}
                           onToggle={toggleAssetEnabled}
+                          onEdit={
+                            asset.kind === "image"
+                              ? undefined
+                              : openEditSourceDialog
+                          }
                           thumbnail={
                             <SourceThumbnail
                               previewPath={asset.previewPath}
@@ -857,6 +1018,49 @@ function App() {
                         })
                       }
                     />
+                    <ControlBlock
+                      label="Background Layer"
+                      value={`${Math.round(activeProject.canvas.backgroundAlpha * 100)}%`}
+                    >
+                      <SourceColorField
+                        id="canvas-background-color"
+                        label="Color"
+                        value={activeProject.canvas.background}
+                        onChange={(value) =>
+                          patchProject((project) => ({
+                            ...project,
+                            canvas: {
+                              ...project.canvas,
+                              background: value,
+                            },
+                          }))
+                        }
+                      />
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between text-xs text-text-muted">
+                          <span>Alpha</span>
+                          <span className="font-mono text-[10px] text-text-faint">
+                            {Math.round(activeProject.canvas.backgroundAlpha * 100)}%
+                          </span>
+                        </div>
+                        <Slider
+                          min={0}
+                          max={1}
+                          step={0.01}
+                          value={[activeProject.canvas.backgroundAlpha]}
+                          onValueChange={(next) =>
+                            patchProject((project) => ({
+                              ...project,
+                              canvas: {
+                                ...project.canvas,
+                                backgroundAlpha:
+                                  next[0] ?? project.canvas.backgroundAlpha,
+                              },
+                            }))
+                          }
+                        />
+                      </div>
+                    </ControlBlock>
                   </div>
 
                   <div className="min-w-0 space-y-2.5">
@@ -1270,6 +1474,144 @@ function App() {
           </div>
         </div>
       </div>
+
+      <Dialog
+        open={sourceDialogOpen}
+        onOpenChange={(open) => {
+          setSourceDialogOpen(open);
+          if (!open) {
+            setEditingSourceId(null);
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {editingSource ? "Edit source" : "Add source"}
+            </DialogTitle>
+            <DialogDescription>
+              Build the source pool from imported images, solid fills, and
+              two-color gradients.
+            </DialogDescription>
+          </DialogHeader>
+          <Tabs
+            value={sourceDialogMode}
+            onValueChange={(value) => setSourceDialogMode(value as SourceKind)}
+          >
+            <TabsList className="grid w-full grid-cols-3">
+              {SOURCE_DIALOG_MODES.map((mode) => (
+                <TabsTrigger
+                  key={mode}
+                  value={mode}
+                  disabled={Boolean(editingSource) && editingSource?.kind !== mode}
+                >
+                  {formatSourceModeLabel(mode)}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+            <TabsContent value="image" className="space-y-4">
+              <div className="rounded-md bg-surface-sunken p-4 text-xs leading-relaxed text-text-muted">
+                Import one or more images into the source pool. They will keep
+                their current immutable workflow.
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => setSourceDialogOpen(false)}
+                >
+                  Cancel
+                </Button>
+                <Button onClick={openImagePicker}>
+                  <ImagePlus className="h-3.5 w-3.5" />
+                  Choose images
+                </Button>
+              </div>
+            </TabsContent>
+            <TabsContent value="solid" className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="solid-source-name">Name</Label>
+                <Input
+                  id="solid-source-name"
+                  placeholder="Solid #RRGGBB"
+                  value={solidSourceName}
+                  onChange={(event) => setSolidSourceName(event.target.value)}
+                />
+              </div>
+              <SourceColorField
+                id="solid-source-color"
+                label="Color"
+                value={solidSourceColor}
+                onChange={setSolidSourceColor}
+              />
+              <div className="flex justify-end gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => setSourceDialogOpen(false)}
+                >
+                  Cancel
+                </Button>
+                <Button onClick={() => void submitGeneratedSource()}>
+                  {editingSource ? "Save source" : "Add source"}
+                </Button>
+              </div>
+            </TabsContent>
+            <TabsContent value="gradient" className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="gradient-source-name">Name</Label>
+                <Input
+                  id="gradient-source-name"
+                  placeholder="Gradient #RRGGBB -> #RRGGBB"
+                  value={gradientSourceName}
+                  onChange={(event) => setGradientSourceName(event.target.value)}
+                />
+              </div>
+              <SourceColorField
+                id="gradient-source-from"
+                label="Start color"
+                value={gradientSourceFrom}
+                onChange={setGradientSourceFrom}
+              />
+              <SourceColorField
+                id="gradient-source-to"
+                label="End color"
+                value={gradientSourceTo}
+                onChange={setGradientSourceTo}
+              />
+              <div className="space-y-2">
+                <Label>Direction</Label>
+                <Select
+                  value={gradientSourceDirection}
+                  onValueChange={(value) =>
+                    setGradientSourceDirection(value as GradientDirection)
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {GRADIENT_DIRECTIONS.map((direction) => (
+                      <SelectItem key={direction} value={direction}>
+                        {formatGradientDirectionLabel(direction)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="flex justify-end gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => setSourceDialogOpen(false)}
+                >
+                  Cancel
+                </Button>
+                <Button onClick={() => void submitGeneratedSource()}>
+                  {editingSource ? "Save source" : "Add source"}
+                </Button>
+              </div>
+            </TabsContent>
+          </Tabs>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={renameDialogOpen} onOpenChange={setRenameDialogOpen}>
         <DialogContent>

@@ -16,6 +16,7 @@ vi.mock("@/lib/opfs", () => ({
 
 const asset: SourceAsset = {
   id: "asset_a",
+  kind: "image",
   projectId: "project_test",
   name: "Asset A",
   originalFileName: "asset-a.jpg",

@@ -20,7 +20,13 @@ const bundle: ImportedProjectBundle = {
     createdAt: "2026-03-31T00:00:00.000Z",
     updatedAt: "2026-03-31T00:00:00.000Z",
     sourceIds: ["asset_original"],
-    canvas: { width: 100, height: 100, background: "#000000", inset: 0 },
+    canvas: {
+      width: 100,
+      height: 100,
+      background: "#000000",
+      backgroundAlpha: 0,
+      inset: 0,
+    },
     layout: {
       family: "grid",
       shapeMode: "rect",
@@ -82,7 +88,13 @@ const bundle: ImportedProjectBundle = {
       thumbnailPath: "versions/version_original.webp",
       snapshot: {
         sourceIds: ["asset_original"],
-        canvas: { width: 100, height: 100, background: "#000000", inset: 0 },
+        canvas: {
+          width: 100,
+          height: 100,
+          background: "#000000",
+          backgroundAlpha: 0,
+          inset: 0,
+        },
         layout: {
           family: "grid",
           shapeMode: "rect",
@@ -140,6 +152,7 @@ const bundle: ImportedProjectBundle = {
   assetDocs: [
     {
       id: "asset_original",
+      kind: "image",
       projectId: "project_original",
       name: "Original",
       originalFileName: "original.png",
@@ -186,6 +199,63 @@ describe("createImportCopy", () => {
       copy.assetDocs[0]?.previewPath,
     ]);
     expect(Object.keys(copy.versionBlobs)).toEqual([copy.versionDocs[0]?.thumbnailPath]);
+  });
+
+  it("preserves generated source metadata when copying imported bundles", () => {
+    const generatedBundle: ImportedProjectBundle = {
+      ...bundle,
+      assetDocs: [
+        {
+          ...bundle.assetDocs[0]!,
+          id: "asset_gradient",
+          kind: "gradient",
+          name: "Gradient One",
+          recipe: {
+            from: "#112233",
+            to: "#ffaa00",
+            direction: "vertical",
+          },
+        },
+      ],
+      manifest: {
+        ...bundle.manifest,
+        assetIds: ["asset_gradient"],
+      },
+      projectDoc: {
+        ...bundle.projectDoc,
+        sourceIds: ["asset_gradient"],
+      },
+      versionDocs: [
+        {
+          ...bundle.versionDocs[0]!,
+          snapshot: {
+            ...bundle.versionDocs[0]!.snapshot,
+            sourceIds: ["asset_gradient"],
+          },
+        },
+      ],
+      assetBlobs: {},
+    };
+
+    generatedBundle.assetBlobs = {
+      [generatedBundle.assetDocs[0]!.originalPath]: new Blob(["original"]),
+      [generatedBundle.assetDocs[0]!.normalizedPath]: new Blob(["normalized"]),
+      [generatedBundle.assetDocs[0]!.previewPath]: new Blob(["preview"]),
+    };
+
+    const copy = createImportCopy(generatedBundle);
+
+    expect(copy.assetDocs[0]?.kind).toBe("gradient");
+    const copiedAsset = copy.assetDocs[0];
+    if (!copiedAsset || copiedAsset.kind !== "gradient") {
+      throw new Error("Expected copied generated source metadata.");
+    }
+    expect(copiedAsset.recipe).toEqual({
+      from: "#112233",
+      to: "#ffaa00",
+      direction: "vertical",
+    });
+    expect(copy.projectDoc.sourceIds).toEqual([copy.assetDocs[0]?.id]);
   });
 });
 
@@ -238,5 +308,31 @@ describe("loadProjectBundle", () => {
 
     expect(loaded.projectDoc.sourceMapping.cropDistribution).toBe("center");
     expect(loaded.versionDocs[0]?.snapshot.sourceMapping.cropDistribution).toBe("center");
+  });
+
+  it("normalizes legacy assets without kind to image sources", async () => {
+    const zip = new JSZip();
+    zip.file("manifest.json", JSON.stringify(bundle.manifest));
+    zip.file("project.json", JSON.stringify(bundle.projectDoc));
+    zip.file("versions.json", JSON.stringify(bundle.versionDocs));
+    zip.file(
+      "assets.json",
+      JSON.stringify([
+        {
+          ...bundle.assetDocs[0],
+          kind: undefined,
+        },
+      ]),
+    );
+    for (const [path, blob] of Object.entries(bundle.assetBlobs)) {
+      zip.file(path, blob);
+    }
+    for (const [path, blob] of Object.entries(bundle.versionBlobs)) {
+      zip.file(path, blob);
+    }
+
+    const loaded = await loadProjectBundle(await zip.generateAsync({ type: "blob" }));
+
+    expect(loaded.assetDocs[0]?.kind).toBe("image");
   });
 });

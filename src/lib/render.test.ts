@@ -28,11 +28,17 @@ function createMockContext() {
     rotate: vi.fn(),
     scale: vi.fn(),
     setTransform: vi.fn(),
+    fillStyle: "",
+    strokeStyle: "",
+    globalAlpha: 1,
+    lineWidth: 1,
+    filter: "",
   };
 }
 
 const asset: SourceAsset = {
   id: "asset_a",
+  kind: "image",
   projectId: "project_test",
   name: "A",
   originalFileName: "a.jpg",
@@ -219,10 +225,30 @@ describe("exportProjectImage", () => {
       expect(sceneCanvas.height).toBe(1200);
       expect(exportCanvas.width).toBe(3840);
       expect(exportCanvas.height).toBe(2560);
-      expect(sceneContext.fillRect).not.toHaveBeenCalled();
+      expect(sceneContext.fillRect).toHaveBeenCalledOnce();
       expect(exportContext.drawImage).toHaveBeenCalledWith(sceneCanvas, 0, 0, 3840, 2560);
     } finally {
       createElementSpy.mockRestore();
     }
+  });
+
+  it("applies the configured background alpha to the scene render", async () => {
+    const project = createProjectDocument("Background Alpha");
+    project.canvas.background = "#123456";
+    project.canvas.backgroundAlpha = 0.35;
+    project.effects.sharpen = 0;
+    project.effects.kaleidoscopeSegments = 1;
+
+    const context = createMockContext();
+    const canvas = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn(() => context),
+    } as unknown as HTMLCanvasElement;
+
+    await renderProjectToCanvas(project, [], new Map(), canvas);
+
+    expect(context.fillStyle).toBe("#12345659");
+    expect(context.fillRect).toHaveBeenCalledOnce();
   });
 });

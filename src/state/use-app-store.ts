@@ -1,6 +1,14 @@
 import { create } from "zustand";
 
-import { duplicateSourceAsset, persistProcessedAsset } from "@/lib/assets";
+import {
+  createGeneratedSourceAsset,
+  duplicateSourceAsset,
+  normalizeSourceAsset,
+  persistProcessedAsset,
+  updateGeneratedSourceAsset,
+  type GradientSourceInput,
+  type SolidSourceInput,
+} from "@/lib/assets";
 import { db } from "@/lib/db";
 import { downloadBlob } from "@/lib/download";
 import { processImageFile } from "@/lib/image-worker-client";
@@ -20,8 +28,10 @@ import {
 } from "@/lib/serializer";
 import type {
   BundleImportInspection,
+  GradientSourceAsset,
   ProjectDocument,
   ProjectVersion,
+  SolidSourceAsset,
   SourceAsset,
 } from "@/types/project";
 
@@ -48,6 +58,12 @@ interface AppState {
     updater: (project: ProjectDocument) => ProjectDocument,
   ) => Promise<void>;
   importFiles: (files: FileList | File[]) => Promise<void>;
+  addSolidSource: (input: SolidSourceInput) => Promise<void>;
+  addGradientSource: (input: GradientSourceInput) => Promise<void>;
+  updateGeneratedSource: (
+    assetId: string,
+    input: SolidSourceInput | GradientSourceInput,
+  ) => Promise<void>;
   randomizeSeed: () => Promise<void>;
   saveVersion: (label: string, thumbnailBlob?: Blob | null) => Promise<void>;
   restoreVersion: (versionId: string) => Promise<void>;
@@ -106,7 +122,7 @@ async function loadWorkspaceSnapshot(preferredActiveProjectId?: string | null) {
   ]);
 
   let projects = sortByUpdated(storedProjects.map((project) => normalizeProjectDocument(project)));
-  const assets = sortAssetsByCreated(storedAssets);
+  const assets = sortAssetsByCreated(storedAssets.map((asset) => normalizeSourceAsset(asset)));
   const versions = sortVersionsByCreated(
     storedVersions.map((version) => normalizeProjectVersion(version)),
   );
@@ -378,6 +394,129 @@ export const useAppStore = create<AppState>((set, get) => ({
         busy: false,
         status:
           error instanceof Error ? `Import failed: ${error.message}` : "Import failed.",
+      });
+    }
+  },
+
+  async addSolidSource(input) {
+    const activeProject = getActiveProject(get());
+    if (!activeProject) return;
+
+    set({ busy: true, status: "Creating solid source…" });
+
+    try {
+      const asset = await createGeneratedSourceAsset(
+        { kind: "solid", recipe: input, name: input.name },
+        activeProject.id,
+        activeProject.canvas,
+      );
+      await db.assets.put(asset);
+
+      const nextProject = {
+        ...activeProject,
+        sourceIds: [...new Set([...activeProject.sourceIds, asset.id])],
+        updatedAt: new Date().toISOString(),
+      };
+
+      await db.projects.put(nextProject);
+
+      set((state) => ({
+        assets: sortAssetsByCreated([...state.assets, asset]),
+        projects: sortByUpdated(
+          state.projects.map((entry) => (entry.id === nextProject.id ? nextProject : entry)),
+        ),
+        busy: false,
+        status: "Solid source added.",
+      }));
+    } catch (error) {
+      set({
+        busy: false,
+        status:
+          error instanceof Error ? `Could not add source: ${error.message}` : "Could not add source.",
+      });
+    }
+  },
+
+  async addGradientSource(input) {
+    const activeProject = getActiveProject(get());
+    if (!activeProject) return;
+
+    set({ busy: true, status: "Creating gradient source…" });
+
+    try {
+      const asset = await createGeneratedSourceAsset(
+        { kind: "gradient", recipe: input, name: input.name },
+        activeProject.id,
+        activeProject.canvas,
+      );
+      await db.assets.put(asset);
+
+      const nextProject = {
+        ...activeProject,
+        sourceIds: [...new Set([...activeProject.sourceIds, asset.id])],
+        updatedAt: new Date().toISOString(),
+      };
+
+      await db.projects.put(nextProject);
+
+      set((state) => ({
+        assets: sortAssetsByCreated([...state.assets, asset]),
+        projects: sortByUpdated(
+          state.projects.map((entry) => (entry.id === nextProject.id ? nextProject : entry)),
+        ),
+        busy: false,
+        status: "Gradient source added.",
+      }));
+    } catch (error) {
+      set({
+        busy: false,
+        status:
+          error instanceof Error ? `Could not add source: ${error.message}` : "Could not add source.",
+      });
+    }
+  },
+
+  async updateGeneratedSource(assetId, input) {
+    const activeProject = getActiveProject(get());
+    if (!activeProject) return;
+
+    const asset = get().assets.find(
+      (entry): entry is SolidSourceAsset | GradientSourceAsset =>
+        entry.id === assetId &&
+        entry.projectId === activeProject.id &&
+        entry.kind !== "image",
+    );
+    if (!asset) return;
+
+    set({ busy: true, status: `Updating ${asset.kind} source…` });
+
+    try {
+      const updatedAsset = await updateGeneratedSourceAsset(asset, input);
+      await db.assets.put(updatedAsset);
+
+      const updatedProject = {
+        ...activeProject,
+        updatedAt: new Date().toISOString(),
+      };
+      await db.projects.put(updatedProject);
+
+      set((state) => ({
+        assets: sortAssetsByCreated(
+          state.assets.map((entry) => (entry.id === updatedAsset.id ? updatedAsset : entry)),
+        ),
+        projects: sortByUpdated(
+          state.projects.map((entry) => (entry.id === updatedProject.id ? updatedProject : entry)),
+        ),
+        busy: false,
+        status: `${asset.kind === "solid" ? "Solid" : "Gradient"} source updated.`,
+      }));
+    } catch (error) {
+      set({
+        busy: false,
+        status:
+          error instanceof Error
+            ? `Could not update source: ${error.message}`
+            : "Could not update source.",
       });
     }
   },

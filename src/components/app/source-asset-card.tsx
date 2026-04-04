@@ -1,7 +1,8 @@
 import type { MouseEvent, ReactNode } from "react";
-import { Eye, EyeOff } from "lucide-react";
+import { Eye, EyeOff, Pencil } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { getSourceKindLabel } from "@/lib/assets";
 import { cn } from "@/lib/utils";
 import type { SourceAsset } from "@/types/project";
 
@@ -10,6 +11,7 @@ interface SourceAssetCardProps {
   enabled: boolean;
   thumbnail: ReactNode;
   onToggle: (assetId: string) => void;
+  onEdit?: (assetId: string) => void;
 }
 
 export function SourceAssetCard({
@@ -17,12 +19,18 @@ export function SourceAssetCard({
   enabled,
   thumbnail,
   onToggle,
+  onEdit,
 }: SourceAssetCardProps) {
   const Icon = enabled ? Eye : EyeOff;
 
   const handleToggle = (event: MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation();
     onToggle(asset.id);
+  };
+
+  const handleEdit = (event: MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    onEdit?.(asset.id);
   };
 
   return (
@@ -47,9 +55,24 @@ export function SourceAssetCard({
         >
           <Icon className="h-3.5 w-3.5" />
         </Button>
+        {onEdit ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="absolute bottom-1 right-1 h-7 w-auto min-w-[1.75rem] rounded-md border-0 bg-surface-raised/35 px-1.5 py-0 text-text-muted shadow-none backdrop-blur-sm hover:bg-surface-raised/55 hover:text-text"
+            aria-label={`Edit ${asset.name}`}
+            onClick={handleEdit}
+          >
+            <Pencil className="h-3.5 w-3.5" />
+          </Button>
+        ) : null}
       </div>
       <div className="mt-2 flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
+          <div className="font-mono text-[10px] uppercase tracking-[0.08em] text-text-faint">
+            {getSourceKindLabel(asset.kind)}
+          </div>
           <div
             className={cn(
               "truncate text-xs font-medium",

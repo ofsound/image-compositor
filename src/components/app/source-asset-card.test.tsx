@@ -5,8 +5,9 @@ import { describe, expect, it, vi } from "vitest";
 import { SourceAssetCard } from "@/components/app/source-asset-card";
 import type { SourceAsset } from "@/types/project";
 
-const asset: SourceAsset = {
+const imageAsset: SourceAsset = {
   id: "asset_a",
+  kind: "image",
   projectId: "project_test",
   name: "Asset A",
   originalFileName: "asset-a.jpg",
@@ -23,11 +24,23 @@ const asset: SourceAsset = {
   createdAt: "2026-04-01T00:00:00.000Z",
 };
 
+const gradientAsset: SourceAsset = {
+  ...imageAsset,
+  id: "asset_gradient",
+  kind: "gradient",
+  name: "Sunrise",
+  recipe: {
+    from: "#112233",
+    to: "#ffaa00",
+    direction: "horizontal",
+  },
+};
+
 describe("SourceAssetCard", () => {
   it("renders enabled assets with a disable button", () => {
     render(
       <SourceAssetCard
-        asset={asset}
+        asset={imageAsset}
         enabled
         onToggle={vi.fn()}
         thumbnail={<div>thumb</div>}
@@ -35,6 +48,7 @@ describe("SourceAssetCard", () => {
     );
 
     expect(screen.getByLabelText("Disable Asset A")).toBeInTheDocument();
+    expect(screen.getByText("Image")).toBeInTheDocument();
     expect(screen.getByText("Asset A").closest("[data-state]")).toHaveAttribute(
       "data-state",
       "enabled",
@@ -44,7 +58,7 @@ describe("SourceAssetCard", () => {
   it("renders disabled assets with an enable button", () => {
     render(
       <SourceAssetCard
-        asset={asset}
+        asset={imageAsset}
         enabled={false}
         onToggle={vi.fn()}
         thumbnail={<div>thumb</div>}
@@ -64,7 +78,7 @@ describe("SourceAssetCard", () => {
 
     render(
       <SourceAssetCard
-        asset={asset}
+        asset={imageAsset}
         enabled
         onToggle={onToggle}
         thumbnail={<div>thumb</div>}
@@ -75,5 +89,25 @@ describe("SourceAssetCard", () => {
 
     expect(onToggle).toHaveBeenCalledWith("asset_a");
     expect(onToggle).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders an edit button for editable generated sources", async () => {
+    const user = userEvent.setup();
+    const onEdit = vi.fn();
+
+    render(
+      <SourceAssetCard
+        asset={gradientAsset}
+        enabled
+        onToggle={vi.fn()}
+        onEdit={onEdit}
+        thumbnail={<div>thumb</div>}
+      />,
+    );
+
+    expect(screen.getByText("Gradient")).toBeInTheDocument();
+    await user.click(screen.getByLabelText("Edit Sunrise"));
+
+    expect(onEdit).toHaveBeenCalledWith("asset_gradient");
   });
 });

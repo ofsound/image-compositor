@@ -18,8 +18,21 @@ export const DEFAULT_CANVAS: CanvasSettings = {
   width: 1800,
   height: 1200,
   background: "#f5efe4",
+  backgroundAlpha: 0,
   inset: 48,
 };
+
+export function normalizeCanvasSettings(
+  canvas: Partial<CanvasSettings> | undefined,
+): CanvasSettings {
+  return {
+    width: canvas?.width ?? DEFAULT_CANVAS.width,
+    height: canvas?.height ?? DEFAULT_CANVAS.height,
+    background: canvas?.background ?? DEFAULT_CANVAS.background,
+    backgroundAlpha: canvas?.backgroundAlpha ?? DEFAULT_CANVAS.backgroundAlpha,
+    inset: canvas?.inset ?? DEFAULT_CANVAS.inset,
+  };
+}
 
 export const DEFAULT_LAYOUT: LayoutSettings = {
   family: "blocks",
@@ -120,6 +133,7 @@ export function normalizeProjectSnapshot(
 ): ProjectSnapshot {
   return {
     ...snapshot,
+    canvas: normalizeCanvasSettings(snapshot.canvas),
     sourceMapping: normalizeSourceMapping(snapshot.sourceMapping, fallbackCropDistribution),
   };
 }
@@ -131,6 +145,7 @@ export function normalizeProjectDocument(
   return {
     ...project,
     deletedAt: project.deletedAt ?? null,
+    canvas: normalizeCanvasSettings(project.canvas),
     sourceMapping: normalizeSourceMapping(project.sourceMapping, fallbackCropDistribution),
   };
 }

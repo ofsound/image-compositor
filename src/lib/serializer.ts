@@ -1,6 +1,6 @@
 import JSZip from "jszip";
 
-import { getAssetStoragePaths } from "@/lib/assets";
+import { getAssetStoragePaths, normalizeSourceAsset } from "@/lib/assets";
 import { db } from "@/lib/db";
 import { readBlob, writeBlob } from "@/lib/opfs";
 import { makeId } from "@/lib/id";
@@ -73,7 +73,9 @@ export async function loadProjectBundle(bundle: Blob) {
   const versionDocs = (JSON.parse(versions) as ProjectVersion[]).map((version) =>
     normalizeProjectVersion(version),
   );
-  const assetDocs = JSON.parse(assets) as SourceAsset[];
+  const assetDocs = (JSON.parse(assets) as SourceAsset[]).map((asset) =>
+    normalizeSourceAsset(asset),
+  );
   const assetBlobs: Record<string, Blob> = {};
   const versionBlobs: Record<string, Blob> = {};
 

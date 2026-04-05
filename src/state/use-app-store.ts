@@ -30,12 +30,37 @@ import type {
   BundleImportInspection,
   GradientSourceAsset,
   ProjectDocument,
+  ProjectSnapshot,
   ProjectVersion,
   SolidSourceAsset,
   SourceAsset,
 } from "@/types/project";
 
 type BundleImportResolution = "replace" | "copy";
+
+interface ProjectChangeHistoryEntry {
+  kind: "project-change";
+  projectId: string;
+  before: ProjectSnapshot;
+  after: ProjectSnapshot;
+}
+
+interface AddAssetsHistoryEntry {
+  kind: "add-assets";
+  projectId: string;
+  assets: SourceAsset[];
+  sourceIdsBefore: string[];
+  sourceIdsAfter: string[];
+}
+
+type HistoryEntry = ProjectChangeHistoryEntry | AddAssetsHistoryEntry;
+
+interface ProjectHistoryState {
+  past: HistoryEntry[];
+  future: HistoryEntry[];
+}
+
+type HistoryByProject = Record<string, ProjectHistoryState>;
 
 interface AppState {
   ready: boolean;
@@ -45,6 +70,9 @@ interface AppState {
   assets: SourceAsset[];
   versions: ProjectVersion[];
   activeProjectId: string | null;
+  historyByProject: HistoryByProject;
+  canUndo: boolean;
+  canRedo: boolean;
   bootstrap: () => Promise<void>;
   setStatus: (status: string) => void;
   createProject: () => Promise<void>;
@@ -56,6 +84,7 @@ interface AppState {
   setActiveProject: (projectId: string) => Promise<void>;
   updateProject: (
     updater: (project: ProjectDocument) => ProjectDocument,
+    options?: { recordHistory?: boolean },
   ) => Promise<void>;
   importFiles: (files: FileList | File[]) => Promise<void>;
   addSolidSource: (input: SolidSourceInput) => Promise<void>;
@@ -78,6 +107,8 @@ interface AppState {
     inspection: BundleImportInspection,
     resolution: BundleImportResolution,
   ) => Promise<void>;
+  undo: () => Promise<void>;
+  redo: () => Promise<void>;
 }
 
 function sortByUpdated(projects: ProjectDocument[]) {
@@ -106,6 +137,82 @@ function getActiveProject(state: Pick<AppState, "projects" | "activeProjectId">)
 
 function getNextProjectTitle(projects: ProjectDocument[]) {
   return `Study ${getLiveProjects(projects).length + 1}`;
+}
+
+function createProjectSnapshot(project: ProjectDocument): ProjectSnapshot {
+  return structuredClone({
+    sourceIds: project.sourceIds,
+    canvas: project.canvas,
+    layout: project.layout,
+    sourceMapping: project.sourceMapping,
+    effects: project.effects,
+    compositing: project.compositing,
+    export: project.export,
+    activeSeed: project.activeSeed,
+    presets: project.presets,
+    passes: project.passes,
+  });
+}
+
+function snapshotsEqual(a: ProjectSnapshot, b: ProjectSnapshot) {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+function getProjectHistory(historyByProject: HistoryByProject, projectId: string | null) {
+  if (!projectId) {
+    return { past: [], future: [] } satisfies ProjectHistoryState;
+  }
+
+  return historyByProject[projectId] ?? { past: [], future: [] };
+}
+
+function getHistoryFlags(historyByProject: HistoryByProject, projectId: string | null) {
+  const history = getProjectHistory(historyByProject, projectId);
+  return {
+    canUndo: history.past.length > 0,
+    canRedo: history.future.length > 0,
+  };
+}
+
+function patchHistory(
+  historyByProject: HistoryByProject,
+  projectId: string,
+  updater: (history: ProjectHistoryState) => ProjectHistoryState,
+) {
+  return {
+    ...historyByProject,
+    [projectId]: updater(getProjectHistory(historyByProject, projectId)),
+  };
+}
+
+function clearProjectHistory(historyByProject: HistoryByProject, projectId: string) {
+  if (!(projectId in historyByProject)) return historyByProject;
+
+  const nextHistory = { ...historyByProject };
+  delete nextHistory[projectId];
+  return nextHistory;
+}
+
+function withHistoryFlags(
+  partial: Partial<AppState>,
+  historyByProject: HistoryByProject,
+  activeProjectId: string | null,
+) {
+  return {
+    ...partial,
+    ...getHistoryFlags(historyByProject, activeProjectId),
+  };
+}
+
+function upsertProject(projects: ProjectDocument[], project: ProjectDocument) {
+  return sortByUpdated(
+    projects.map((entry) => (entry.id === project.id ? normalizeProjectDocument(project) : entry)),
+  );
+}
+
+function removeAssetsById(assets: SourceAsset[], assetIds: string[]) {
+  const assetIdSet = new Set(assetIds);
+  return sortAssetsByCreated(assets.filter((asset) => !assetIdSet.has(asset.id)));
 }
 
 async function persistActiveProjectId(projectId: string | null) {
@@ -157,17 +264,24 @@ async function syncWorkspace(
   options: {
     activeProjectId?: string | null;
     busy?: boolean;
+    historyByProject: HistoryByProject;
     ready?: boolean;
     status: string;
   },
 ) {
   const snapshot = await loadWorkspaceSnapshot(options.activeProjectId);
-  set({
-    ...snapshot,
-    busy: options.busy ?? false,
-    ready: options.ready ?? true,
-    status: options.status,
-  });
+  set(
+    withHistoryFlags(
+      {
+        ...snapshot,
+        busy: options.busy ?? false,
+        ready: options.ready ?? true,
+        status: options.status,
+      },
+      options.historyByProject,
+      snapshot.activeProjectId,
+    ),
+  );
 }
 
 async function deleteProjectData(projectId: string) {
@@ -203,10 +317,18 @@ export const useAppStore = create<AppState>((set, get) => ({
   assets: [],
   versions: [],
   activeProjectId: null,
+  historyByProject: {},
+  canUndo: false,
+  canRedo: false,
 
   async bootstrap() {
     set({ busy: true, status: "Loading local workspace…" });
-    await syncWorkspace(set, { busy: false, ready: true, status: "Ready." });
+    await syncWorkspace(set, {
+      busy: false,
+      historyByProject: get().historyByProject,
+      ready: true,
+      status: "Ready.",
+    });
   },
 
   setStatus(status) {
@@ -218,6 +340,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     await Promise.all([db.projects.put(project), persistActiveProjectId(project.id)]);
     await syncWorkspace(set, {
       activeProjectId: project.id,
+      historyByProject: get().historyByProject,
       status: "Created a new project.",
     });
   },
@@ -235,6 +358,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     await syncWorkspace(set, {
       activeProjectId: get().activeProjectId,
+      historyByProject: get().historyByProject,
       status: "Project renamed.",
     });
   },
@@ -274,6 +398,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     await syncWorkspace(set, {
       activeProjectId: duplicateProject.id,
       busy: false,
+      historyByProject: get().historyByProject,
       status: "Project duplicated.",
     });
   },
@@ -292,6 +417,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     await syncWorkspace(set, {
       activeProjectId: get().activeProjectId === projectId ? null : get().activeProjectId,
+      historyByProject: get().historyByProject,
       status: "Project moved to trash.",
     });
   },
@@ -308,6 +434,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     await syncWorkspace(set, {
       activeProjectId: get().activeProjectId,
+      historyByProject: get().historyByProject,
       status: "Project restored.",
     });
   },
@@ -315,9 +442,18 @@ export const useAppStore = create<AppState>((set, get) => ({
   async purgeProject(projectId) {
     set({ busy: true, status: "Deleting project permanently…" });
     await deleteProjectData(projectId);
+    const historyByProject = clearProjectHistory(get().historyByProject, projectId);
+    set(
+      withHistoryFlags(
+        { historyByProject },
+        historyByProject,
+        get().activeProjectId === projectId ? null : get().activeProjectId,
+      ),
+    );
     await syncWorkspace(set, {
       activeProjectId: get().activeProjectId === projectId ? null : get().activeProjectId,
       busy: false,
+      historyByProject,
       status: "Project deleted permanently.",
     });
   },
@@ -328,27 +464,55 @@ export const useAppStore = create<AppState>((set, get) => ({
     );
     if (!project) return;
     await persistActiveProjectId(projectId);
-    set({ activeProjectId: projectId, status: "Project loaded." });
+    set(
+      withHistoryFlags(
+        { activeProjectId: projectId, status: "Project loaded." },
+        get().historyByProject,
+        projectId,
+      ),
+    );
   },
 
-  async updateProject(updater) {
+  async updateProject(updater, options) {
     const project = getActiveProject(get());
     if (!project) return;
 
+    const before = createProjectSnapshot(project);
     const updatedProject = updater({
       ...project,
       updatedAt: new Date().toISOString(),
     });
+    const after = createProjectSnapshot(updatedProject);
+
+    if (snapshotsEqual(before, after)) {
+      return;
+    }
 
     await db.projects.put(updatedProject);
-    set((state) => ({
-      projects: sortByUpdated(
-        state.projects.map((entry) =>
-          entry.id === updatedProject.id ? normalizeProjectDocument(updatedProject) : entry,
-        ),
-      ),
-      status: "Draft saved locally.",
-    }));
+    set((state) => {
+      const historyByProject =
+        options?.recordHistory === false
+          ? state.historyByProject
+          : patchHistory(state.historyByProject, updatedProject.id, (history) => ({
+              past: [
+                ...history.past,
+                {
+                  kind: "project-change",
+                  projectId: updatedProject.id,
+                  before,
+                  after,
+                } satisfies ProjectChangeHistoryEntry,
+              ],
+              future: [],
+            }));
+
+      return {
+        projects: upsertProject(state.projects, updatedProject),
+        historyByProject,
+        status: "Draft saved locally.",
+        ...getHistoryFlags(historyByProject, state.activeProjectId),
+      };
+    });
   },
 
   async importFiles(files) {
@@ -381,14 +545,30 @@ export const useAppStore = create<AppState>((set, get) => ({
 
       await db.projects.put(nextProject);
 
-      set((state) => ({
-        assets: sortAssetsByCreated([...state.assets, ...importedAssets]),
-        projects: sortByUpdated(
-          state.projects.map((entry) => (entry.id === nextProject.id ? nextProject : entry)),
-        ),
-        busy: false,
-        status: `Imported ${importedAssets.length} source image(s).`,
-      }));
+      set((state) => {
+        const historyByProject = patchHistory(state.historyByProject, nextProject.id, (history) => ({
+          past: [
+            ...history.past,
+            {
+              kind: "add-assets",
+              projectId: nextProject.id,
+              assets: structuredClone(importedAssets),
+              sourceIdsBefore: structuredClone(activeProject.sourceIds),
+              sourceIdsAfter: structuredClone(nextProject.sourceIds),
+            } satisfies AddAssetsHistoryEntry,
+          ],
+          future: [],
+        }));
+
+        return {
+          assets: sortAssetsByCreated([...state.assets, ...importedAssets]),
+          projects: upsertProject(state.projects, nextProject),
+          historyByProject,
+          busy: false,
+          status: `Imported ${importedAssets.length} source image(s).`,
+          ...getHistoryFlags(historyByProject, state.activeProjectId),
+        };
+      });
     } catch (error) {
       set({
         busy: false,
@@ -420,14 +600,30 @@ export const useAppStore = create<AppState>((set, get) => ({
 
       await db.projects.put(nextProject);
 
-      set((state) => ({
-        assets: sortAssetsByCreated([...state.assets, asset]),
-        projects: sortByUpdated(
-          state.projects.map((entry) => (entry.id === nextProject.id ? nextProject : entry)),
-        ),
-        busy: false,
-        status: "Solid source added.",
-      }));
+      set((state) => {
+        const historyByProject = patchHistory(state.historyByProject, nextProject.id, (history) => ({
+          past: [
+            ...history.past,
+            {
+              kind: "add-assets",
+              projectId: nextProject.id,
+              assets: [structuredClone(asset)],
+              sourceIdsBefore: structuredClone(activeProject.sourceIds),
+              sourceIdsAfter: structuredClone(nextProject.sourceIds),
+            } satisfies AddAssetsHistoryEntry,
+          ],
+          future: [],
+        }));
+
+        return {
+          assets: sortAssetsByCreated([...state.assets, asset]),
+          projects: upsertProject(state.projects, nextProject),
+          historyByProject,
+          busy: false,
+          status: "Solid source added.",
+          ...getHistoryFlags(historyByProject, state.activeProjectId),
+        };
+      });
     } catch (error) {
       set({
         busy: false,
@@ -459,14 +655,30 @@ export const useAppStore = create<AppState>((set, get) => ({
 
       await db.projects.put(nextProject);
 
-      set((state) => ({
-        assets: sortAssetsByCreated([...state.assets, asset]),
-        projects: sortByUpdated(
-          state.projects.map((entry) => (entry.id === nextProject.id ? nextProject : entry)),
-        ),
-        busy: false,
-        status: "Gradient source added.",
-      }));
+      set((state) => {
+        const historyByProject = patchHistory(state.historyByProject, nextProject.id, (history) => ({
+          past: [
+            ...history.past,
+            {
+              kind: "add-assets",
+              projectId: nextProject.id,
+              assets: [structuredClone(asset)],
+              sourceIdsBefore: structuredClone(activeProject.sourceIds),
+              sourceIdsAfter: structuredClone(nextProject.sourceIds),
+            } satisfies AddAssetsHistoryEntry,
+          ],
+          future: [],
+        }));
+
+        return {
+          assets: sortAssetsByCreated([...state.assets, asset]),
+          projects: upsertProject(state.projects, nextProject),
+          historyByProject,
+          busy: false,
+          status: "Gradient source added.",
+          ...getHistoryFlags(historyByProject, state.activeProjectId),
+        };
+      });
     } catch (error) {
       set({
         busy: false,
@@ -500,16 +712,21 @@ export const useAppStore = create<AppState>((set, get) => ({
       };
       await db.projects.put(updatedProject);
 
-      set((state) => ({
-        assets: sortAssetsByCreated(
-          state.assets.map((entry) => (entry.id === updatedAsset.id ? updatedAsset : entry)),
-        ),
-        projects: sortByUpdated(
-          state.projects.map((entry) => (entry.id === updatedProject.id ? updatedProject : entry)),
-        ),
-        busy: false,
-        status: `${asset.kind === "solid" ? "Solid" : "Gradient"} source updated.`,
-      }));
+      set((state) => {
+        const historyByProject = clearProjectHistory(state.historyByProject, updatedProject.id);
+        return {
+          assets: sortAssetsByCreated(
+            state.assets.map((entry) => (entry.id === updatedAsset.id ? updatedAsset : entry)),
+          ),
+          projects: sortByUpdated(
+            state.projects.map((entry) => (entry.id === updatedProject.id ? updatedProject : entry)),
+          ),
+          historyByProject,
+          busy: false,
+          status: `${asset.kind === "solid" ? "Solid" : "Gradient"} source updated.`,
+          ...getHistoryFlags(historyByProject, state.activeProjectId),
+        };
+      });
     } catch (error) {
       set({
         busy: false,
@@ -590,12 +807,18 @@ export const useAppStore = create<AppState>((set, get) => ({
     };
 
     await db.projects.put(updatedProject);
-    set((state) => ({
-      projects: sortByUpdated(
-        state.projects.map((entry) => (entry.id === updatedProject.id ? updatedProject : entry)),
-      ),
-      status: `Restored "${normalizedVersion.label}".`,
-    }));
+    set((state) => {
+      const historyByProject = clearProjectHistory(state.historyByProject, updatedProject.id);
+      return withHistoryFlags(
+        {
+          projects: upsertProject(state.projects, updatedProject),
+          historyByProject,
+          status: `Restored "${normalizedVersion.label}".`,
+        },
+        historyByProject,
+        state.activeProjectId,
+      );
+    });
   },
 
   async exportCurrentImage(project, assets, bitmapLookup) {
@@ -656,14 +879,142 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     const bundle = resolution === "copy" ? createImportCopy(inspection.bundle) : inspection.bundle;
     await persistImportedProjectBundle(bundle);
+    const historyByProject = clearProjectHistory(get().historyByProject, bundle.projectDoc.id);
+    set(
+      withHistoryFlags(
+        { historyByProject },
+        historyByProject,
+        bundle.projectDoc.id,
+      ),
+    );
 
     await syncWorkspace(set, {
       activeProjectId: bundle.projectDoc.id,
       busy: false,
+      historyByProject,
       status:
         resolution === "copy"
           ? `Imported ${bundle.projectDoc.title} as a copy.`
           : `Imported ${bundle.projectDoc.title}.`,
+    });
+  },
+
+  async undo() {
+    const project = getActiveProject(get());
+    if (!project) return;
+
+    const history = getProjectHistory(get().historyByProject, project.id);
+    const entry = history.past.at(-1);
+    if (!entry) return;
+
+    if (entry.kind === "project-change") {
+      const updatedProject: ProjectDocument = {
+        ...project,
+        ...structuredClone(entry.before),
+        updatedAt: new Date().toISOString(),
+      };
+      await db.projects.put(updatedProject);
+
+      set((state) => {
+        const historyByProject = patchHistory(state.historyByProject, project.id, (currentHistory) => ({
+          past: currentHistory.past.slice(0, -1),
+          future: [...currentHistory.future, entry],
+        }));
+
+        return {
+          projects: upsertProject(state.projects, updatedProject),
+          historyByProject,
+          status: "Undo applied.",
+          ...getHistoryFlags(historyByProject, state.activeProjectId),
+        };
+      });
+      return;
+    }
+
+    const updatedProject: ProjectDocument = {
+      ...project,
+      sourceIds: structuredClone(entry.sourceIdsBefore),
+      updatedAt: new Date().toISOString(),
+    };
+    const assetIds = entry.assets.map((asset) => asset.id);
+
+    await Promise.all([
+      db.assets.bulkDelete(assetIds),
+      db.projects.put(updatedProject),
+    ]);
+
+    set((state) => {
+      const historyByProject = patchHistory(state.historyByProject, project.id, (currentHistory) => ({
+        past: currentHistory.past.slice(0, -1),
+        future: [...currentHistory.future, entry],
+      }));
+
+      return {
+        assets: removeAssetsById(state.assets, assetIds),
+        projects: upsertProject(state.projects, updatedProject),
+        historyByProject,
+        status: "Undo applied.",
+        ...getHistoryFlags(historyByProject, state.activeProjectId),
+      };
+    });
+  },
+
+  async redo() {
+    const project = getActiveProject(get());
+    if (!project) return;
+
+    const history = getProjectHistory(get().historyByProject, project.id);
+    const entry = history.future.at(-1);
+    if (!entry) return;
+
+    if (entry.kind === "project-change") {
+      const updatedProject: ProjectDocument = {
+        ...project,
+        ...structuredClone(entry.after),
+        updatedAt: new Date().toISOString(),
+      };
+      await db.projects.put(updatedProject);
+
+      set((state) => {
+        const historyByProject = patchHistory(state.historyByProject, project.id, (currentHistory) => ({
+          past: [...currentHistory.past, entry],
+          future: currentHistory.future.slice(0, -1),
+        }));
+
+        return {
+          projects: upsertProject(state.projects, updatedProject),
+          historyByProject,
+          status: "Redo applied.",
+          ...getHistoryFlags(historyByProject, state.activeProjectId),
+        };
+      });
+      return;
+    }
+
+    const updatedProject: ProjectDocument = {
+      ...project,
+      sourceIds: structuredClone(entry.sourceIdsAfter),
+      updatedAt: new Date().toISOString(),
+    };
+
+    await Promise.all([
+      db.assets.bulkPut(entry.assets),
+      db.projects.put(updatedProject),
+    ]);
+
+    set((state) => {
+      const historyByProject = patchHistory(state.historyByProject, project.id, (currentHistory) => ({
+        past: [...currentHistory.past, entry],
+        future: currentHistory.future.slice(0, -1),
+      }));
+
+      return {
+        assets: sortAssetsByCreated([...state.assets, ...entry.assets]),
+        projects: upsertProject(state.projects, updatedProject),
+        historyByProject,
+        status: "Redo applied.",
+        ...getHistoryFlags(historyByProject, state.activeProjectId),
+      };
     });
   },
 }));

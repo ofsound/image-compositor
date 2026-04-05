@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createProjectDocument } from "@/lib/project-defaults";
 import App from "@/App";
@@ -60,6 +60,9 @@ function createStoreState(overrides?: {
     assets: [],
     versions: [],
     activeProjectId: project.id,
+    historyByProject: {},
+    canUndo: false,
+    canRedo: false,
     bootstrap: vi.fn(async () => undefined),
     createProject: vi.fn(async () => undefined),
     renameProject: vi.fn(async () => undefined),
@@ -82,6 +85,8 @@ function createStoreState(overrides?: {
       throw new Error("not used");
     }),
     resolveBundleImport: vi.fn(async () => undefined),
+    undo: vi.fn(async () => undefined),
+    redo: vi.fn(async () => undefined),
   };
 }
 
@@ -188,5 +193,70 @@ describe("App conditional sliders", () => {
     expect(screen.getAllByLabelText("Corner Radius")[1]).toHaveAttribute(
       "data-disabled",
     );
+  });
+});
+
+describe("App undo and redo controls", () => {
+  beforeEach(() => {
+    mockedUseAppStore.mockReset();
+  });
+
+  it("renders undo and redo buttons with store availability", () => {
+    mockedUseAppStore.mockReturnValue({
+      ...createStoreState(),
+      canUndo: true,
+      canRedo: false,
+    });
+
+    render(<App />);
+
+    expect(screen.getByRole("button", { name: "Undo" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Redo" })).toBeDisabled();
+  });
+
+  it("invokes undo and redo from toolbar buttons and shortcuts", () => {
+    const undo = vi.fn(async () => undefined);
+    const redo = vi.fn(async () => undefined);
+
+    mockedUseAppStore.mockReturnValue({
+      ...createStoreState(),
+      canUndo: true,
+      canRedo: true,
+      undo,
+      redo,
+    });
+
+    render(<App />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+    fireEvent.click(screen.getByRole("button", { name: "Redo" }));
+    fireEvent.keyDown(window, { key: "z", ctrlKey: true });
+    fireEvent.keyDown(window, { key: "z", ctrlKey: true, shiftKey: true });
+    fireEvent.keyDown(window, { key: "y", ctrlKey: true });
+
+    expect(undo).toHaveBeenCalledTimes(2);
+    expect(redo).toHaveBeenCalledTimes(3);
+  });
+
+  it("ignores undo shortcuts while typing in editable inputs", () => {
+    const undo = vi.fn(async () => undefined);
+
+    mockedUseAppStore.mockReturnValue({
+      ...createStoreState(),
+      canUndo: true,
+      undo,
+    });
+
+    render(<App />);
+
+    const input = document.createElement("input");
+    document.body.appendChild(input);
+    input.focus();
+
+    fireEvent.keyDown(input, { key: "z", ctrlKey: true });
+
+    expect(undo).not.toHaveBeenCalled();
+
+    input.remove();
   });
 });

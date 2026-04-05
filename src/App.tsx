@@ -13,10 +13,12 @@ import {
   Layers,
   Pencil,
   Plus,
+  Redo2,
   RefreshCw,
   Save,
   Sparkles,
   Trash2,
+  Undo2,
 } from "lucide-react";
 import { Toaster } from "sonner";
 
@@ -207,6 +209,18 @@ function ControlBlock({
   );
 }
 
+function isEditableTarget(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) return false;
+  const tagName = target.tagName.toLowerCase();
+
+  return (
+    target.isContentEditable ||
+    tagName === "input" ||
+    tagName === "textarea" ||
+    tagName === "select"
+  );
+}
+
 function SliderField({
   label,
   min,
@@ -226,16 +240,32 @@ function SliderField({
   onChange: (value: number) => void;
   formatter?: (value: number) => string;
 }) {
+  const [draftValue, setDraftValue] = useState<number | null>(null);
+
+  useEffect(() => {
+    setDraftValue(null);
+  }, [value]);
+
+  const displayValue = draftValue ?? value;
+
   return (
-    <ControlBlock label={label} value={formatter(value)}>
+    <ControlBlock label={label} value={formatter(displayValue)}>
       <Slider
         aria-label={label}
         disabled={disabled}
         min={min}
         max={max}
         step={step}
-        value={[value]}
-        onValueChange={(next) => onChange(next[0] ?? value)}
+        value={[displayValue]}
+        onValueChange={(next) => setDraftValue(next[0] ?? value)}
+        onValueCommit={(next) => {
+          const committedValue = next[0] ?? draftValue ?? value;
+          if (committedValue === value) {
+            setDraftValue(null);
+            return;
+          }
+          onChange(committedValue);
+        }}
       />
     </ControlBlock>
   );
@@ -313,6 +343,8 @@ function App() {
     assets,
     versions,
     activeProjectId,
+    canUndo,
+    canRedo,
     bootstrap,
     createProject,
     renameProject,
@@ -333,11 +365,39 @@ function App() {
     exportCurrentBundle,
     inspectBundleImport,
     resolveBundleImport,
+    undo,
+    redo,
   } = useAppStore();
 
   useEffect(() => {
     void bootstrap();
   }, [bootstrap]);
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if ((!event.metaKey && !event.ctrlKey) || isEditableTarget(event.target)) {
+        return;
+      }
+
+      const key = event.key.toLowerCase();
+      const wantsUndo = key === "z" && !event.shiftKey;
+      const wantsRedo = (key === "z" && event.shiftKey) || key === "y";
+
+      if (wantsUndo && canUndo && !busy) {
+        event.preventDefault();
+        void undo();
+        return;
+      }
+
+      if (wantsRedo && canRedo && !busy) {
+        event.preventDefault();
+        void redo();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [busy, canRedo, canUndo, redo, undo]);
 
   const activeProjects = projects.filter(
     (project) => project.deletedAt === null,
@@ -603,6 +663,24 @@ function App() {
           </div>
 
           <div className="flex flex-wrap items-center justify-end gap-1.5">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => void undo()}
+              disabled={!canUndo || busy}
+            >
+              <Undo2 className="h-3.5 w-3.5" />
+              Undo
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => void redo()}
+              disabled={!canRedo || busy}
+            >
+              <Redo2 className="h-3.5 w-3.5" />
+              Redo
+            </Button>
             <Button
               variant="ghost"
               size="sm"

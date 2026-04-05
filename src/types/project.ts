@@ -80,6 +80,7 @@ export interface CanvasSettings {
 export interface LayoutSettings {
   family: LayoutFamily;
   shapeMode: GeometryShape;
+  rectCornerRadius: number;
   density: number;
   columns: number;
   rows: number;

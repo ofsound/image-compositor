@@ -410,6 +410,7 @@ function App() {
   };
   const isStripsFamily = activeProject.layout.family === "strips";
   const isGridFamily = activeProject.layout.family === "grid";
+  const isRectShapeMode = activeProject.layout.shapeMode === "rect";
   const usesGutter = isGridFamily || isStripsFamily;
   const isRadialSymmetry = activeProject.layout.symmetryMode === "radial";
   const isWeightedAssignment =
@@ -867,6 +868,24 @@ function App() {
                         </SelectContent>
                       </Select>
                     </ControlBlock>
+                    <SliderField
+                      label="Corner Radius"
+                      disabled={!isRectShapeMode}
+                      min={0}
+                      max={1}
+                      step={0.01}
+                      value={activeProject.layout.rectCornerRadius}
+                      formatter={(value) => `${Math.round(value * 100)}%`}
+                      onChange={(value) =>
+                        patchProject((project) => ({
+                          ...project,
+                          layout: {
+                            ...project.layout,
+                            rectCornerRadius: value,
+                          },
+                        }))
+                      }
+                    />
                     <SliderField
                       label="Density"
                       disabled={!isStripsFamily}

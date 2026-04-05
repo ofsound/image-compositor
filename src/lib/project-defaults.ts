@@ -37,6 +37,7 @@ export function normalizeCanvasSettings(
 export const DEFAULT_LAYOUT: LayoutSettings = {
   family: "grid",
   shapeMode: "rect",
+  rectCornerRadius: 0,
   density: 0.68,
   columns: 8,
   rows: 8,
@@ -65,10 +66,10 @@ export const DEFAULT_EFFECTS: EffectSettings = {
   sharpen: 0,
   mirror: false,
   kaleidoscopeSegments: 1,
-  rotationJitter: 18,
-  scaleJitter: 0.14,
-  displacement: 24,
-  distortion: 0.24,
+  rotationJitter: 0,
+  scaleJitter: 0,
+  displacement: 0,
+  distortion: 0,
 };
 
 export const DEFAULT_COMPOSITING: CompositingSettings = {
@@ -112,6 +113,29 @@ export const DEFAULT_PRESETS: GeneratorPreset[] = [
   },
 ];
 
+export function normalizeLayoutSettings(
+  layout: Partial<LayoutSettings> | undefined,
+): LayoutSettings {
+  return {
+    family: layout?.family ?? DEFAULT_LAYOUT.family,
+    shapeMode: layout?.shapeMode ?? DEFAULT_LAYOUT.shapeMode,
+    rectCornerRadius:
+      layout?.rectCornerRadius ?? DEFAULT_LAYOUT.rectCornerRadius,
+    density: layout?.density ?? DEFAULT_LAYOUT.density,
+    columns: layout?.columns ?? DEFAULT_LAYOUT.columns,
+    rows: layout?.rows ?? DEFAULT_LAYOUT.rows,
+    gutter: layout?.gutter ?? DEFAULT_LAYOUT.gutter,
+    blockDepth: layout?.blockDepth ?? DEFAULT_LAYOUT.blockDepth,
+    stripOrientation:
+      layout?.stripOrientation ?? DEFAULT_LAYOUT.stripOrientation,
+    radialSegments: layout?.radialSegments ?? DEFAULT_LAYOUT.radialSegments,
+    radialRings: layout?.radialRings ?? DEFAULT_LAYOUT.radialRings,
+    symmetryMode: layout?.symmetryMode ?? DEFAULT_LAYOUT.symmetryMode,
+    symmetryCopies: layout?.symmetryCopies ?? DEFAULT_LAYOUT.symmetryCopies,
+    randomness: layout?.randomness ?? DEFAULT_LAYOUT.randomness,
+  };
+}
+
 export function normalizeSourceMapping(
   sourceMapping: Partial<SourceMappingSettings> | undefined,
   fallbackCropDistribution: CropDistribution = "center",
@@ -134,6 +158,7 @@ export function normalizeProjectSnapshot(
   return {
     ...snapshot,
     canvas: normalizeCanvasSettings(snapshot.canvas),
+    layout: normalizeLayoutSettings(snapshot.layout),
     sourceMapping: normalizeSourceMapping(snapshot.sourceMapping, fallbackCropDistribution),
   };
 }
@@ -146,6 +171,7 @@ export function normalizeProjectDocument(
     ...project,
     deletedAt: project.deletedAt ?? null,
     canvas: normalizeCanvasSettings(project.canvas),
+    layout: normalizeLayoutSettings(project.layout),
     sourceMapping: normalizeSourceMapping(project.sourceMapping, fallbackCropDistribution),
   };
 }

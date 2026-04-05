@@ -30,6 +30,7 @@ const bundle: ImportedProjectBundle = {
     layout: {
       family: "grid",
       shapeMode: "rect",
+      rectCornerRadius: 0,
       density: 0.5,
       columns: 2,
       rows: 2,
@@ -98,6 +99,7 @@ const bundle: ImportedProjectBundle = {
         layout: {
           family: "grid",
           shapeMode: "rect",
+          rectCornerRadius: 0,
           density: 0.5,
           columns: 2,
           rows: 2,

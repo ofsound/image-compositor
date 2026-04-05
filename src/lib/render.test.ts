@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createProjectDocument } from "@/lib/project-defaults";
+import {
+  createProjectDocument,
+  normalizeLayoutSettings,
+  normalizeProjectDocument,
+  normalizeProjectSnapshot,
+} from "@/lib/project-defaults";
 import { exportProjectImage, renderProjectToCanvas } from "@/lib/render";
 import type { SourceAsset } from "@/types/project";
 
@@ -56,6 +61,93 @@ const asset: SourceAsset = {
 };
 
 describe("renderProjectToCanvas", () => {
+  it("defaults missing rect corner radius values to zero during normalization", () => {
+    const project = createProjectDocument("Normalize Radius");
+    const snapshot = structuredClone(project);
+
+    delete (project.layout as Partial<typeof project.layout>).rectCornerRadius;
+    delete (snapshot.layout as Partial<typeof snapshot.layout>).rectCornerRadius;
+
+    expect(normalizeProjectDocument(project).layout.rectCornerRadius).toBe(0);
+    expect(normalizeProjectSnapshot(snapshot).layout.rectCornerRadius).toBe(0);
+    expect(normalizeLayoutSettings(undefined).rectCornerRadius).toBe(0);
+  });
+
+  it("creates new projects with a square rect corner radius default", () => {
+    const project = createProjectDocument("Square Default");
+
+    expect(project.layout.rectCornerRadius).toBe(0);
+  });
+
+  it("uses the configured rect corner radius scale", async () => {
+    const project = createProjectDocument("Rect Radius");
+    project.layout.family = "grid";
+    project.layout.columns = 1;
+    project.layout.rows = 1;
+    project.layout.shapeMode = "rect";
+    project.layout.rectCornerRadius = 1;
+    project.layout.symmetryMode = "none";
+    project.compositing.overlap = 0;
+    project.effects.rotationJitter = 0;
+    project.effects.scaleJitter = 0;
+    project.effects.displacement = 0;
+    project.effects.distortion = 0;
+    project.effects.sharpen = 0;
+    project.effects.kaleidoscopeSegments = 1;
+
+    const context = createMockContext();
+    const canvas = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn(() => context),
+    } as unknown as HTMLCanvasElement;
+
+    await renderProjectToCanvas(
+      project,
+      [asset],
+      new Map([[asset.id, { asset, bitmap: {} as ImageBitmap }]]),
+      canvas,
+    );
+
+    expect(context.roundRect).toHaveBeenCalled();
+    const [, , width, height, radius] = context.roundRect.mock.calls[0]!;
+    expect(radius).toBe(Math.min(width, height) / 2);
+  });
+
+  it("keeps non-rect shapes unaffected by the rect corner radius setting", async () => {
+    const project = createProjectDocument("Triangle Radius");
+    project.layout.family = "grid";
+    project.layout.columns = 1;
+    project.layout.rows = 1;
+    project.layout.shapeMode = "triangle";
+    project.layout.rectCornerRadius = 1;
+    project.layout.symmetryMode = "none";
+    project.compositing.overlap = 0;
+    project.effects.rotationJitter = 0;
+    project.effects.scaleJitter = 0;
+    project.effects.displacement = 0;
+    project.effects.distortion = 0;
+    project.effects.sharpen = 0;
+    project.effects.kaleidoscopeSegments = 1;
+
+    const context = createMockContext();
+    const canvas = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn(() => context),
+    } as unknown as HTMLCanvasElement;
+
+    await renderProjectToCanvas(
+      project,
+      [asset],
+      new Map([[asset.id, { asset, bitmap: {} as ImageBitmap }]]),
+      canvas,
+    );
+
+    expect(context.roundRect).not.toHaveBeenCalled();
+    expect(context.lineTo).toHaveBeenCalled();
+  });
+
   it("can skip the background pass for transparent export rendering", async () => {
     const project = createProjectDocument("Transparent Export");
     project.canvas.width = 64;

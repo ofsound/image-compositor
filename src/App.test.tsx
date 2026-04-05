@@ -24,6 +24,7 @@ const mockedUseAppStore = vi.mocked(useAppStore);
 
 function createStoreState(overrides?: {
   family?: "grid" | "strips" | "blocks" | "radial";
+  shapeMode?: "rect" | "triangle" | "ring" | "wedge" | "mixed";
   symmetryMode?: "none" | "mirror-x" | "mirror-y" | "quad" | "radial";
   strategy?:
     | "random"
@@ -37,6 +38,10 @@ function createStoreState(overrides?: {
 
   if (overrides?.family) {
     project.layout.family = overrides.family;
+  }
+
+  if (overrides?.shapeMode) {
+    project.layout.shapeMode = overrides.shapeMode;
   }
 
   if (overrides?.symmetryMode) {
@@ -101,8 +106,14 @@ describe("App conditional sliders", () => {
   });
 
   it("disables layout sliders outside their supported families", () => {
-    renderApp({ family: "grid", symmetryMode: "none", strategy: "random" });
+    renderApp({
+      family: "grid",
+      shapeMode: "rect",
+      symmetryMode: "none",
+      strategy: "random",
+    });
 
+    expectSliderEnabled("Corner Radius");
     expectSliderDisabled("Density");
     expectSliderEnabled("Columns");
     expectSliderEnabled("Rows");
@@ -113,8 +124,14 @@ describe("App conditional sliders", () => {
   });
 
   it("enables strips-only density and gutter for strips layouts", () => {
-    renderApp({ family: "strips", symmetryMode: "mirror-x", strategy: "random" });
+    renderApp({
+      family: "strips",
+      shapeMode: "rect",
+      symmetryMode: "mirror-x",
+      strategy: "random",
+    });
 
+    expectSliderEnabled("Corner Radius");
     expectSliderEnabled("Density");
     expectSliderDisabled("Columns");
     expectSliderDisabled("Rows");
@@ -125,10 +142,12 @@ describe("App conditional sliders", () => {
   it("disables gutter for blocks layouts and enables weighted and radial controls when active", () => {
     renderApp({
       family: "blocks",
+      shapeMode: "rect",
       symmetryMode: "radial",
       strategy: "weighted",
     });
 
+    expectSliderEnabled("Corner Radius");
     expectSliderDisabled("Density");
     expectSliderDisabled("Columns");
     expectSliderDisabled("Rows");
@@ -141,10 +160,12 @@ describe("App conditional sliders", () => {
   it("enables palette emphasis only for palette assignment", () => {
     renderApp({
       family: "radial",
+      shapeMode: "rect",
       symmetryMode: "quad",
       strategy: "palette",
     });
 
+    expectSliderEnabled("Corner Radius");
     expectSliderDisabled("Density");
     expectSliderDisabled("Columns");
     expectSliderDisabled("Rows");
@@ -152,5 +173,20 @@ describe("App conditional sliders", () => {
     expectSliderDisabled("Radial Copies");
     expectSliderDisabled("Source Bias");
     expectSliderEnabled("Palette Emphasis");
+  });
+
+  it("enables the corner radius slider only for rect shape mode", () => {
+    renderApp({ shapeMode: "rect" });
+    expectSliderEnabled("Corner Radius");
+
+    mockedUseAppStore.mockReturnValue(
+      createStoreState({ shapeMode: "triangle" }),
+    );
+    render(<App />);
+
+    expect(screen.getAllByLabelText("Corner Radius")).toHaveLength(2);
+    expect(screen.getAllByLabelText("Corner Radius")[1]).toHaveAttribute(
+      "data-disabled",
+    );
   });
 });

@@ -33,6 +33,7 @@ async function loadBitmap(asset: SourceAsset, blob: Blob) {
 function drawShapePath(
   context: RenderContext,
   slice: RenderSlice,
+  project: ProjectDocument,
 ) {
   const { x, y, width, height } = slice.rect;
   const centerX = x + width / 2;
@@ -64,7 +65,9 @@ function drawShapePath(
     return;
   }
 
-  context.roundRect(x, y, width, height, Math.max(8, Math.min(width, height) * 0.08));
+  const maxRadius = Math.min(width, height) / 2;
+  const radius = clamp(project.layout.rectCornerRadius * maxRadius, 0, maxRadius);
+  context.roundRect(x, y, width, height, radius);
 }
 
 function getSourceRect(slice: RenderSlice, asset: SourceAsset, project: ProjectDocument) {
@@ -162,7 +165,7 @@ async function drawSlice(
   context.filter = `blur(${project.effects.blur}px)`;
 
   context.save();
-  drawShapePath(context, slice);
+  drawShapePath(context, slice, project);
   context.clip("evenodd");
   context.drawImage(
     bitmap,
@@ -181,7 +184,7 @@ async function drawSlice(
     context.globalAlpha = project.compositing.shadow * 0.4;
     context.strokeStyle = "rgba(24, 15, 8, 0.2)";
     context.lineWidth = 2;
-    drawShapePath(context, slice);
+    drawShapePath(context, slice, project);
     context.stroke();
   }
 

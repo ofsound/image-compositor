@@ -176,7 +176,9 @@ function SourceColorField({
         <Input
           value={value}
           className="font-mono uppercase"
-          onChange={(event) => onChange(normalizeHexColor(event.target.value, value))}
+          onChange={(event) =>
+            onChange(normalizeHexColor(event.target.value, value))
+          }
         />
       </div>
     </div>
@@ -211,6 +213,7 @@ function SliderField({
   max,
   step,
   value,
+  disabled = false,
   onChange,
   formatter = (next) => next.toFixed(2),
 }: {
@@ -219,12 +222,15 @@ function SliderField({
   max: number;
   step: number;
   value: number;
+  disabled?: boolean;
   onChange: (value: number) => void;
   formatter?: (value: number) => string;
 }) {
   return (
     <ControlBlock label={label} value={formatter(value)}>
       <Slider
+        aria-label={label}
+        disabled={disabled}
         min={min}
         max={max}
         step={step}
@@ -363,7 +369,7 @@ function App() {
     ? assets.filter((asset) => asset.projectId === activeProject.id)
     : [];
   const editingSource = editingSourceId
-    ? projectAssets.find((asset) => asset.id === editingSourceId) ?? null
+    ? (projectAssets.find((asset) => asset.id === editingSourceId) ?? null)
     : null;
   const activeAssets = activeProject
     ? activeProject.sourceIds
@@ -402,6 +408,14 @@ function App() {
       void updateProject(updater);
     });
   };
+  const isStripsFamily = activeProject.layout.family === "strips";
+  const isGridFamily = activeProject.layout.family === "grid";
+  const usesGutter = isGridFamily || isStripsFamily;
+  const isRadialSymmetry = activeProject.layout.symmetryMode === "radial";
+  const isWeightedAssignment =
+    activeProject.sourceMapping.strategy === "weighted";
+  const isPaletteAssignment =
+    activeProject.sourceMapping.strategy === "palette";
 
   const captureThumbnail = () =>
     new Promise<Blob | null>((resolve) => {
@@ -432,7 +446,11 @@ function App() {
       .map((assetId) => projectAssets.find((asset) => asset.id === assetId))
       .filter((asset): asset is SourceAsset => Boolean(asset));
     if (renderedAssets.length === 0) return;
-    await exportCurrentImage(renderedPreview.project, renderedAssets, bitmapLookup);
+    await exportCurrentImage(
+      renderedPreview.project,
+      renderedAssets,
+      bitmapLookup,
+    );
   };
 
   const submitRename = async () => {
@@ -754,9 +772,9 @@ function App() {
                 <CardContent className="flex flex-col gap-3">
                   {projectAssets.length === 0 ? (
                     <div className="rounded-md bg-surface-sunken p-4 text-xs leading-relaxed text-text-faint">
-                      Add image, solid, or gradient sources to begin.
-                      Imported images stay immutable, while generated sources
-                      can be edited later.
+                      Add image, solid, or gradient sources to begin. Imported
+                      images stay immutable, while generated sources can be
+                      edited later.
                     </div>
                   ) : (
                     <div className="flex gap-2 overflow-x-auto overflow-y-hidden pb-1">
@@ -788,9 +806,6 @@ function App() {
             <Card className="min-h-[720px] max-w-[640px] ">
               <CardHeader>
                 <CardTitle>Inspector</CardTitle>
-                <CardDescription>
-                  Deterministic project parameters.
-                </CardDescription>
               </CardHeader>
               <CardContent className="overflow-y-auto">
                 <div className="grid grid-cols-3 gap-4">
@@ -854,6 +869,7 @@ function App() {
                     </ControlBlock>
                     <SliderField
                       label="Density"
+                      disabled={!isStripsFamily}
                       min={0.1}
                       max={1}
                       step={0.01}
@@ -867,8 +883,9 @@ function App() {
                     />
                     <SliderField
                       label="Columns"
+                      disabled={!isGridFamily}
                       min={2}
-                      max={16}
+                      max={32}
                       step={1}
                       value={activeProject.layout.columns}
                       formatter={(value) => `${Math.round(value)}`}
@@ -884,8 +901,9 @@ function App() {
                     />
                     <SliderField
                       label="Rows"
+                      disabled={!isGridFamily}
                       min={2}
-                      max={12}
+                      max={32}
                       step={1}
                       value={activeProject.layout.rows}
                       formatter={(value) => `${Math.round(value)}`}
@@ -901,6 +919,7 @@ function App() {
                     />
                     <SliderField
                       label="Gutter"
+                      disabled={!usesGutter}
                       min={0}
                       max={32}
                       step={1}
@@ -947,6 +966,7 @@ function App() {
                     </ControlBlock>
                     <SliderField
                       label="Radial Copies"
+                      disabled={!isRadialSymmetry}
                       min={2}
                       max={12}
                       step={1}
@@ -1040,7 +1060,10 @@ function App() {
                         <div className="flex items-center justify-between text-xs text-text-muted">
                           <span>Alpha</span>
                           <span className="font-mono text-[10px] text-text-faint">
-                            {Math.round(activeProject.canvas.backgroundAlpha * 100)}%
+                            {Math.round(
+                              activeProject.canvas.backgroundAlpha * 100,
+                            )}
+                            %
                           </span>
                         </div>
                         <Slider
@@ -1141,6 +1164,7 @@ function App() {
                     />
                     <SliderField
                       label="Source Bias"
+                      disabled={!isWeightedAssignment}
                       min={0}
                       max={1}
                       step={0.01}
@@ -1157,6 +1181,7 @@ function App() {
                     />
                     <SliderField
                       label="Palette Emphasis"
+                      disabled={!isPaletteAssignment}
                       min={0}
                       max={1}
                       step={0.01}
@@ -1503,7 +1528,9 @@ function App() {
                 <TabsTrigger
                   key={mode}
                   value={mode}
-                  disabled={Boolean(editingSource) && editingSource?.kind !== mode}
+                  disabled={
+                    Boolean(editingSource) && editingSource?.kind !== mode
+                  }
                 >
                   {formatSourceModeLabel(mode)}
                 </TabsTrigger>
@@ -1562,7 +1589,9 @@ function App() {
                   id="gradient-source-name"
                   placeholder="Gradient #RRGGBB -> #RRGGBB"
                   value={gradientSourceName}
-                  onChange={(event) => setGradientSourceName(event.target.value)}
+                  onChange={(event) =>
+                    setGradientSourceName(event.target.value)
+                  }
                 />
               </div>
               <SourceColorField

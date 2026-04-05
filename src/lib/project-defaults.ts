@@ -15,8 +15,8 @@ import type {
 import { makeId } from "@/lib/id";
 
 export const DEFAULT_CANVAS: CanvasSettings = {
-  width: 1800,
-  height: 1200,
+  width: 3000,
+  height: 3000,
   background: "#f5efe4",
   backgroundAlpha: 0,
   inset: 48,
@@ -35,17 +35,17 @@ export function normalizeCanvasSettings(
 }
 
 export const DEFAULT_LAYOUT: LayoutSettings = {
-  family: "blocks",
-  shapeMode: "mixed",
+  family: "grid",
+  shapeMode: "rect",
   density: 0.68,
   columns: 8,
-  rows: 6,
+  rows: 8,
   gutter: 14,
   blockDepth: 3,
   stripOrientation: "mixed",
   radialSegments: 9,
   radialRings: 4,
-  symmetryMode: "mirror-x",
+  symmetryMode: "none",
   symmetryCopies: 4,
   randomness: 0.52,
 };
@@ -62,9 +62,9 @@ export const DEFAULT_SOURCE_MAPPING: SourceMappingSettings = {
 
 export const DEFAULT_EFFECTS: EffectSettings = {
   blur: 0,
-  sharpen: 0.18,
+  sharpen: 0,
   mirror: false,
-  kaleidoscopeSegments: 3,
+  kaleidoscopeSegments: 1,
   rotationJitter: 18,
   scaleJitter: 0.14,
   displacement: 24,
@@ -82,8 +82,8 @@ export const DEFAULT_COMPOSITING: CompositingSettings = {
 export const DEFAULT_EXPORT: ExportSettings = {
   format: "image/png",
   quality: 0.96,
-  width: 3840,
-  height: 2560,
+  width: 3000,
+  height: 3000,
   scale: 1,
 };
 

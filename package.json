@@ -2,12 +2,18 @@
   "name": "image-grid",
   "private": true,
   "version": "0.0.0",
+  "productName": "Image Grid",
   "type": "module",
+  "main": "dist-electron/main.js",
   "scripts": {
     "dev": "vite",
     "dev:cf": "vite",
+    "dev:electron": "node scripts/dev-electron.mjs",
     "dev:vp": "vp dev",
     "build": "tsc -b && vite build",
+    "build:electron:main": "tsc -p tsconfig.electron.json",
+    "build:electron:app": "npm run build && npm run build:electron:main",
+    "build:electron": "npm run build:electron:app && electron-builder --mac dir zip",
     "build:cf": "vite build",
     "preview": "vite preview",
     "preview:cf": "wrangler dev",
@@ -15,8 +21,31 @@
     "test:watch": "vitest",
     "pretest:e2e": "npm run build",
     "test:e2e": "playwright test",
+    "pretest:electron": "npm run build:electron:app",
+    "test:electron": "playwright test -c playwright.electron.config.ts",
+    "pretest:electron:packaged": "npm run build:electron",
+    "test:electron:packaged": "playwright test -c playwright.electron-packaged.config.ts",
     "check": "tsc -b && vitest run",
     "lint": "eslint ."
+  },
+  "build": {
+    "appId": "com.imagegrid.app",
+    "productName": "Image Grid",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/client/**/*",
+      "dist-electron/**/*",
+      "package.json"
+    ],
+    "mac": {
+      "category": "public.app-category.graphics-design",
+      "target": [
+        "dir",
+        "zip"
+      ]
+    }
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.1.15",
@@ -56,6 +85,8 @@
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.1",
+    "electron": "^41.1.1",
+    "electron-builder": "^26.8.1",
     "eslint": "^10.1.0",
     "jsdom": "^29.0.1",
     "tailwindcss": "^4.2.2",

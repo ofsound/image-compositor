@@ -92,8 +92,8 @@ describe("generated sources", () => {
     const { primaryCanvas, previewCanvas } = createCanvasMocks();
     const createElementSpy = vi
       .spyOn(document, "createElement")
-      .mockReturnValueOnce(primaryCanvas)
-      .mockReturnValueOnce(previewCanvas);
+      .mockReturnValueOnce(primaryCanvas as never)
+      .mockReturnValueOnce(previewCanvas as never);
 
     try {
       const asset = await createGeneratedSourceAsset(
@@ -125,8 +125,8 @@ describe("generated sources", () => {
       createCanvasMocks();
     const createElementSpy = vi
       .spyOn(document, "createElement")
-      .mockReturnValueOnce(primaryCanvas)
-      .mockReturnValueOnce(previewCanvas);
+      .mockReturnValueOnce(primaryCanvas as never)
+      .mockReturnValueOnce(previewCanvas as never);
     const asset: SourceAsset = {
       id: "asset_gradient",
       kind: "gradient",

@@ -207,8 +207,8 @@ describe("exportProjectImage", () => {
     } as unknown as HTMLCanvasElement;
     const createElementSpy = vi
       .spyOn(document, "createElement")
-      .mockReturnValueOnce(sceneCanvas)
-      .mockReturnValueOnce(exportCanvas);
+      .mockReturnValueOnce(sceneCanvas as never)
+      .mockReturnValueOnce(exportCanvas as never);
 
     try {
       const blob = await exportProjectImage(project, [], new Map());

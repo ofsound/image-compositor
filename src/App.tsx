@@ -271,6 +271,8 @@ function SliderField({
   );
 }
 
+const DENSITY_UI_SCALE = 4;
+
 function ProjectRow({
   project,
   current,
@@ -983,6 +985,24 @@ function App() {
                       }
                     />
                     <SliderField
+                      label="Strips Angle"
+                      disabled={!isStripsFamily}
+                      min={0}
+                      max={180}
+                      step={1}
+                      value={activeProject.layout.stripAngle}
+                      formatter={(value) => `${Math.round(value)}°`}
+                      onChange={(value) =>
+                        patchProject((project) => ({
+                          ...project,
+                          layout: {
+                            ...project.layout,
+                            stripAngle: value,
+                          },
+                        }))
+                      }
+                    />
+                    <SliderField
                       label="Wedge Angle"
                       disabled={!isWedgeShapeMode}
                       min={0}
@@ -1021,14 +1041,17 @@ function App() {
                     <SliderField
                       label="Density"
                       disabled={!isStripsFamily}
-                      min={0.1}
+                      min={0.05}
                       max={1}
                       step={0.01}
-                      value={activeProject.layout.density}
+                      value={activeProject.layout.density / DENSITY_UI_SCALE}
                       onChange={(value) =>
                         patchProject((project) => ({
                           ...project,
-                          layout: { ...project.layout, density: value },
+                          layout: {
+                            ...project.layout,
+                            density: Number((value * DENSITY_UI_SCALE).toFixed(2)),
+                          },
                         }))
                       }
                     />
@@ -1072,7 +1095,7 @@ function App() {
                       label="Gutter"
                       disabled={!usesGutter}
                       min={0}
-                      max={32}
+                      max={300}
                       step={1}
                       value={activeProject.layout.gutter}
                       formatter={(value) => `${Math.round(value)} px`}

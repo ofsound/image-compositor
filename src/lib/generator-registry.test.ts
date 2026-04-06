@@ -43,6 +43,51 @@ const assets: SourceAsset[] = [
   },
 ];
 
+function projectPoint(x: number, y: number, angleDegrees: number) {
+  const radians = (angleDegrees * Math.PI) / 180;
+  return x * Math.cos(radians) + y * Math.sin(radians);
+}
+
+function getInsetProjectionRange(project: ReturnType<typeof createProjectDocument>, angleDegrees: number) {
+  const left = project.canvas.inset;
+  const right = project.canvas.width - project.canvas.inset;
+  const top = project.canvas.inset;
+  const bottom = project.canvas.height - project.canvas.inset;
+  const projections = [
+    projectPoint(left, top, angleDegrees),
+    projectPoint(right, top, angleDegrees),
+    projectPoint(right, bottom, angleDegrees),
+    projectPoint(left, bottom, angleDegrees),
+  ];
+
+  return {
+    min: Math.min(...projections),
+    max: Math.max(...projections),
+  };
+}
+
+function getStripIntervals(
+  project: ReturnType<typeof createProjectDocument>,
+  angleDegrees: number,
+) {
+  const slices = buildRenderSlices(project, [assets[0]!]);
+  const intervals = slices
+    .map((slice) => {
+      const bounds = slice.clipRect ?? slice.rect;
+      const centerX = bounds.x + bounds.width / 2;
+      const centerY = bounds.y + bounds.height / 2;
+      const center = projectPoint(centerX, centerY, angleDegrees);
+
+      return {
+        start: center - bounds.width / 2,
+        end: center + bounds.width / 2,
+      };
+    })
+    .sort((a, b) => a.start - b.start);
+
+  return { slices, intervals };
+}
+
 describe("buildRenderSlices", () => {
   it("builds deterministic slices for a seeded project", () => {
     const project = createProjectDocument("Determinism");
@@ -74,6 +119,24 @@ describe("buildRenderSlices", () => {
     }
   });
 
+  it("increases strip count as density rises while staying deterministic", () => {
+    const project = createProjectDocument("Dense Strips");
+    project.sourceIds = [assets[0]!.id];
+    project.layout.family = "strips";
+    project.layout.symmetryMode = "none";
+    project.layout.density = 1;
+
+    const baseline = buildRenderSlices(project, [assets[0]!]);
+
+    project.layout.density = 2;
+    const dense = buildRenderSlices(project, [assets[0]!]);
+    const denseRepeat = buildRenderSlices(project, [assets[0]!]);
+
+    expect(dense).toEqual(denseRepeat);
+    expect(dense.length).toBeGreaterThan(baseline.length);
+    expect(dense.every((slice) => slice.rect.width > 0 && slice.rect.height > 0)).toBe(true);
+  });
+
   it("assigns unique distributed crops for a single-image 5x5 grid", () => {
     const project = createProjectDocument("Distributed Grid");
     project.sourceIds = [assets[0]!.id];
@@ -88,6 +151,115 @@ describe("buildRenderSlices", () => {
 
     expect(slices).toHaveLength(25);
     expect(new Set(slices.map((slice) => JSON.stringify(slice.sourceCrop))).size).toBe(25);
+  });
+
+  it("draws single-image distributed strips against a full-canvas image rect", () => {
+    const project = createProjectDocument("Distributed Strips");
+    project.sourceIds = [assets[0]!.id];
+    project.layout.family = "strips";
+    project.layout.density = 0;
+    project.layout.randomness = 0;
+    project.layout.gutter = 14;
+    project.layout.symmetryMode = "none";
+    project.sourceMapping.strategy = "sequential";
+    project.sourceMapping.cropDistribution = "distributed";
+    project.sourceMapping.preserveAspect = false;
+
+    const slices = buildRenderSlices(project, [assets[0]!]);
+    expect(slices).toHaveLength(4);
+    expect(slices.every((slice) => slice.sourceCrop === null)).toBe(true);
+    expect(
+      new Set(slices.map((slice) => JSON.stringify(slice.imageRect))).size,
+    ).toBe(1);
+    expect(slices[0]?.imageRect).toEqual({
+      x: project.canvas.inset,
+      y: project.canvas.inset,
+      width: project.canvas.width - project.canvas.inset * 2,
+      height: project.canvas.height - project.canvas.inset * 2,
+    });
+  });
+
+  it("supports horizontal strips through the strip angle control", () => {
+    const project = createProjectDocument("Horizontal Strips");
+    project.sourceIds = [assets[0]!.id];
+    project.layout.family = "strips";
+    project.layout.stripAngle = 90;
+    project.layout.density = 0;
+    project.layout.randomness = 0;
+    project.layout.gutter = 0;
+    project.layout.symmetryMode = "none";
+    project.sourceMapping.strategy = "sequential";
+    project.sourceMapping.cropDistribution = "distributed";
+    project.sourceMapping.preserveAspect = false;
+
+    const slices = buildRenderSlices(project, [assets[0]!]);
+    expect(slices).toHaveLength(4);
+    expect(slices.every((slice) => slice.clipRotation)).toBe(true);
+    expect(slices.every((slice) => slice.sourceCrop === null)).toBe(true);
+    expect(slices.every((slice) => slice.imageRect !== null)).toBe(true);
+  });
+
+  it("covers the full inset canvas projection at representative strip angles", () => {
+    for (const angle of [0, 21, 55, 90, 135]) {
+      const project = createProjectDocument(`Coverage ${angle}`);
+      project.sourceIds = [assets[0]!.id];
+      project.layout.family = "strips";
+      project.layout.stripAngle = angle;
+      project.layout.density = 0;
+      project.layout.randomness = 0;
+      project.layout.gutter = 0;
+      project.layout.symmetryMode = "none";
+      project.sourceMapping.strategy = "sequential";
+      project.sourceMapping.cropDistribution = "distributed";
+      project.sourceMapping.preserveAspect = false;
+
+      const { intervals } = getStripIntervals(project, angle);
+      const range = getInsetProjectionRange(project, angle);
+
+      expect(intervals[0]?.start).toBeCloseTo(range.min, 4);
+      expect(intervals.at(-1)?.end).toBeCloseTo(range.max, 4);
+    }
+  });
+
+  it("keeps the configured perpendicular gap between adjacent strips at intermediate angles", () => {
+    const project = createProjectDocument("Gap Accuracy");
+    project.sourceIds = [assets[0]!.id];
+    project.layout.family = "strips";
+    project.layout.stripAngle = 55;
+    project.layout.density = 0;
+    project.layout.randomness = 0;
+    project.layout.gutter = 24;
+    project.layout.symmetryMode = "none";
+    project.sourceMapping.strategy = "sequential";
+    project.sourceMapping.cropDistribution = "distributed";
+    project.sourceMapping.preserveAspect = false;
+
+    const { intervals } = getStripIntervals(project, 55);
+
+    for (let index = 1; index < intervals.length; index += 1) {
+      expect(intervals[index]!.start - intervals[index - 1]!.end).toBeCloseTo(24, 4);
+    }
+  });
+
+  it("clamps large strip gutters while preserving edge-to-edge coverage", () => {
+    const project = createProjectDocument("Clamped Gap");
+    project.sourceIds = [assets[0]!.id];
+    project.layout.family = "strips";
+    project.layout.stripAngle = 135;
+    project.layout.density = 0;
+    project.layout.randomness = 0;
+    project.layout.gutter = 400;
+    project.layout.symmetryMode = "none";
+    project.sourceMapping.strategy = "sequential";
+    project.sourceMapping.cropDistribution = "distributed";
+    project.sourceMapping.preserveAspect = false;
+
+    const { intervals } = getStripIntervals(project, 135);
+    const range = getInsetProjectionRange(project, 135);
+
+    expect(intervals[0]?.start).toBeCloseTo(range.min, 4);
+    expect(intervals.at(-1)?.end).toBeCloseTo(range.max, 4);
+    expect(intervals.every((interval) => interval.end - interval.start >= 1)).toBe(true);
   });
 
   it("keeps sequential assignment while distributing unique crops per asset", () => {

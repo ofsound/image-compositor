@@ -18,6 +18,13 @@ interface GeneratorContext {
 
 interface LayoutCell extends RenderRect {
   shape: Exclude<GeometryShape, "mixed">;
+  clipRect?: RenderRect;
+  clipRotation?: number;
+}
+
+interface Point {
+  x: number;
+  y: number;
 }
 
 const MIN_WEDGE_SWEEP_DEGREES = 0.5;
@@ -35,6 +42,116 @@ function insetRect(rect: RenderRect, amount: number): RenderRect {
     width: Math.max(1, rect.width - amount * 2),
     height: Math.max(1, rect.height - amount * 2),
   };
+}
+
+function getRectCenter(rect: RenderRect) {
+  return {
+    x: rect.x + rect.width / 2,
+    y: rect.y + rect.height / 2,
+  };
+}
+
+function getRotatedBounds(rect: RenderRect, radians: number): RenderRect {
+  const { x: centerX, y: centerY } = getRectCenter(rect);
+  const cos = Math.cos(radians);
+  const sin = Math.sin(radians);
+  const halfWidth = rect.width / 2;
+  const halfHeight = rect.height / 2;
+  const corners = [
+    { x: -halfWidth, y: -halfHeight },
+    { x: halfWidth, y: -halfHeight },
+    { x: halfWidth, y: halfHeight },
+    { x: -halfWidth, y: halfHeight },
+  ].map((corner) => ({
+    x: centerX + corner.x * cos - corner.y * sin,
+    y: centerY + corner.x * sin + corner.y * cos,
+  }));
+
+  const xs = corners.map((corner) => corner.x);
+  const ys = corners.map((corner) => corner.y);
+  const minX = Math.min(...xs);
+  const maxX = Math.max(...xs);
+  const minY = Math.min(...ys);
+  const maxY = Math.max(...ys);
+
+  return {
+    x: minX,
+    y: minY,
+    width: maxX - minX,
+    height: maxY - minY,
+  };
+}
+
+function projectPoint(point: Point, axis: Point) {
+  return point.x * axis.x + point.y * axis.y;
+}
+
+function getInsetCanvasCorners(project: ProjectDocument): Point[] {
+  const left = project.canvas.inset;
+  const right = project.canvas.width - project.canvas.inset;
+  const top = project.canvas.inset;
+  const bottom = project.canvas.height - project.canvas.inset;
+
+  return [
+    { x: left, y: top },
+    { x: right, y: top },
+    { x: right, y: bottom },
+    { x: left, y: bottom },
+  ];
+}
+
+function normalizeStripThicknesses(
+  thicknesses: number[],
+  visibleSpan: number,
+) {
+  const nextThicknesses = [...thicknesses];
+
+  for (let iteration = 0; iteration < nextThicknesses.length; iteration += 1) {
+    let deficit = 0;
+    let flexible = 0;
+
+    for (let index = 0; index < nextThicknesses.length; index += 1) {
+      if (nextThicknesses[index]! < 1) {
+        deficit += 1 - nextThicknesses[index]!;
+        nextThicknesses[index] = 1;
+      } else {
+        flexible += nextThicknesses[index]! - 1;
+      }
+    }
+
+    if (deficit <= 0 || flexible <= 0) {
+      break;
+    }
+
+    for (let index = 0; index < nextThicknesses.length; index += 1) {
+      const available = nextThicknesses[index]! - 1;
+      if (available <= 0) continue;
+      nextThicknesses[index] -= deficit * (available / flexible);
+    }
+  }
+
+  const total = nextThicknesses.reduce((sum, thickness) => sum + thickness, 0);
+  if (total === 0) {
+    return Array.from({ length: nextThicknesses.length }, () => visibleSpan / nextThicknesses.length);
+  }
+
+  return nextThicknesses.map((thickness) => (thickness / total) * visibleSpan);
+}
+
+function buildStripThicknesses(
+  count: number,
+  visibleSpan: number,
+  randomness: number,
+  rng: ReturnType<typeof mulberry32>,
+) {
+  if (count <= 1) return [visibleSpan];
+
+  const baseThickness = visibleSpan / count;
+  const rawThicknesses = Array.from({ length: count }, () =>
+    baseThickness + (rng.next() - 0.5) * randomness * 40,
+  );
+
+  return normalizeStripThicknesses(rawThicknesses, visibleSpan);
 }
 
 function generateGrid(context: GeneratorContext) {
@@ -67,30 +184,58 @@ function generateGrid(context: GeneratorContext) {
 
 function generateStrips(context: GeneratorContext) {
   const {
-    project: { canvas, layout, compositing },
+    project: { layout, compositing },
   } = context;
   const rng = mulberry32(context.project.activeSeed + 17);
   const count = Math.max(4, Math.round(4 + layout.density * 16));
-  const isHorizontal =
-    layout.stripOrientation === "mixed"
-      ? rng.next() > 0.5
-      : layout.stripOrientation === "horizontal";
   const cells: LayoutCell[] = [];
-
-  let cursor = canvas.inset;
-  const length = isHorizontal ? canvas.height - canvas.inset * 2 : canvas.width - canvas.inset * 2;
+  const angleRadians = (layout.stripAngle * Math.PI) / 180;
+  const normalAxis = {
+    x: Math.cos(angleRadians),
+    y: Math.sin(angleRadians),
+  };
+  const tangentAxis = {
+    x: -Math.sin(angleRadians),
+    y: Math.cos(angleRadians),
+  };
+  const corners = getInsetCanvasCorners(context.project);
+  const normalValues = corners.map((corner) => projectPoint(corner, normalAxis));
+  const tangentValues = corners.map((corner) => projectPoint(corner, tangentAxis));
+  const minNormal = Math.min(...normalValues);
+  const maxNormal = Math.max(...normalValues);
+  const minTangent = Math.min(...tangentValues);
+  const maxTangent = Math.max(...tangentValues);
+  const normalSpan = maxNormal - minNormal;
+  const tangentSpan = maxTangent - minTangent + 2;
+  const requestedGap = layout.gutter * (1 - compositing.overlap);
+  const maxGap =
+    count > 1 ? Math.max(0, (normalSpan - count) / (count - 1)) : 0;
+  const interStripGap = Math.min(requestedGap, maxGap);
+  const visibleSpan = Math.max(count, normalSpan - interStripGap * (count - 1));
+  const thicknesses = buildStripThicknesses(count, visibleSpan, layout.randomness, rng);
+  const tangentCenter = (minTangent + maxTangent) / 2;
+  let cursor = minNormal;
 
   for (let index = 0; index < count; index += 1) {
-    const remaining = count - index;
-    const size = remaining === 1 ? length - cursor + canvas.inset : length / count + rng.next() * layout.randomness * 40;
-    const rect = isHorizontal
-      ? { x: canvas.inset, y: cursor, width: canvas.width - canvas.inset * 2, height: size }
-      : { x: cursor, y: canvas.inset, width: size, height: canvas.height - canvas.inset * 2 };
+    const thickness = thicknesses[index] ?? visibleSpan / count;
+    const stripCenter = cursor + thickness / 2;
+    const center = {
+      x: normalAxis.x * stripCenter + tangentAxis.x * tangentCenter,
+      y: normalAxis.y * stripCenter + tangentAxis.y * tangentCenter,
+    };
+    const clipRect = {
+      x: center.x - thickness / 2,
+      y: center.y - tangentSpan / 2,
+      width: thickness,
+      height: tangentSpan,
+    };
     cells.push({
-      ...insetRect(rect, layout.gutter * (1 - compositing.overlap)),
+      ...getRotatedBounds(clipRect, angleRadians),
+      clipRect,
+      clipRotation: angleRadians,
       shape: assignShape(index, layout.shapeMode),
     });
-    cursor += size;
+    cursor += thickness + interStripGap;
   }
 
   return cells;
@@ -252,6 +397,18 @@ function reflectSlices(slices: RenderSlice[], project: ProjectDocument) {
   const clones = [...slices];
   const centerX = project.canvas.width / 2;
   const centerY = project.canvas.height / 2;
+  const mirrorRect = (rect: RenderRect | null, axis: "x" | "y") => {
+    if (!rect) return null;
+    return axis === "x"
+      ? {
+          ...rect,
+          x: centerX + (centerX - rect.x - rect.width),
+        }
+      : {
+          ...rect,
+          y: centerY + (centerY - rect.y - rect.height),
+        };
+  };
 
   for (const slice of slices) {
     if (symmetryMode === "mirror-x" || symmetryMode === "quad") {
@@ -262,6 +419,7 @@ function reflectSlices(slices: RenderSlice[], project: ProjectDocument) {
           ...slice.rect,
           x: centerX + (centerX - slice.rect.x - slice.rect.width),
         },
+        clipRect: mirrorRect(slice.clipRect, "x"),
         mirrorAxis: "x",
       });
     }
@@ -274,6 +432,7 @@ function reflectSlices(slices: RenderSlice[], project: ProjectDocument) {
           ...slice.rect,
           y: centerY + (centerY - slice.rect.y - slice.rect.height),
         },
+        clipRect: mirrorRect(slice.clipRect, "y"),
         mirrorAxis: "y",
       });
     }
@@ -286,6 +445,7 @@ function reflectSlices(slices: RenderSlice[], project: ProjectDocument) {
       for (const slice of slices) {
         const x = slice.rect.x - centerX;
         const y = slice.rect.y - centerY;
+        const clipCenter = slice.clipRect ? getRectCenter(slice.clipRect) : null;
         radialClones.push({
           ...slice,
           id: `${slice.id}_r${copyIndex}`,
@@ -294,6 +454,22 @@ function reflectSlices(slices: RenderSlice[], project: ProjectDocument) {
             x: centerX + x * Math.cos(angle) - y * Math.sin(angle),
             y: centerY + x * Math.sin(angle) + y * Math.cos(angle),
           },
+          clipRect: slice.clipRect && clipCenter
+            ? {
+                ...slice.clipRect,
+                x:
+                  centerX +
+                  (clipCenter.x - centerX) * Math.cos(angle) -
+                  (clipCenter.y - centerY) * Math.sin(angle) -
+                  slice.clipRect.width / 2,
+                y:
+                  centerY +
+                  (clipCenter.x - centerX) * Math.sin(angle) +
+                  (clipCenter.y - centerY) * Math.cos(angle) -
+                  slice.clipRect.height / 2,
+              }
+            : null,
+          clipRotation: slice.clipRotation + angle,
           rotation: slice.rotation + angle,
         });
       }
@@ -362,6 +538,16 @@ function getAtlasDimensions(
   };
 }
 
+function getSliceCenterProjection(slice: RenderSlice, angleRadians: number) {
+  const bounds = slice.clipRect ?? slice.rect;
+  const center = getRectCenter(bounds);
+  return center.x * Math.cos(angleRadians) - center.y * Math.sin(angleRadians);
+}
+
+function getStripThickness(slice: RenderSlice) {
+  return slice.clipRect?.width ?? Math.min(slice.rect.width, slice.rect.height);
+}
+
 function assignDistributedCrops(
   slices: RenderSlice[],
   project: ProjectDocument,
@@ -369,6 +555,42 @@ function assignDistributedCrops(
 ) {
   if (project.sourceMapping.cropDistribution !== "distributed") {
     return slices.map((slice) => ({ ...slice, sourceCrop: null }));
+  }
+
+  if (project.layout.family === "strips") {
+    const angleRadians = (project.layout.stripAngle * Math.PI) / 180;
+    const orderedSlices = [...slices].sort((a, b) =>
+      getSliceCenterProjection(a, angleRadians) -
+      getSliceCenterProjection(b, angleRadians),
+    );
+    const totalSpan = Math.max(
+      orderedSlices.reduce((sum, slice) => sum + getStripThickness(slice), 0),
+      1,
+    );
+    const cropBySliceId = new Map<string, NormalizedRect>();
+    let cursor = 0;
+
+    for (const slice of orderedSlices) {
+      const span = getStripThickness(slice) / totalSpan;
+      const atlasCell: NormalizedRect =
+        Math.abs(Math.sin(angleRadians)) > Math.abs(Math.cos(angleRadians))
+          ? { x: 0, y: cursor, width: 1, height: span }
+          : { x: cursor, y: 0, width: span, height: 1 };
+      const baseCrop = project.sourceMapping.preserveAspect
+        ? fitCropToAspect(atlasCell, slice.rect.width / slice.rect.height)
+        : atlasCell;
+
+      cropBySliceId.set(
+        slice.id,
+        applyCropZoom(baseCrop, atlasCell, project.sourceMapping.cropZoom),
+      );
+      cursor += span;
+    }
+
+    return slices.map((slice) => ({
+      ...slice,
+      sourceCrop: cropBySliceId.get(slice.id) ?? null,
+    }));
   }
 
   const slicesByAsset = new Map<string, RenderSlice[]>();
@@ -410,6 +632,34 @@ function assignDistributedCrops(
   return slices.map((slice) => ({
     ...slice,
     sourceCrop: cropBySliceId.get(slice.id) ?? null,
+  }));
+}
+
+function alignSingleAssetStripSlicesToCanvas(
+  slices: RenderSlice[],
+  project: ProjectDocument,
+  assets: SourceAsset[],
+) {
+  if (
+    project.layout.family !== "strips" ||
+    project.sourceMapping.cropDistribution !== "distributed" ||
+    project.sourceMapping.strategy !== "sequential" ||
+    assets.length !== 1
+  ) {
+    return slices;
+  }
+
+  const imageRect: RenderRect = {
+    x: project.canvas.inset,
+    y: project.canvas.inset,
+    width: project.canvas.width - project.canvas.inset * 2,
+    height: project.canvas.height - project.canvas.inset * 2,
+  };
+
+  return slices.map((slice) => ({
+    ...slice,
+    sourceCrop: null,
+    imageRect,
   }));
 }
 
@@ -511,6 +761,9 @@ export function buildRenderSlices(project: ProjectDocument, assets: SourceAsset[
         width: cell.width + overlapSize,
         height: cell.height + overlapSize,
       },
+      clipRect: cell.clipRect ?? null,
+      clipRotation: cell.clipRotation ?? 0,
+      imageRect: null,
       rotation: (rotationNoise * Math.PI) / 180,
       scale: scaleNoise,
       opacity: project.compositing.opacity,
@@ -527,7 +780,11 @@ export function buildRenderSlices(project: ProjectDocument, assets: SourceAsset[
 
   return hideRandomSlices(
     applyLetterbox(
-      assignDistributedCrops(reflectSlices(slices, project), project, assets).sort(
+      alignSingleAssetStripSlicesToCanvas(
+        assignDistributedCrops(reflectSlices(slices, project), project, assets),
+        project,
+        assets,
+      ).sort(
         (a, b) => a.depth - b.depth,
       ),
       project,

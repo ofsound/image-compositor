@@ -39,6 +39,7 @@ export const DEFAULT_LAYOUT: LayoutSettings = {
   shapeMode: "rect",
   rectCornerRadius: 0,
   density: 0.68,
+  stripAngle: 0,
   columns: 8,
   rows: 8,
   gutter: 14,
@@ -54,6 +55,12 @@ export const DEFAULT_LAYOUT: LayoutSettings = {
   wedgeJitter: 0,
   randomness: 0.52,
 };
+
+function normalizeStripAngle(layout: Partial<LayoutSettings> | undefined) {
+  if (layout?.stripAngle !== undefined) return layout.stripAngle;
+  if (layout?.stripOrientation === "horizontal") return 90;
+  return DEFAULT_LAYOUT.stripAngle;
+}
 
 export const DEFAULT_SOURCE_MAPPING: SourceMappingSettings = {
   strategy: "palette",
@@ -126,6 +133,7 @@ export function normalizeLayoutSettings(
     rectCornerRadius:
       layout?.rectCornerRadius ?? DEFAULT_LAYOUT.rectCornerRadius,
     density: layout?.density ?? DEFAULT_LAYOUT.density,
+    stripAngle: normalizeStripAngle(layout),
     columns: layout?.columns ?? DEFAULT_LAYOUT.columns,
     rows: layout?.rows ?? DEFAULT_LAYOUT.rows,
     gutter: layout?.gutter ?? DEFAULT_LAYOUT.gutter,

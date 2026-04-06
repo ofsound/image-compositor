@@ -36,7 +36,8 @@ function drawShapePath(
   slice: RenderSlice,
   project: ProjectDocument,
 ) {
-  const { x, y, width, height } = slice.rect;
+  const bounds = slice.clipRect ?? slice.rect;
+  const { x, y, width, height } = bounds;
   const centerX = x + width / 2;
   const centerY = y + height / 2;
 
@@ -87,6 +88,7 @@ function drawShapePath(
 }
 
 function getSourceRect(slice: RenderSlice, asset: SourceAsset, project: ProjectDocument) {
+  const targetRect = slice.imageRect ?? slice.rect;
   if (slice.sourceCrop) {
     return {
       sourceX: slice.sourceCrop.x * asset.width,
@@ -98,7 +100,7 @@ function getSourceRect(slice: RenderSlice, asset: SourceAsset, project: ProjectD
 
   const zoom = project.sourceMapping.cropZoom;
   const assetRatio = asset.width / asset.height;
-  const rectRatio = slice.rect.width / slice.rect.height;
+  const rectRatio = targetRect.width / targetRect.height;
   let sourceWidth = asset.width;
   let sourceHeight = asset.height;
   let sourceX = 0;
@@ -168,21 +170,30 @@ async function drawSlice(
   asset: SourceAsset,
   project: ProjectDocument,
 ) {
-  const { x, y, width, height } = slice.rect;
+  const targetRect = slice.imageRect ?? slice.rect;
+  const { x, y, width, height } = targetRect;
+  const bounds = slice.clipRect ?? slice.rect;
+  const centerX = bounds.x + bounds.width / 2;
+  const centerY = bounds.y + bounds.height / 2;
   const { sourceX, sourceY, sourceWidth, sourceHeight } = getSourceRect(slice, asset, project);
+  const scaleX = slice.scale * (slice.mirrorAxis === "x" ? -1 : 1);
+  const scaleY = slice.scale * (slice.mirrorAxis === "y" ? -1 : 1);
 
   context.save();
   context.globalAlpha = slice.opacity;
   context.globalCompositeOperation = slice.blendMode;
-  context.translate(x + width / 2, y + height / 2);
-  context.rotate(slice.rotation);
-  context.scale(slice.scale * (slice.mirrorAxis === "x" ? -1 : 1), slice.scale * (slice.mirrorAxis === "y" ? -1 : 1));
-  context.translate(-(x + width / 2), -(y + height / 2));
   context.filter = `blur(${project.effects.blur}px)`;
 
   context.save();
+  context.translate(centerX, centerY);
+  context.rotate(slice.rotation + slice.clipRotation);
+  context.scale(scaleX, scaleY);
+  context.translate(-centerX, -centerY);
   drawShapePath(context, slice, project);
   context.clip("evenodd");
+  context.translate(centerX, centerY);
+  context.rotate(-slice.clipRotation);
+  context.translate(-centerX, -centerY);
   context.drawImage(
     bitmap,
     sourceX,
@@ -200,8 +211,14 @@ async function drawSlice(
     context.globalAlpha = project.compositing.shadow * 0.4;
     context.strokeStyle = "rgba(24, 15, 8, 0.2)";
     context.lineWidth = 2;
+    context.save();
+    context.translate(centerX, centerY);
+    context.rotate(slice.rotation + slice.clipRotation);
+    context.scale(scaleX, scaleY);
+    context.translate(-centerX, -centerY);
     drawShapePath(context, slice, project);
     context.stroke();
+    context.restore();
   }
 
   context.restore();

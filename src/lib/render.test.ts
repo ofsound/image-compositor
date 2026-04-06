@@ -345,6 +345,149 @@ describe("renderProjectToCanvas", () => {
     expect(sourceWidths.every((value) => value === 50)).toBe(true);
     expect(sourceHeights.every((value) => value === 50)).toBe(true);
   });
+
+  it("keeps single-image distributed strips on the full canvas image placement", async () => {
+    const project = createProjectDocument("Distributed Strips");
+    project.layout.family = "strips";
+    project.layout.density = 0;
+    project.layout.randomness = 0;
+    project.layout.gutter = 14;
+    project.layout.symmetryMode = "none";
+    project.layout.shapeMode = "rect";
+    project.compositing.overlap = 0;
+    project.effects.rotationJitter = 0;
+    project.effects.scaleJitter = 0;
+    project.effects.displacement = 0;
+    project.effects.distortion = 0;
+    project.effects.sharpen = 0;
+    project.effects.kaleidoscopeSegments = 1;
+    project.sourceMapping.strategy = "sequential";
+    project.sourceMapping.preserveAspect = false;
+    project.sourceMapping.cropDistribution = "distributed";
+
+    const context = createMockContext();
+    const canvas = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn(() => context),
+    } as unknown as HTMLCanvasElement;
+
+    await renderProjectToCanvas(
+      project,
+      [asset],
+      new Map([[asset.id, { asset, bitmap: {} as ImageBitmap }]]),
+      canvas,
+    );
+
+    expect(context.drawImage).toHaveBeenCalledTimes(4);
+    for (const call of context.drawImage.mock.calls) {
+      expect(call[1]).toBe(0);
+      expect(call[2]).toBe(0);
+      expect(call[3]).toBe(100);
+      expect(call[4]).toBe(100);
+      expect(call[5]).toBe(project.canvas.inset);
+      expect(call[6]).toBe(project.canvas.inset);
+      expect(call[7]).toBe(project.canvas.width - project.canvas.inset * 2);
+      expect(call[8]).toBe(project.canvas.height - project.canvas.inset * 2);
+    }
+  });
+
+  it("renders horizontal strips from the strip angle control without rotating source crops", async () => {
+    const project = createProjectDocument("Horizontal Strips");
+    project.layout.family = "strips";
+    project.layout.stripAngle = 90;
+    project.layout.density = 0;
+    project.layout.randomness = 0;
+    project.layout.gutter = 0;
+    project.layout.symmetryMode = "none";
+    project.layout.shapeMode = "rect";
+    project.compositing.overlap = 0;
+    project.effects.rotationJitter = 0;
+    project.effects.scaleJitter = 0;
+    project.effects.displacement = 0;
+    project.effects.distortion = 0;
+    project.effects.sharpen = 0;
+    project.effects.kaleidoscopeSegments = 1;
+    project.sourceMapping.strategy = "sequential";
+    project.sourceMapping.preserveAspect = false;
+    project.sourceMapping.cropDistribution = "distributed";
+
+    const context = createMockContext();
+    const canvas = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn(() => context),
+    } as unknown as HTMLCanvasElement;
+
+    await renderProjectToCanvas(
+      project,
+      [asset],
+      new Map([[asset.id, { asset, bitmap: {} as ImageBitmap }]]),
+      canvas,
+    );
+
+    for (const call of context.drawImage.mock.calls) {
+      expect(call[1]).toBe(0);
+      expect(call[2]).toBe(0);
+      expect(call[3]).toBe(100);
+      expect(call[4]).toBe(100);
+      expect(call[5]).toBe(project.canvas.inset);
+      expect(call[6]).toBe(project.canvas.inset);
+      expect(call[7]).toBe(project.canvas.width - project.canvas.inset * 2);
+      expect(call[8]).toBe(project.canvas.height - project.canvas.inset * 2);
+    }
+    expect(context.rotate).toHaveBeenCalledWith(Math.PI / 2);
+    expect(context.rotate).toHaveBeenCalledWith(-Math.PI / 2);
+  });
+
+  it("keeps full-canvas source placement for intermediate strip angles", async () => {
+    const project = createProjectDocument("Diagonal Strips");
+    project.layout.family = "strips";
+    project.layout.stripAngle = 135;
+    project.layout.density = 0;
+    project.layout.randomness = 0;
+    project.layout.gutter = 24;
+    project.layout.symmetryMode = "none";
+    project.layout.shapeMode = "rect";
+    project.compositing.overlap = 0;
+    project.effects.rotationJitter = 0;
+    project.effects.scaleJitter = 0;
+    project.effects.displacement = 0;
+    project.effects.distortion = 0;
+    project.effects.sharpen = 0;
+    project.effects.kaleidoscopeSegments = 1;
+    project.sourceMapping.strategy = "sequential";
+    project.sourceMapping.preserveAspect = false;
+    project.sourceMapping.cropDistribution = "distributed";
+
+    const context = createMockContext();
+    const canvas = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn(() => context),
+    } as unknown as HTMLCanvasElement;
+
+    await renderProjectToCanvas(
+      project,
+      [asset],
+      new Map([[asset.id, { asset, bitmap: {} as ImageBitmap }]]),
+      canvas,
+    );
+
+    expect(context.drawImage).toHaveBeenCalled();
+    for (const call of context.drawImage.mock.calls) {
+      expect(call[1]).toBe(0);
+      expect(call[2]).toBe(0);
+      expect(call[3]).toBe(100);
+      expect(call[4]).toBe(100);
+      expect(call[5]).toBe(project.canvas.inset);
+      expect(call[6]).toBe(project.canvas.inset);
+      expect(call[7]).toBe(project.canvas.width - project.canvas.inset * 2);
+      expect(call[8]).toBe(project.canvas.height - project.canvas.inset * 2);
+    }
+    expect(context.rotate).toHaveBeenCalledWith((135 * Math.PI) / 180);
+    expect(context.rotate).toHaveBeenCalledWith((-135 * Math.PI) / 180);
+  });
 });
 
 describe("exportProjectImage", () => {

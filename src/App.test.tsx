@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createProjectDocument } from "@/lib/project-defaults";
 import App from "@/App";
@@ -31,6 +31,7 @@ function createStoreState(overrides?: {
   family?: "grid" | "strips" | "blocks" | "radial";
   shapeMode?: "rect" | "triangle" | "ring" | "wedge" | "mixed";
   symmetryMode?: "none" | "mirror-x" | "mirror-y" | "quad" | "radial";
+  density?: number;
   strategy?:
     | "random"
     | "weighted"
@@ -52,6 +53,10 @@ function createStoreState(overrides?: {
 
   if (overrides?.symmetryMode) {
     project.layout.symmetryMode = overrides.symmetryMode;
+  }
+
+  if (overrides?.density !== undefined) {
+    project.layout.density = overrides.density;
   }
 
   if (overrides?.strategy) {
@@ -153,6 +158,7 @@ describe("App conditional sliders", () => {
     });
 
     expectSliderEnabled("Corner Radius");
+    expectSliderDisabled("Strips Angle");
     expectSliderDisabled("Wedge Angle");
     expectSliderDisabled("Wedge Jitter");
     expectSliderDisabled("Density");
@@ -175,6 +181,7 @@ describe("App conditional sliders", () => {
     });
 
     expectSliderEnabled("Corner Radius");
+    expectSliderEnabled("Strips Angle");
     expectSliderDisabled("Wedge Angle");
     expectSliderDisabled("Wedge Jitter");
     expectSliderEnabled("Density");
@@ -186,6 +193,37 @@ describe("App conditional sliders", () => {
     expectSliderEnabled("Letterbox");
   });
 
+  it("shows density on the new UI scale and stores quadruple the committed value", () => {
+    const state = createStoreState({
+      family: "strips",
+      shapeMode: "rect",
+      symmetryMode: "none",
+      strategy: "random",
+      density: 2,
+    });
+    mockedUseAppStore.mockReturnValue(state);
+
+    render(<App />);
+
+    expect(screen.getByText("0.50")).toBeInTheDocument();
+
+    const densityControl = screen.getByText("Density").closest("div.rounded-lg");
+    expect(densityControl).not.toBeNull();
+
+    const slider = within(densityControl!).getByRole("slider");
+    fireEvent.keyDown(slider, { key: "End" });
+    fireEvent.keyUp(slider, { key: "End" });
+
+    const updateProject = vi.mocked(state.updateProject);
+    expect(updateProject).toHaveBeenCalledTimes(1);
+
+    const update = updateProject.mock.calls[0]?.[0];
+    expect(update).toBeTypeOf("function");
+
+    const nextProject = update!(structuredClone(state.projects[0]!));
+    expect(nextProject.layout.density).toBe(4);
+  });
+
   it("disables gutter for blocks layouts and enables weighted and radial controls when active", () => {
     renderApp({
       family: "blocks",
@@ -195,6 +233,7 @@ describe("App conditional sliders", () => {
     });
 
     expectSliderEnabled("Corner Radius");
+    expectSliderDisabled("Strips Angle");
     expectSliderDisabled("Wedge Angle");
     expectSliderDisabled("Wedge Jitter");
     expectSliderDisabled("Density");
@@ -217,6 +256,7 @@ describe("App conditional sliders", () => {
     });
 
     expectSliderEnabled("Corner Radius");
+    expectSliderDisabled("Strips Angle");
     expectSliderDisabled("Wedge Angle");
     expectSliderDisabled("Wedge Jitter");
     expectSliderDisabled("Density");

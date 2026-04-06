@@ -82,6 +82,7 @@ export interface LayoutSettings {
   shapeMode: GeometryShape;
   rectCornerRadius: number;
   density: number;
+  stripAngle: number;
   columns: number;
   rows: number;
   gutter: number;
@@ -235,6 +236,9 @@ export interface RenderSlice {
   shape: Exclude<GeometryShape, "mixed">;
   assetId: string;
   rect: RenderRect;
+  clipRect: RenderRect | null;
+  clipRotation: number;
+  imageRect: RenderRect | null;
   rotation: number;
   scale: number;
   opacity: number;

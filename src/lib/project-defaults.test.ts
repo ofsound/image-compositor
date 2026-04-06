@@ -66,6 +66,7 @@ describe("createProjectDocument", () => {
         shapeMode: project.layout.shapeMode,
         rectCornerRadius: project.layout.rectCornerRadius,
         density: project.layout.density,
+        stripAngle: project.layout.stripAngle,
         columns: project.layout.columns,
         rows: project.layout.rows,
         gutter: project.layout.gutter,
@@ -83,6 +84,35 @@ describe("createProjectDocument", () => {
     expect(normalizeProjectDocument(legacyProject).layout.letterbox).toBe(0);
   });
 
+  it("normalizes legacy projects without strip angle to zero degrees", () => {
+    const project = createProjectDocument("Legacy Strips Angle");
+    const legacyProject = {
+      ...project,
+      layout: {
+        family: project.layout.family,
+        shapeMode: project.layout.shapeMode,
+        rectCornerRadius: project.layout.rectCornerRadius,
+        density: project.layout.density,
+        columns: project.layout.columns,
+        rows: project.layout.rows,
+        gutter: project.layout.gutter,
+        blockDepth: project.layout.blockDepth,
+        stripOrientation: project.layout.stripOrientation,
+        radialSegments: project.layout.radialSegments,
+        radialRings: project.layout.radialRings,
+        symmetryMode: project.layout.symmetryMode,
+        symmetryCopies: project.layout.symmetryCopies,
+        hidePercentage: project.layout.hidePercentage,
+        letterbox: project.layout.letterbox,
+        wedgeAngle: project.layout.wedgeAngle,
+        wedgeJitter: project.layout.wedgeJitter,
+        randomness: project.layout.randomness,
+      },
+    } as unknown as ProjectDocument;
+
+    expect(normalizeProjectDocument(legacyProject).layout.stripAngle).toBe(0);
+  });
+
   it("normalizes legacy projects without wedge controls to defaults", () => {
     const project = createProjectDocument("Legacy Wedge");
     const legacyProject = {
@@ -92,6 +122,7 @@ describe("createProjectDocument", () => {
         shapeMode: project.layout.shapeMode,
         rectCornerRadius: project.layout.rectCornerRadius,
         density: project.layout.density,
+        stripAngle: project.layout.stripAngle,
         columns: project.layout.columns,
         rows: project.layout.rows,
         gutter: project.layout.gutter,
@@ -161,6 +192,7 @@ describe("createProjectDocument", () => {
           shapeMode: project.layout.shapeMode,
           rectCornerRadius: project.layout.rectCornerRadius,
           density: project.layout.density,
+          stripAngle: project.layout.stripAngle,
           columns: project.layout.columns,
           rows: project.layout.rows,
           gutter: project.layout.gutter,
@@ -186,5 +218,49 @@ describe("createProjectDocument", () => {
 
     expect(normalizeProjectVersion(legacyVersion).snapshot.layout.wedgeAngle).toBe(120);
     expect(normalizeProjectVersion(legacyVersion).snapshot.layout.wedgeJitter).toBe(0);
+  });
+
+  it("normalizes legacy version snapshots without strip angle to zero degrees", () => {
+    const project = createProjectDocument("Legacy Strips Angle Version");
+    const legacyVersion = {
+      id: "version_legacy_strip_angle",
+      projectId: project.id,
+      label: "Legacy Strip Angle Snapshot",
+      createdAt: new Date().toISOString(),
+      thumbnailPath: null,
+      snapshot: {
+        sourceIds: project.sourceIds,
+        canvas: structuredClone(project.canvas),
+        layout: {
+          family: project.layout.family,
+          shapeMode: project.layout.shapeMode,
+          rectCornerRadius: project.layout.rectCornerRadius,
+          density: project.layout.density,
+          columns: project.layout.columns,
+          rows: project.layout.rows,
+          gutter: project.layout.gutter,
+          blockDepth: project.layout.blockDepth,
+          stripOrientation: project.layout.stripOrientation,
+          radialSegments: project.layout.radialSegments,
+          radialRings: project.layout.radialRings,
+          symmetryMode: project.layout.symmetryMode,
+          symmetryCopies: project.layout.symmetryCopies,
+          hidePercentage: project.layout.hidePercentage,
+          letterbox: project.layout.letterbox,
+          wedgeAngle: project.layout.wedgeAngle,
+          wedgeJitter: project.layout.wedgeJitter,
+          randomness: project.layout.randomness,
+        },
+        sourceMapping: structuredClone(project.sourceMapping),
+        effects: structuredClone(project.effects),
+        compositing: structuredClone(project.compositing),
+        export: structuredClone(project.export),
+        activeSeed: project.activeSeed,
+        presets: structuredClone(project.presets),
+        passes: structuredClone(project.passes),
+      },
+    } as unknown as ProjectVersion;
+
+    expect(normalizeProjectVersion(legacyVersion).snapshot.layout.stripAngle).toBe(0);
   });
 });

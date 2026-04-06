@@ -1,5 +1,5 @@
 import type { MouseEvent, ReactNode } from "react";
-import { Eye, EyeOff, Pencil } from "lucide-react";
+import { Eye, EyeOff, Pencil, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { getSourceKindLabel } from "@/lib/assets";
@@ -12,6 +12,7 @@ interface SourceAssetCardProps {
   thumbnail: ReactNode;
   onToggle: (assetId: string) => void;
   onEdit?: (assetId: string) => void;
+  onRemove?: (assetId: string) => void;
 }
 
 export function SourceAssetCard({
@@ -20,6 +21,7 @@ export function SourceAssetCard({
   thumbnail,
   onToggle,
   onEdit,
+  onRemove,
 }: SourceAssetCardProps) {
   const Icon = enabled ? Eye : EyeOff;
 
@@ -31,6 +33,11 @@ export function SourceAssetCard({
   const handleEdit = (event: MouseEvent<HTMLButtonElement>) => {
     event.stopPropagation();
     onEdit?.(asset.id);
+  };
+
+  const handleRemove = (event: MouseEvent<HTMLButtonElement>) => {
+    event.stopPropagation();
+    onRemove?.(asset.id);
   };
 
   return (
@@ -45,6 +52,18 @@ export function SourceAssetCard({
     >
       <div className="relative">
         <div className={cn(!enabled && "opacity-55")}>{thumbnail}</div>
+        {onRemove ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="absolute left-1 top-1 h-7 w-auto min-w-[1.75rem] rounded-md border-0 bg-surface-raised/35 px-1.5 py-0 text-text-muted shadow-none backdrop-blur-sm hover:bg-surface-raised/55 hover:text-text"
+            aria-label={`Remove ${asset.name}`}
+            onClick={handleRemove}
+          >
+            <X className="h-3.5 w-3.5" />
+          </Button>
+        ) : null}
         <Button
           type="button"
           variant="ghost"

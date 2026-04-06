@@ -2,10 +2,15 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createProjectDocument } from "@/lib/project-defaults";
 import App from "@/App";
+import type { SourceAsset } from "@/types/project";
 import { useAppStore } from "@/state/use-app-store";
 
 vi.mock("sonner", () => ({
   Toaster: () => null,
+}));
+
+vi.mock("@/lib/opfs", () => ({
+  readBlob: vi.fn(async () => null),
 }));
 
 vi.mock("@/components/app/preview-stage", () => ({
@@ -33,6 +38,7 @@ function createStoreState(overrides?: {
     | "luminance"
     | "palette"
     | "symmetry";
+  assets?: SourceAsset[];
 }) {
   const project = createProjectDocument("Slider Spec");
 
@@ -52,12 +58,18 @@ function createStoreState(overrides?: {
     project.sourceMapping.strategy = overrides.strategy;
   }
 
+  const assets =
+    overrides?.assets?.map((asset) => ({ ...asset, projectId: project.id })) ?? [];
+  if (assets.length > 0) {
+    project.sourceIds = assets.map((asset) => asset.id);
+  }
+
   return {
     ready: true,
     busy: false,
     status: "Ready.",
     projects: [project],
-    assets: [],
+    assets,
     versions: [],
     activeProjectId: project.id,
     historyByProject: {},
@@ -75,6 +87,7 @@ function createStoreState(overrides?: {
     importFiles: vi.fn(async () => undefined),
     addSolidSource: vi.fn(async () => undefined),
     addGradientSource: vi.fn(async () => undefined),
+    removeSource: vi.fn(async () => undefined),
     updateGeneratedSource: vi.fn(async () => undefined),
     randomizeSeed: vi.fn(async () => undefined),
     saveVersion: vi.fn(async () => undefined),
@@ -93,6 +106,27 @@ function createStoreState(overrides?: {
 function renderApp(overrides?: Parameters<typeof createStoreState>[0]) {
   mockedUseAppStore.mockReturnValue(createStoreState(overrides));
   render(<App />);
+}
+
+function createImageAsset(projectId: string): SourceAsset {
+  return {
+    id: "asset_a",
+    kind: "image",
+    projectId,
+    name: "Asset A",
+    originalFileName: "asset-a.jpg",
+    mimeType: "image/jpeg",
+    width: 1200,
+    height: 800,
+    orientation: 1,
+    originalPath: "assets/original/asset-a.jpg",
+    normalizedPath: "assets/normalized/asset-a.png",
+    previewPath: "assets/previews/asset-a.webp",
+    averageColor: "#112233",
+    palette: ["#112233"],
+    luminance: 0.25,
+    createdAt: "2026-04-06T00:00:00.000Z",
+  };
 }
 
 function expectSliderDisabled(label: string) {
@@ -119,12 +153,15 @@ describe("App conditional sliders", () => {
     });
 
     expectSliderEnabled("Corner Radius");
+    expectSliderDisabled("Wedge Angle");
+    expectSliderDisabled("Wedge Jitter");
     expectSliderDisabled("Density");
     expectSliderEnabled("Columns");
     expectSliderEnabled("Rows");
     expectSliderEnabled("Gutter");
     expectSliderDisabled("Radial Copies");
     expectSliderEnabled("Hide Percentage");
+    expectSliderEnabled("Letterbox");
     expectSliderDisabled("Source Bias");
     expectSliderDisabled("Palette Emphasis");
   });
@@ -138,12 +175,15 @@ describe("App conditional sliders", () => {
     });
 
     expectSliderEnabled("Corner Radius");
+    expectSliderDisabled("Wedge Angle");
+    expectSliderDisabled("Wedge Jitter");
     expectSliderEnabled("Density");
     expectSliderDisabled("Columns");
     expectSliderDisabled("Rows");
     expectSliderEnabled("Gutter");
     expectSliderDisabled("Radial Copies");
     expectSliderEnabled("Hide Percentage");
+    expectSliderEnabled("Letterbox");
   });
 
   it("disables gutter for blocks layouts and enables weighted and radial controls when active", () => {
@@ -155,12 +195,15 @@ describe("App conditional sliders", () => {
     });
 
     expectSliderEnabled("Corner Radius");
+    expectSliderDisabled("Wedge Angle");
+    expectSliderDisabled("Wedge Jitter");
     expectSliderDisabled("Density");
     expectSliderDisabled("Columns");
     expectSliderDisabled("Rows");
     expectSliderDisabled("Gutter");
     expectSliderEnabled("Radial Copies");
     expectSliderEnabled("Hide Percentage");
+    expectSliderEnabled("Letterbox");
     expectSliderEnabled("Source Bias");
     expectSliderDisabled("Palette Emphasis");
   });
@@ -174,12 +217,15 @@ describe("App conditional sliders", () => {
     });
 
     expectSliderEnabled("Corner Radius");
+    expectSliderDisabled("Wedge Angle");
+    expectSliderDisabled("Wedge Jitter");
     expectSliderDisabled("Density");
     expectSliderDisabled("Columns");
     expectSliderDisabled("Rows");
     expectSliderDisabled("Gutter");
     expectSliderDisabled("Radial Copies");
     expectSliderEnabled("Hide Percentage");
+    expectSliderEnabled("Letterbox");
     expectSliderDisabled("Source Bias");
     expectSliderEnabled("Palette Emphasis");
   });
@@ -195,6 +241,24 @@ describe("App conditional sliders", () => {
 
     expect(screen.getAllByLabelText("Corner Radius")).toHaveLength(2);
     expect(screen.getAllByLabelText("Corner Radius")[1]).toHaveAttribute(
+      "data-disabled",
+    );
+  });
+
+  it("enables wedge sliders for wedge and mixed geometry", () => {
+    renderApp({ shapeMode: "wedge" });
+    expectSliderEnabled("Wedge Angle");
+    expectSliderEnabled("Wedge Jitter");
+
+    mockedUseAppStore.mockReturnValue(
+      createStoreState({ shapeMode: "mixed" }),
+    );
+    render(<App />);
+
+    expect(screen.getAllByLabelText("Wedge Angle")[1]).not.toHaveAttribute(
+      "data-disabled",
+    );
+    expect(screen.getAllByLabelText("Wedge Jitter")[1]).not.toHaveAttribute(
       "data-disabled",
     );
   });
@@ -262,5 +326,49 @@ describe("App undo and redo controls", () => {
     expect(undo).not.toHaveBeenCalled();
 
     input.remove();
+  });
+});
+
+describe("App source removal", () => {
+  beforeEach(() => {
+    mockedUseAppStore.mockReset();
+    vi.restoreAllMocks();
+  });
+
+  it("confirms and removes a source from the tray", async () => {
+    const asset = createImageAsset("project_test");
+    const removeSource = vi.fn(async () => undefined);
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+
+    mockedUseAppStore.mockReturnValue({
+      ...createStoreState({ assets: [asset] }),
+      removeSource,
+    });
+
+    render(<App />);
+
+    fireEvent.click(screen.getByLabelText("Remove Asset A"));
+
+    expect(window.confirm).toHaveBeenCalledWith(
+      'Remove "Asset A" from this project?',
+    );
+    expect(removeSource).toHaveBeenCalledWith("asset_a");
+  });
+
+  it("does not remove a source when confirmation is cancelled", async () => {
+    const asset = createImageAsset("project_test");
+    const removeSource = vi.fn(async () => undefined);
+    vi.spyOn(window, "confirm").mockReturnValue(false);
+
+    mockedUseAppStore.mockReturnValue({
+      ...createStoreState({ assets: [asset] }),
+      removeSource,
+    });
+
+    render(<App />);
+
+    fireEvent.click(screen.getByLabelText("Remove Asset A"));
+
+    expect(removeSource).not.toHaveBeenCalled();
   });
 });

@@ -15,6 +15,7 @@ interface RenderOptions {
 
 type RenderCanvas = HTMLCanvasElement;
 type RenderContext = CanvasRenderingContext2D;
+const FULL_CIRCLE_RADIANS = Math.PI * 2;
 
 const bitmapCache = new Map<string, Promise<ImageBitmap>>();
 const RENDER_CONTEXT_OPTIONS = {
@@ -59,8 +60,23 @@ function drawShapePath(
   }
 
   if (slice.shape === "wedge") {
+    const radius = Math.min(width, height) / 2;
+    const sweepRadians = slice.wedgeSweepRadians ?? Math.PI / 3;
+
+    if (sweepRadians >= FULL_CIRCLE_RADIANS - 0.0001) {
+      context.arc(centerX, centerY, radius, 0, FULL_CIRCLE_RADIANS);
+      context.closePath();
+      return;
+    }
+
     context.moveTo(centerX, centerY);
-    context.arc(centerX, centerY, Math.min(width, height) / 2, -Math.PI / 2, Math.PI / 3);
+    context.arc(
+      centerX,
+      centerY,
+      radius,
+      -Math.PI / 2,
+      -Math.PI / 2 + sweepRadians,
+    );
     context.closePath();
     return;
   }

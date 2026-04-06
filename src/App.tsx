@@ -357,6 +357,7 @@ function App() {
     importFiles,
     addSolidSource,
     addGradientSource,
+    removeSource,
     updateGeneratedSource,
     randomizeSeed,
     saveVersion,
@@ -471,6 +472,9 @@ function App() {
   const isStripsFamily = activeProject.layout.family === "strips";
   const isGridFamily = activeProject.layout.family === "grid";
   const isRectShapeMode = activeProject.layout.shapeMode === "rect";
+  const isWedgeShapeMode =
+    activeProject.layout.shapeMode === "wedge" ||
+    activeProject.layout.shapeMode === "mixed";
   const usesGutter = isGridFamily || isStripsFamily;
   const isRadialSymmetry = activeProject.layout.symmetryMode === "radial";
   const isWeightedAssignment =
@@ -499,6 +503,17 @@ function App() {
       ...project,
       sourceIds: toggleSourceId(project.sourceIds, assetId),
     }));
+  };
+  const handleRemoveSource = async (assetId: string) => {
+    const asset = projectAssets.find((entry) => entry.id === assetId);
+    if (!asset) return;
+
+    const confirmed = window.confirm(
+      `Remove "${asset.name}" from this project?`,
+    );
+    if (!confirmed) return;
+
+    await removeSource(assetId);
   };
   const handleExport = async () => {
     const renderedPreview = renderState.lastRenderedPreview;
@@ -863,6 +878,9 @@ function App() {
                           asset={asset}
                           enabled={activeProject.sourceIds.includes(asset.id)}
                           onToggle={toggleAssetEnabled}
+                          onRemove={(assetId) =>
+                            void handleRemoveSource(assetId)
+                          }
                           onEdit={
                             asset.kind === "image"
                               ? undefined
@@ -960,6 +978,42 @@ function App() {
                           layout: {
                             ...project.layout,
                             rectCornerRadius: value,
+                          },
+                        }))
+                      }
+                    />
+                    <SliderField
+                      label="Wedge Angle"
+                      disabled={!isWedgeShapeMode}
+                      min={0}
+                      max={360}
+                      step={1}
+                      value={activeProject.layout.wedgeAngle}
+                      formatter={(value) => `${Math.round(value)}°`}
+                      onChange={(value) =>
+                        patchProject((project) => ({
+                          ...project,
+                          layout: {
+                            ...project.layout,
+                            wedgeAngle: value,
+                          },
+                        }))
+                      }
+                    />
+                    <SliderField
+                      label="Wedge Jitter"
+                      disabled={!isWedgeShapeMode}
+                      min={0}
+                      max={360}
+                      step={1}
+                      value={activeProject.layout.wedgeJitter}
+                      formatter={(value) => `${Math.round(value)}°`}
+                      onChange={(value) =>
+                        patchProject((project) => ({
+                          ...project,
+                          layout: {
+                            ...project.layout,
+                            wedgeJitter: value,
                           },
                         }))
                       }
@@ -1092,6 +1146,23 @@ function App() {
                           layout: {
                             ...project.layout,
                             hidePercentage: value,
+                          },
+                        }))
+                      }
+                    />
+                    <SliderField
+                      label="Letterbox"
+                      min={0}
+                      max={1}
+                      step={0.01}
+                      value={activeProject.layout.letterbox}
+                      formatter={(value) => `${Math.round(value * 100)}%`}
+                      onChange={(value) =>
+                        patchProject((project) => ({
+                          ...project,
+                          layout: {
+                            ...project.layout,
+                            letterbox: value,
                           },
                         }))
                       }

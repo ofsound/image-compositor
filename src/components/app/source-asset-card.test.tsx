@@ -91,9 +91,30 @@ describe("SourceAssetCard", () => {
     expect(onToggle).toHaveBeenCalledTimes(1);
   });
 
+  it("renders a remove button and removes the asset with one click", async () => {
+    const user = userEvent.setup();
+    const onRemove = vi.fn();
+
+    render(
+      <SourceAssetCard
+        asset={imageAsset}
+        enabled
+        onToggle={vi.fn()}
+        onRemove={onRemove}
+        thumbnail={<div>thumb</div>}
+      />,
+    );
+
+    await user.click(screen.getByLabelText("Remove Asset A"));
+
+    expect(onRemove).toHaveBeenCalledWith("asset_a");
+    expect(onRemove).toHaveBeenCalledTimes(1);
+  });
+
   it("renders an edit button for editable generated sources", async () => {
     const user = userEvent.setup();
     const onEdit = vi.fn();
+    const onRemove = vi.fn();
 
     render(
       <SourceAssetCard
@@ -101,11 +122,13 @@ describe("SourceAssetCard", () => {
         enabled
         onToggle={vi.fn()}
         onEdit={onEdit}
+        onRemove={onRemove}
         thumbnail={<div>thumb</div>}
       />,
     );
 
     expect(screen.getByText("Gradient")).toBeInTheDocument();
+    expect(screen.getByLabelText("Remove Sunrise")).toBeInTheDocument();
     await user.click(screen.getByLabelText("Edit Sunrise"));
 
     expect(onEdit).toHaveBeenCalledWith("asset_gradient");

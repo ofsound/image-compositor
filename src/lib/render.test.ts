@@ -148,6 +148,84 @@ describe("renderProjectToCanvas", () => {
     expect(context.lineTo).toHaveBeenCalled();
   });
 
+  it("renders wedge sweeps from the configured wedge angle", async () => {
+    const project = createProjectDocument("Wedge Render");
+    project.layout.family = "grid";
+    project.layout.columns = 1;
+    project.layout.rows = 1;
+    project.layout.shapeMode = "wedge";
+    project.layout.wedgeAngle = 180;
+    project.layout.wedgeJitter = 0;
+    project.layout.symmetryMode = "none";
+    project.compositing.overlap = 0;
+    project.effects.rotationJitter = 0;
+    project.effects.scaleJitter = 0;
+    project.effects.displacement = 0;
+    project.effects.distortion = 0;
+    project.effects.sharpen = 0;
+    project.effects.kaleidoscopeSegments = 1;
+
+    const context = createMockContext();
+    const canvas = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn(() => context),
+    } as unknown as HTMLCanvasElement;
+
+    await renderProjectToCanvas(
+      project,
+      [asset],
+      new Map([[asset.id, { asset, bitmap: {} as ImageBitmap }]]),
+      canvas,
+    );
+
+    expect(context.arc).toHaveBeenCalled();
+    const [, , , startAngle, endAngle] = context.arc.mock.calls[0]!;
+    expect(startAngle).toBe(-Math.PI / 2);
+    expect(endAngle).toBe(Math.PI / 2);
+  });
+
+  it("renders a full-circle wedge cleanly at 360 degrees", async () => {
+    const project = createProjectDocument("Wedge Full Circle Render");
+    project.layout.family = "grid";
+    project.layout.columns = 1;
+    project.layout.rows = 1;
+    project.layout.shapeMode = "wedge";
+    project.layout.wedgeAngle = 360;
+    project.layout.wedgeJitter = 0;
+    project.layout.symmetryMode = "none";
+    project.compositing.overlap = 0;
+    project.effects.rotationJitter = 0;
+    project.effects.scaleJitter = 0;
+    project.effects.displacement = 0;
+    project.effects.distortion = 0;
+    project.effects.sharpen = 0;
+    project.effects.kaleidoscopeSegments = 1;
+
+    const context = createMockContext();
+    const canvas = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn(() => context),
+    } as unknown as HTMLCanvasElement;
+
+    await renderProjectToCanvas(
+      project,
+      [asset],
+      new Map([[asset.id, { asset, bitmap: {} as ImageBitmap }]]),
+      canvas,
+    );
+
+    expect(context.moveTo).not.toHaveBeenCalled();
+    expect(context.arc).toHaveBeenCalledWith(
+      expect.any(Number),
+      expect.any(Number),
+      expect.any(Number),
+      0,
+      Math.PI * 2,
+    );
+  });
+
   it("can skip the background pass for transparent export rendering", async () => {
     const project = createProjectDocument("Transparent Export");
     project.canvas.width = 64;

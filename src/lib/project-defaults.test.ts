@@ -57,6 +57,60 @@ describe("createProjectDocument", () => {
     expect(normalizeProjectDocument(legacyProject).canvas.backgroundAlpha).toBe(0);
   });
 
+  it("normalizes legacy projects without letterbox to zero", () => {
+    const project = createProjectDocument("Legacy Letterbox");
+    const legacyProject = {
+      ...project,
+      layout: {
+        family: project.layout.family,
+        shapeMode: project.layout.shapeMode,
+        rectCornerRadius: project.layout.rectCornerRadius,
+        density: project.layout.density,
+        columns: project.layout.columns,
+        rows: project.layout.rows,
+        gutter: project.layout.gutter,
+        blockDepth: project.layout.blockDepth,
+        stripOrientation: project.layout.stripOrientation,
+        radialSegments: project.layout.radialSegments,
+        radialRings: project.layout.radialRings,
+        symmetryMode: project.layout.symmetryMode,
+        symmetryCopies: project.layout.symmetryCopies,
+        hidePercentage: project.layout.hidePercentage,
+        randomness: project.layout.randomness,
+      },
+    } as unknown as ProjectDocument;
+
+    expect(normalizeProjectDocument(legacyProject).layout.letterbox).toBe(0);
+  });
+
+  it("normalizes legacy projects without wedge controls to defaults", () => {
+    const project = createProjectDocument("Legacy Wedge");
+    const legacyProject = {
+      ...project,
+      layout: {
+        family: project.layout.family,
+        shapeMode: project.layout.shapeMode,
+        rectCornerRadius: project.layout.rectCornerRadius,
+        density: project.layout.density,
+        columns: project.layout.columns,
+        rows: project.layout.rows,
+        gutter: project.layout.gutter,
+        blockDepth: project.layout.blockDepth,
+        stripOrientation: project.layout.stripOrientation,
+        radialSegments: project.layout.radialSegments,
+        radialRings: project.layout.radialRings,
+        symmetryMode: project.layout.symmetryMode,
+        symmetryCopies: project.layout.symmetryCopies,
+        hidePercentage: project.layout.hidePercentage,
+        letterbox: project.layout.letterbox,
+        randomness: project.layout.randomness,
+      },
+    } as unknown as ProjectDocument;
+
+    expect(normalizeProjectDocument(legacyProject).layout.wedgeAngle).toBe(120);
+    expect(normalizeProjectDocument(legacyProject).layout.wedgeJitter).toBe(0);
+  });
+
   it("normalizes legacy version snapshots without crop distribution to centered mode", () => {
     const project = createProjectDocument("Legacy Version");
     const legacyVersion = {
@@ -89,5 +143,48 @@ describe("createProjectDocument", () => {
     expect(normalizeProjectVersion(legacyVersion).snapshot.sourceMapping.cropDistribution).toBe(
       "center",
     );
+  });
+
+  it("normalizes legacy version snapshots without wedge controls to defaults", () => {
+    const project = createProjectDocument("Legacy Wedge Version");
+    const legacyVersion = {
+      id: "version_legacy_wedge",
+      projectId: project.id,
+      label: "Legacy Wedge Snapshot",
+      createdAt: new Date().toISOString(),
+      thumbnailPath: null,
+      snapshot: {
+        sourceIds: project.sourceIds,
+        canvas: structuredClone(project.canvas),
+        layout: {
+          family: project.layout.family,
+          shapeMode: project.layout.shapeMode,
+          rectCornerRadius: project.layout.rectCornerRadius,
+          density: project.layout.density,
+          columns: project.layout.columns,
+          rows: project.layout.rows,
+          gutter: project.layout.gutter,
+          blockDepth: project.layout.blockDepth,
+          stripOrientation: project.layout.stripOrientation,
+          radialSegments: project.layout.radialSegments,
+          radialRings: project.layout.radialRings,
+          symmetryMode: project.layout.symmetryMode,
+          symmetryCopies: project.layout.symmetryCopies,
+          hidePercentage: project.layout.hidePercentage,
+          letterbox: project.layout.letterbox,
+          randomness: project.layout.randomness,
+        },
+        sourceMapping: structuredClone(project.sourceMapping),
+        effects: structuredClone(project.effects),
+        compositing: structuredClone(project.compositing),
+        export: structuredClone(project.export),
+        activeSeed: project.activeSeed,
+        presets: structuredClone(project.presets),
+        passes: structuredClone(project.passes),
+      },
+    } as unknown as ProjectVersion;
+
+    expect(normalizeProjectVersion(legacyVersion).snapshot.layout.wedgeAngle).toBe(120);
+    expect(normalizeProjectVersion(legacyVersion).snapshot.layout.wedgeJitter).toBe(0);
   });
 });

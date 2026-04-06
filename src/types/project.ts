@@ -92,6 +92,9 @@ export interface LayoutSettings {
   symmetryMode: "none" | "mirror-x" | "mirror-y" | "quad" | "radial";
   symmetryCopies: number;
   hidePercentage: number;
+  letterbox: number;
+  wedgeAngle: number;
+  wedgeJitter: number;
   randomness: number;
 }
 
@@ -240,6 +243,7 @@ export interface RenderSlice {
   displacementOffset: { x: number; y: number };
   distortion: number;
   sourceCrop: NormalizedRect | null;
+  wedgeSweepRadians: number | null;
   mirrorAxis: "none" | "x" | "y";
   depth: number;
 }

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { db, createGeneratedSourceAsset } = vi.hoisted(() => ({
+const { db, createGeneratedSourceAsset, deleteBlob, readBlob, writeBlob } = vi.hoisted(() => ({
   db: {
     assets: {
       put: vi.fn(async () => undefined),
@@ -36,6 +36,9 @@ const { db, createGeneratedSourceAsset } = vi.hoisted(() => ({
     },
   },
   createGeneratedSourceAsset: vi.fn(),
+  deleteBlob: vi.fn<() => Promise<void>>(async () => undefined),
+  readBlob: vi.fn<(path: string) => Promise<Blob | null>>(async () => null),
+  writeBlob: vi.fn<(path: string, blob: Blob) => Promise<void>>(async () => undefined),
 }));
 
 vi.mock("@/lib/assets", () => ({
@@ -49,7 +52,7 @@ vi.mock("@/lib/assets", () => ({
 vi.mock("@/lib/db", () => ({ db }));
 vi.mock("@/lib/download", () => ({ downloadBlob: vi.fn() }));
 vi.mock("@/lib/image-worker-client", () => ({ processImageFile: vi.fn() }));
-vi.mock("@/lib/opfs", () => ({ deleteBlob: vi.fn(async () => undefined) }));
+vi.mock("@/lib/opfs", () => ({ deleteBlob, readBlob, writeBlob }));
 vi.mock("@/lib/render", () => ({ exportProjectImage: vi.fn() }));
 vi.mock("@/lib/serializer", () => ({
   createImportCopy: vi.fn(),
@@ -198,6 +201,50 @@ describe("useAppStore history", () => {
     expect(useAppStore.getState().assets.map((entry) => entry.id)).toEqual([asset.id]);
     expect(useAppStore.getState().projects[0]?.sourceIds).toEqual([asset.id]);
     expect(db.assets.bulkPut).toHaveBeenCalledWith([asset]);
+    expect(useAppStore.getState().canRedo).toBe(false);
+  });
+
+  it("removes a source and restores it with undo/redo", async () => {
+    const project = useAppStore.getState().projects[0]!;
+    const asset = createSolidAsset(project.id);
+    useAppStore.setState((state) => ({
+      ...state,
+      assets: [asset],
+      projects: [
+        {
+          ...project,
+          sourceIds: [asset.id],
+        },
+      ],
+    }));
+
+    vi.mocked(readBlob)
+      .mockResolvedValueOnce(new Blob(["original"]))
+      .mockResolvedValueOnce(new Blob(["normalized"]))
+      .mockResolvedValueOnce(new Blob(["preview"]));
+
+    await useAppStore.getState().removeSource(asset.id);
+
+    expect(useAppStore.getState().assets).toHaveLength(0);
+    expect(useAppStore.getState().projects[0]?.sourceIds).toEqual([]);
+    expect(deleteBlob).toHaveBeenCalledTimes(3);
+    expect(db.assets.bulkDelete).toHaveBeenCalledWith([asset.id]);
+    expect(useAppStore.getState().canUndo).toBe(true);
+
+    await useAppStore.getState().undo();
+
+    expect(useAppStore.getState().assets.map((entry) => entry.id)).toEqual([asset.id]);
+    expect(useAppStore.getState().projects[0]?.sourceIds).toEqual([asset.id]);
+    expect(writeBlob).toHaveBeenCalledTimes(3);
+    expect(db.assets.bulkPut).toHaveBeenCalledWith([asset]);
+    expect(useAppStore.getState().canRedo).toBe(true);
+
+    await useAppStore.getState().redo();
+
+    expect(useAppStore.getState().assets).toHaveLength(0);
+    expect(useAppStore.getState().projects[0]?.sourceIds).toEqual([]);
+    expect(deleteBlob).toHaveBeenCalledTimes(6);
+    expect(db.assets.bulkDelete).toHaveBeenLastCalledWith([asset.id]);
     expect(useAppStore.getState().canRedo).toBe(false);
   });
 });

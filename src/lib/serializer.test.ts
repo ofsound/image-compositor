@@ -42,6 +42,9 @@ const bundle: ImportedProjectBundle = {
       symmetryMode: "none",
       symmetryCopies: 2,
       hidePercentage: 0,
+      letterbox: 0,
+      wedgeAngle: 120,
+      wedgeJitter: 0,
       randomness: 0.1,
     },
     sourceMapping: {
@@ -112,6 +115,9 @@ const bundle: ImportedProjectBundle = {
           symmetryMode: "none",
           symmetryCopies: 2,
           hidePercentage: 0,
+          letterbox: 0,
+          wedgeAngle: 120,
+          wedgeJitter: 0,
           randomness: 0.1,
         },
         sourceMapping: {

@@ -13,7 +13,7 @@ import { db } from "@/lib/db";
 import { downloadBlob } from "@/lib/download";
 import { processImageFile } from "@/lib/image-worker-client";
 import { makeId } from "@/lib/id";
-import { deleteBlob } from "@/lib/opfs";
+import { deleteBlob, readBlob, writeBlob } from "@/lib/opfs";
 import {
   createProjectDocument,
   normalizeProjectDocument,
@@ -53,7 +53,27 @@ interface AddAssetsHistoryEntry {
   sourceIdsAfter: string[];
 }
 
-type HistoryEntry = ProjectChangeHistoryEntry | AddAssetsHistoryEntry;
+interface RemovedAssetSnapshot {
+  asset: SourceAsset;
+  blobs: {
+    original: Blob | null;
+    normalized: Blob | null;
+    preview: Blob | null;
+  };
+}
+
+interface RemoveAssetsHistoryEntry {
+  kind: "remove-assets";
+  projectId: string;
+  assets: RemovedAssetSnapshot[];
+  sourceIdsBefore: string[];
+  sourceIdsAfter: string[];
+}
+
+type HistoryEntry =
+  | ProjectChangeHistoryEntry
+  | AddAssetsHistoryEntry
+  | RemoveAssetsHistoryEntry;
 
 interface ProjectHistoryState {
   past: HistoryEntry[];
@@ -89,6 +109,7 @@ interface AppState {
   importFiles: (files: FileList | File[]) => Promise<void>;
   addSolidSource: (input: SolidSourceInput) => Promise<void>;
   addGradientSource: (input: GradientSourceInput) => Promise<void>;
+  removeSource: (assetId: string) => Promise<void>;
   updateGeneratedSource: (
     assetId: string,
     input: SolidSourceInput | GradientSourceInput,
@@ -213,6 +234,33 @@ function upsertProject(projects: ProjectDocument[], project: ProjectDocument) {
 function removeAssetsById(assets: SourceAsset[], assetIds: string[]) {
   const assetIdSet = new Set(assetIds);
   return sortAssetsByCreated(assets.filter((asset) => !assetIdSet.has(asset.id)));
+}
+
+async function restoreRemovedAssetSnapshots(assets: RemovedAssetSnapshot[]) {
+  for (const entry of assets) {
+    const { asset, blobs } = entry;
+    const writes: Promise<void>[] = [];
+    if (blobs.original) {
+      writes.push(writeBlob(asset.originalPath, blobs.original));
+    }
+    if (blobs.normalized) {
+      writes.push(writeBlob(asset.normalizedPath, blobs.normalized));
+    }
+    if (blobs.preview) {
+      writes.push(writeBlob(asset.previewPath, blobs.preview));
+    }
+    await Promise.all(writes);
+  }
+}
+
+async function deleteAssetFiles(assets: SourceAsset[]) {
+  await Promise.all(
+    assets.flatMap((asset) => [
+      deleteBlob(asset.originalPath),
+      deleteBlob(asset.normalizedPath),
+      deleteBlob(asset.previewPath),
+    ]),
+  );
 }
 
 async function persistActiveProjectId(projectId: string | null) {
@@ -688,6 +736,72 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
+  async removeSource(assetId) {
+    const activeProject = getActiveProject(get());
+    if (!activeProject) return;
+
+    const asset = get().assets.find(
+      (entry) => entry.id === assetId && entry.projectId === activeProject.id,
+    );
+    if (!asset) return;
+
+    set({ busy: true, status: `Removing ${asset.name}…` });
+
+    try {
+      const removedAsset: RemovedAssetSnapshot = {
+        asset: structuredClone(asset),
+        blobs: {
+          original: await readBlob(asset.originalPath),
+          normalized: await readBlob(asset.normalizedPath),
+          preview: await readBlob(asset.previewPath),
+        },
+      };
+
+      const nextProject = {
+        ...activeProject,
+        sourceIds: activeProject.sourceIds.filter((sourceId) => sourceId !== asset.id),
+        updatedAt: new Date().toISOString(),
+      };
+
+      await Promise.all([
+        deleteAssetFiles([asset]),
+        db.assets.bulkDelete([asset.id]),
+        db.projects.put(nextProject),
+      ]);
+
+      set((state) => {
+        const historyByProject = patchHistory(state.historyByProject, nextProject.id, (history) => ({
+          past: [
+            ...history.past,
+            {
+              kind: "remove-assets",
+              projectId: nextProject.id,
+              assets: [removedAsset],
+              sourceIdsBefore: structuredClone(activeProject.sourceIds),
+              sourceIdsAfter: structuredClone(nextProject.sourceIds),
+            } satisfies RemoveAssetsHistoryEntry,
+          ],
+          future: [],
+        }));
+
+        return {
+          assets: removeAssetsById(state.assets, [asset.id]),
+          projects: upsertProject(state.projects, nextProject),
+          historyByProject,
+          busy: false,
+          status: "Source removed.",
+          ...getHistoryFlags(historyByProject, state.activeProjectId),
+        };
+      });
+    } catch (error) {
+      set({
+        busy: false,
+        status:
+          error instanceof Error ? `Could not remove source: ${error.message}` : "Could not remove source.",
+      });
+    }
+  },
+
   async updateGeneratedSource(assetId, input) {
     const activeProject = getActiveProject(get());
     if (!activeProject) return;
@@ -931,6 +1045,37 @@ export const useAppStore = create<AppState>((set, get) => ({
       return;
     }
 
+    if (entry.kind === "remove-assets") {
+      const restoredAssets = entry.assets.map((removedAsset) => removedAsset.asset);
+      const updatedProject: ProjectDocument = {
+        ...project,
+        sourceIds: structuredClone(entry.sourceIdsBefore),
+        updatedAt: new Date().toISOString(),
+      };
+
+      await Promise.all([
+        restoreRemovedAssetSnapshots(entry.assets),
+        db.assets.bulkPut(restoredAssets),
+        db.projects.put(updatedProject),
+      ]);
+
+      set((state) => {
+        const historyByProject = patchHistory(state.historyByProject, project.id, (currentHistory) => ({
+          past: currentHistory.past.slice(0, -1),
+          future: [...currentHistory.future, entry],
+        }));
+
+        return {
+          assets: sortAssetsByCreated([...state.assets, ...restoredAssets]),
+          projects: upsertProject(state.projects, updatedProject),
+          historyByProject,
+          status: "Undo applied.",
+          ...getHistoryFlags(historyByProject, state.activeProjectId),
+        };
+      });
+      return;
+    }
+
     const updatedProject: ProjectDocument = {
       ...project,
       sourceIds: structuredClone(entry.sourceIdsBefore),
@@ -982,6 +1127,38 @@ export const useAppStore = create<AppState>((set, get) => ({
         }));
 
         return {
+          projects: upsertProject(state.projects, updatedProject),
+          historyByProject,
+          status: "Redo applied.",
+          ...getHistoryFlags(historyByProject, state.activeProjectId),
+        };
+      });
+      return;
+    }
+
+    if (entry.kind === "remove-assets") {
+      const removedAssets = entry.assets.map((removedAsset) => removedAsset.asset);
+      const removedAssetIds = removedAssets.map((asset) => asset.id);
+      const updatedProject: ProjectDocument = {
+        ...project,
+        sourceIds: structuredClone(entry.sourceIdsAfter),
+        updatedAt: new Date().toISOString(),
+      };
+
+      await Promise.all([
+        deleteAssetFiles(removedAssets),
+        db.assets.bulkDelete(removedAssetIds),
+        db.projects.put(updatedProject),
+      ]);
+
+      set((state) => {
+        const historyByProject = patchHistory(state.historyByProject, project.id, (currentHistory) => ({
+          past: [...currentHistory.past, entry],
+          future: currentHistory.future.slice(0, -1),
+        }));
+
+        return {
+          assets: removeAssetsById(state.assets, removedAssetIds),
           projects: upsertProject(state.projects, updatedProject),
           historyByProject,
           status: "Redo applied.",

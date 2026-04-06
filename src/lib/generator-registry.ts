@@ -20,6 +20,8 @@ interface LayoutCell extends RenderRect {
   shape: Exclude<GeometryShape, "mixed">;
 }
 
+const MIN_WEDGE_SWEEP_DEGREES = 0.5;
+
 function assignShape(index: number, shapeMode: GeometryShape) {
   if (shapeMode !== "mixed") return shapeMode;
   const cycle: Exclude<GeometryShape, "mixed">[] = ["rect", "triangle", "ring", "wedge"];
@@ -434,6 +436,50 @@ function hideRandomSlices(slices: RenderSlice[], project: ProjectDocument) {
   return slices.filter((slice) => !hiddenSliceIds.has(slice.id));
 }
 
+function applyLetterbox(slices: RenderSlice[], project: ProjectDocument) {
+  const amount = clamp(project.layout.letterbox, 0, 1);
+  if (amount <= 0) return slices;
+
+  const scale = lerp(1, 0.02, amount);
+  const canvasCenterX = project.canvas.width / 2;
+  const canvasCenterY = project.canvas.height / 2;
+
+  return slices.map((slice) => {
+    const sliceCenterX = slice.rect.x + slice.rect.width / 2;
+    const sliceCenterY = slice.rect.y + slice.rect.height / 2;
+    const nextWidth = slice.rect.width * scale;
+    const nextHeight = slice.rect.height * scale;
+    const nextCenterX = canvasCenterX + (sliceCenterX - canvasCenterX) * scale;
+    const nextCenterY = canvasCenterY + (sliceCenterY - canvasCenterY) * scale;
+
+    return {
+      ...slice,
+      rect: {
+        x: nextCenterX - nextWidth / 2,
+        y: nextCenterY - nextHeight / 2,
+        width: nextWidth,
+        height: nextHeight,
+      },
+    };
+  });
+}
+
+function getWedgeSweepRadians(
+  shape: Exclude<GeometryShape, "mixed">,
+  project: ProjectDocument,
+  rng: ReturnType<typeof mulberry32>,
+) {
+  if (shape !== "wedge") return null;
+
+  const sweepDegrees = clamp(
+    project.layout.wedgeAngle + rng.next() * project.layout.wedgeJitter,
+    MIN_WEDGE_SWEEP_DEGREES,
+    360,
+  );
+
+  return (sweepDegrees * Math.PI) / 180;
+}
+
 export function buildRenderSlices(project: ProjectDocument, assets: SourceAsset[]) {
   if (assets.length === 0) {
     return [];
@@ -473,14 +519,18 @@ export function buildRenderSlices(project: ProjectDocument, assets: SourceAsset[
       displacementOffset: { x: displacement, y: displacement * (rng.next() - 0.5) },
       distortion: project.effects.distortion * rng.next(),
       sourceCrop: null,
+      wedgeSweepRadians: getWedgeSweepRadians(cell.shape, project, rng),
       mirrorAxis: "none",
       depth: rng.next(),
     };
   });
 
   return hideRandomSlices(
-    assignDistributedCrops(reflectSlices(slices, project), project, assets).sort(
-      (a, b) => a.depth - b.depth,
+    applyLetterbox(
+      assignDistributedCrops(reflectSlices(slices, project), project, assets).sort(
+        (a, b) => a.depth - b.depth,
+      ),
+      project,
     ),
     project,
   );

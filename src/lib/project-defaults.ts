@@ -49,6 +49,9 @@ export const DEFAULT_LAYOUT: LayoutSettings = {
   symmetryMode: "none",
   symmetryCopies: 4,
   hidePercentage: 0,
+  letterbox: 0,
+  wedgeAngle: 120,
+  wedgeJitter: 0,
   randomness: 0.52,
 };
 
@@ -134,6 +137,9 @@ export function normalizeLayoutSettings(
     symmetryMode: layout?.symmetryMode ?? DEFAULT_LAYOUT.symmetryMode,
     symmetryCopies: layout?.symmetryCopies ?? DEFAULT_LAYOUT.symmetryCopies,
     hidePercentage: layout?.hidePercentage ?? DEFAULT_LAYOUT.hidePercentage,
+    letterbox: layout?.letterbox ?? DEFAULT_LAYOUT.letterbox,
+    wedgeAngle: layout?.wedgeAngle ?? DEFAULT_LAYOUT.wedgeAngle,
+    wedgeJitter: layout?.wedgeJitter ?? DEFAULT_LAYOUT.wedgeJitter,
     randomness: layout?.randomness ?? DEFAULT_LAYOUT.randomness,
   };
 }

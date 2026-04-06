@@ -195,4 +195,185 @@ describe("buildRenderSlices", () => {
     expect(slices).toHaveLength(4);
     expect(new Set(slices.map((slice) => slice.id)).size).toBe(4);
   });
+
+  it("keeps slice geometry unchanged when letterbox is zero", () => {
+    const project = createProjectDocument("Letterbox Off");
+    project.sourceIds = [assets[0]!.id];
+    project.layout.family = "grid";
+    project.layout.columns = 2;
+    project.layout.rows = 2;
+    project.layout.symmetryMode = "none";
+    project.sourceMapping.cropDistribution = "distributed";
+    project.sourceMapping.preserveAspect = false;
+
+    const baseline = buildRenderSlices(project, [assets[0]!]);
+    project.layout.letterbox = 0;
+    const letterboxed = buildRenderSlices(project, [assets[0]!]);
+
+    expect(letterboxed).toEqual(baseline);
+  });
+
+  it("moves objects inward and scales them down when letterbox is applied", () => {
+    const project = createProjectDocument("Letterbox Inward");
+    project.sourceIds = [assets[0]!.id];
+    project.layout.family = "grid";
+    project.layout.columns = 2;
+    project.layout.rows = 2;
+    project.layout.symmetryMode = "none";
+
+    const baseline = buildRenderSlices(project, [assets[0]!]);
+    project.layout.letterbox = 0.5;
+    const letterboxed = buildRenderSlices(project, [assets[0]!]);
+    const canvasCenterX = project.canvas.width / 2;
+    const canvasCenterY = project.canvas.height / 2;
+
+    expect(letterboxed).toHaveLength(baseline.length);
+
+    for (let index = 0; index < baseline.length; index += 1) {
+      const original = baseline[index]!;
+      const transformed = letterboxed[index]!;
+      const originalCenterX = original.rect.x + original.rect.width / 2;
+      const originalCenterY = original.rect.y + original.rect.height / 2;
+      const transformedCenterX = transformed.rect.x + transformed.rect.width / 2;
+      const transformedCenterY = transformed.rect.y + transformed.rect.height / 2;
+      const originalDistance = Math.hypot(
+        originalCenterX - canvasCenterX,
+        originalCenterY - canvasCenterY,
+      );
+      const transformedDistance = Math.hypot(
+        transformedCenterX - canvasCenterX,
+        transformedCenterY - canvasCenterY,
+      );
+
+      expect(transformed.rect.width).toBeLessThan(original.rect.width);
+      expect(transformed.rect.height).toBeLessThan(original.rect.height);
+      expect(transformedDistance).toBeLessThan(originalDistance);
+    }
+  });
+
+  it("keeps nonzero object sizes at full letterbox", () => {
+    const project = createProjectDocument("Letterbox Max");
+    project.sourceIds = [assets[0]!.id];
+    project.layout.family = "grid";
+    project.layout.columns = 2;
+    project.layout.rows = 2;
+    project.layout.symmetryMode = "none";
+    project.layout.letterbox = 1;
+
+    const slices = buildRenderSlices(project, [assets[0]!]);
+
+    for (const slice of slices) {
+      expect(slice.rect.width).toBeGreaterThan(0);
+      expect(slice.rect.height).toBeGreaterThan(0);
+    }
+  });
+
+  it("hides objects after letterbox has been applied", () => {
+    const project = createProjectDocument("Letterbox Then Hide");
+    project.sourceIds = [assets[0]!.id];
+    project.layout.family = "grid";
+    project.layout.columns = 2;
+    project.layout.rows = 2;
+    project.layout.symmetryMode = "mirror-x";
+    project.layout.letterbox = 0.5;
+    project.layout.hidePercentage = 0;
+
+    const letterboxedOnly = buildRenderSlices(project, [assets[0]!]);
+    project.layout.hidePercentage = 0.5;
+    const hidden = buildRenderSlices(project, [assets[0]!]);
+
+    expect(hidden).toHaveLength(Math.round(letterboxedOnly.length * 0.5));
+    expect(hidden.every((slice) => letterboxedOnly.some((candidate) => candidate.id === slice.id))).toBe(
+      true,
+    );
+  });
+
+  it("uses wedge angle deterministically for wedge slices", () => {
+    const project = createProjectDocument("Wedge Sweep");
+    project.sourceIds = [assets[0]!.id];
+    project.layout.family = "grid";
+    project.layout.columns = 2;
+    project.layout.rows = 2;
+    project.layout.shapeMode = "wedge";
+    project.layout.wedgeAngle = 180;
+    project.layout.wedgeJitter = 0;
+
+    const first = buildRenderSlices(project, [assets[0]!]);
+    const second = buildRenderSlices(project, [assets[0]!]);
+
+    expect(first.map((slice) => slice.wedgeSweepRadians)).toEqual(
+      second.map((slice) => slice.wedgeSweepRadians),
+    );
+    expect(first.every((slice) => slice.wedgeSweepRadians === Math.PI)).toBe(true);
+  });
+
+  it("keeps wedge jitter additive and clamped per wedge", () => {
+    const project = createProjectDocument("Wedge Jitter");
+    project.sourceIds = [assets[0]!.id];
+    project.layout.family = "grid";
+    project.layout.columns = 2;
+    project.layout.rows = 2;
+    project.layout.shapeMode = "wedge";
+    project.layout.wedgeAngle = 300;
+    project.layout.wedgeJitter = 120;
+
+    const slices = buildRenderSlices(project, [assets[0]!]);
+
+    for (const slice of slices) {
+      expect(slice.wedgeSweepRadians).not.toBeNull();
+      expect(slice.wedgeSweepRadians!).toBeGreaterThanOrEqual((300 * Math.PI) / 180);
+      expect(slice.wedgeSweepRadians!).toBeLessThanOrEqual(Math.PI * 2);
+    }
+  });
+
+  it("applies wedge controls only to wedge slices in mixed mode", () => {
+    const project = createProjectDocument("Mixed Wedges");
+    project.sourceIds = [assets[0]!.id];
+    project.layout.family = "grid";
+    project.layout.columns = 2;
+    project.layout.rows = 2;
+    project.layout.shapeMode = "mixed";
+    project.layout.wedgeAngle = 90;
+    project.layout.wedgeJitter = 0;
+
+    const slices = buildRenderSlices(project, [assets[0]!]);
+
+    for (const slice of slices) {
+      if (slice.shape === "wedge") {
+        expect(slice.wedgeSweepRadians).toBe(Math.PI / 2);
+      } else {
+        expect(slice.wedgeSweepRadians).toBeNull();
+      }
+    }
+  });
+
+  it("keeps a visible sliver at zero wedge angle", () => {
+    const project = createProjectDocument("Wedge Sliver");
+    project.sourceIds = [assets[0]!.id];
+    project.layout.family = "grid";
+    project.layout.columns = 1;
+    project.layout.rows = 1;
+    project.layout.shapeMode = "wedge";
+    project.layout.wedgeAngle = 0;
+    project.layout.wedgeJitter = 0;
+
+    const [slice] = buildRenderSlices(project, [assets[0]!]);
+
+    expect(slice?.wedgeSweepRadians).toBeCloseTo((0.5 * Math.PI) / 180);
+  });
+
+  it("clamps wedge sweeps to a full circle", () => {
+    const project = createProjectDocument("Wedge Full Circle");
+    project.sourceIds = [assets[0]!.id];
+    project.layout.family = "grid";
+    project.layout.columns = 1;
+    project.layout.rows = 1;
+    project.layout.shapeMode = "wedge";
+    project.layout.wedgeAngle = 360;
+    project.layout.wedgeJitter = 360;
+
+    const [slice] = buildRenderSlices(project, [assets[0]!]);
+
+    expect(slice?.wedgeSweepRadians).toBeCloseTo(Math.PI * 2);
+  });
 });

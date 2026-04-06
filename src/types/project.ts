@@ -91,6 +91,7 @@ export interface LayoutSettings {
   radialRings: number;
   symmetryMode: "none" | "mirror-x" | "mirror-y" | "quad" | "radial";
   symmetryCopies: number;
+  hidePercentage: number;
   randomness: number;
 }
 

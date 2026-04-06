@@ -41,6 +41,7 @@ const bundle: ImportedProjectBundle = {
       radialRings: 2,
       symmetryMode: "none",
       symmetryCopies: 2,
+      hidePercentage: 0,
       randomness: 0.1,
     },
     sourceMapping: {
@@ -110,6 +111,7 @@ const bundle: ImportedProjectBundle = {
           radialRings: 2,
           symmetryMode: "none",
           symmetryCopies: 2,
+          hidePercentage: 0,
           randomness: 0.1,
         },
         sourceMapping: {

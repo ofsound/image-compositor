@@ -124,6 +124,7 @@ describe("App conditional sliders", () => {
     expectSliderEnabled("Rows");
     expectSliderEnabled("Gutter");
     expectSliderDisabled("Radial Copies");
+    expectSliderEnabled("Hide Percentage");
     expectSliderDisabled("Source Bias");
     expectSliderDisabled("Palette Emphasis");
   });
@@ -142,6 +143,7 @@ describe("App conditional sliders", () => {
     expectSliderDisabled("Rows");
     expectSliderEnabled("Gutter");
     expectSliderDisabled("Radial Copies");
+    expectSliderEnabled("Hide Percentage");
   });
 
   it("disables gutter for blocks layouts and enables weighted and radial controls when active", () => {
@@ -158,6 +160,7 @@ describe("App conditional sliders", () => {
     expectSliderDisabled("Rows");
     expectSliderDisabled("Gutter");
     expectSliderEnabled("Radial Copies");
+    expectSliderEnabled("Hide Percentage");
     expectSliderEnabled("Source Bias");
     expectSliderDisabled("Palette Emphasis");
   });
@@ -176,6 +179,7 @@ describe("App conditional sliders", () => {
     expectSliderDisabled("Rows");
     expectSliderDisabled("Gutter");
     expectSliderDisabled("Radial Copies");
+    expectSliderEnabled("Hide Percentage");
     expectSliderDisabled("Source Bias");
     expectSliderEnabled("Palette Emphasis");
   });

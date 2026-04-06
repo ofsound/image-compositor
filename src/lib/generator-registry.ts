@@ -411,6 +411,29 @@ function assignDistributedCrops(
   }));
 }
 
+function hideRandomSlices(slices: RenderSlice[], project: ProjectDocument) {
+  const hideCount = Math.round(
+    slices.length * clamp(project.layout.hidePercentage, 0, 1),
+  );
+
+  if (hideCount <= 0) return slices;
+  if (hideCount >= slices.length) return [];
+
+  const rng = mulberry32(project.activeSeed + 9_941);
+  const hiddenSliceIds = new Set(
+    [...slices]
+      .map((slice) => ({
+        id: slice.id,
+        weight: rng.next(),
+      }))
+      .sort((a, b) => a.weight - b.weight)
+      .slice(0, hideCount)
+      .map((slice) => slice.id),
+  );
+
+  return slices.filter((slice) => !hiddenSliceIds.has(slice.id));
+}
+
 export function buildRenderSlices(project: ProjectDocument, assets: SourceAsset[]) {
   if (assets.length === 0) {
     return [];
@@ -455,7 +478,10 @@ export function buildRenderSlices(project: ProjectDocument, assets: SourceAsset[
     };
   });
 
-  return assignDistributedCrops(reflectSlices(slices, project), project, assets).sort(
-    (a, b) => a.depth - b.depth,
+  return hideRandomSlices(
+    assignDistributedCrops(reflectSlices(slices, project), project, assets).sort(
+      (a, b) => a.depth - b.depth,
+    ),
+    project,
   );
 }

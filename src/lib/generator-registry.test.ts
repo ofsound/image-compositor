@@ -178,4 +178,21 @@ describe("buildRenderSlices", () => {
       slices.length,
     );
   });
+
+  it("hides a percentage of the fully transformed object set", () => {
+    const project = createProjectDocument("Hidden Objects");
+    project.sourceIds = [assets[0]!.id];
+    project.layout.family = "grid";
+    project.layout.columns = 2;
+    project.layout.rows = 2;
+    project.layout.symmetryMode = "mirror-x";
+    project.layout.hidePercentage = 0.5;
+    project.sourceMapping.cropDistribution = "distributed";
+    project.sourceMapping.preserveAspect = false;
+
+    const slices = buildRenderSlices(project, [assets[0]!]);
+
+    expect(slices).toHaveLength(4);
+    expect(new Set(slices.map((slice) => slice.id)).size).toBe(4);
+  });
 });

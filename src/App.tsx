@@ -1080,6 +1080,23 @@ function App() {
                       }
                     />
                     <SliderField
+                      label="Hide Percentage"
+                      min={0}
+                      max={1}
+                      step={0.01}
+                      value={activeProject.layout.hidePercentage}
+                      formatter={(value) => `${Math.round(value * 100)}%`}
+                      onChange={(value) =>
+                        patchProject((project) => ({
+                          ...project,
+                          layout: {
+                            ...project.layout,
+                            hidePercentage: value,
+                          },
+                        }))
+                      }
+                    />
+                    <SliderField
                       label="Canvas W"
                       min={1200}
                       max={3840}

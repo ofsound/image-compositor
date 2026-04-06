@@ -48,6 +48,7 @@ export const DEFAULT_LAYOUT: LayoutSettings = {
   radialRings: 4,
   symmetryMode: "none",
   symmetryCopies: 4,
+  hidePercentage: 0,
   randomness: 0.52,
 };
 
@@ -74,8 +75,8 @@ export const DEFAULT_EFFECTS: EffectSettings = {
 
 export const DEFAULT_COMPOSITING: CompositingSettings = {
   blendMode: "source-over",
-  opacity: 0.94,
-  overlap: 0.22,
+  opacity: 1,
+  overlap: 0.0,
   shadow: 0.08,
   feather: 0.04,
 };
@@ -132,6 +133,7 @@ export function normalizeLayoutSettings(
     radialRings: layout?.radialRings ?? DEFAULT_LAYOUT.radialRings,
     symmetryMode: layout?.symmetryMode ?? DEFAULT_LAYOUT.symmetryMode,
     symmetryCopies: layout?.symmetryCopies ?? DEFAULT_LAYOUT.symmetryCopies,
+    hidePercentage: layout?.hidePercentage ?? DEFAULT_LAYOUT.hidePercentage,
     randomness: layout?.randomness ?? DEFAULT_LAYOUT.randomness,
   };
 }

@@ -28,6 +28,7 @@ interface Point {
 }
 
 const MIN_WEDGE_SWEEP_DEGREES = 0.5;
+const MAX_BLOCK_SPLIT_OFFSET = 0.18;
 
 function assignShape(index: number, shapeMode: GeometryShape) {
   if (shapeMode !== "mixed") return shapeMode;
@@ -241,8 +242,36 @@ function generateStrips(context: GeneratorContext) {
   return cells;
 }
 
-function subdivide(rect: RenderRect, depth: number, rng: ReturnType<typeof mulberry32>, cells: LayoutCell[], shapeMode: GeometryShape, overlap: number) {
-  if (depth === 0 || rect.width < 140 || rect.height < 140) {
+function getBlockSplitRatio(
+  randomness: number,
+  rng: ReturnType<typeof mulberry32>,
+) {
+  const halfRange = MAX_BLOCK_SPLIT_OFFSET * clamp(randomness, 0, 1);
+  if (halfRange === 0) {
+    return 0.5;
+  }
+
+  return lerp(0.5 - halfRange, 0.5 + halfRange, rng.next());
+}
+
+function getBlockVerticalSplitProbability(rect: RenderRect, splitBias: number) {
+  const aspectDelta = (rect.width - rect.height) / Math.max(rect.width, rect.height, 1);
+  const aspectPreference = clamp(0.5 + aspectDelta * 0.35, 0, 1);
+  return clamp(aspectPreference + (clamp(splitBias, 0, 1) - 0.5), 0, 1);
+}
+
+function subdivide(
+  rect: RenderRect,
+  depth: number,
+  rng: ReturnType<typeof mulberry32>,
+  cells: LayoutCell[],
+  shapeMode: GeometryShape,
+  overlap: number,
+  minSize: number,
+  splitRandomness: number,
+  splitBias: number,
+) {
+  if (depth === 0 || rect.width < minSize || rect.height < minSize) {
     cells.push({
       ...insetRect(rect, 6 * (1 - overlap)),
       shape: assignShape(cells.length, shapeMode),
@@ -250,12 +279,23 @@ function subdivide(rect: RenderRect, depth: number, rng: ReturnType<typeof mulbe
     return;
   }
 
-  const splitVertical = rect.width > rect.height ? true : rng.next() > 0.5;
-  const split = lerp(0.32, 0.68, rng.next());
+  const splitVertical =
+    rng.next() < getBlockVerticalSplitProbability(rect, splitBias);
+  const split = getBlockSplitRatio(splitRandomness, rng);
 
   if (splitVertical) {
     const widthA = rect.width * split;
-    subdivide({ x: rect.x, y: rect.y, width: widthA, height: rect.height }, depth - 1, rng, cells, shapeMode, overlap);
+    subdivide(
+      { x: rect.x, y: rect.y, width: widthA, height: rect.height },
+      depth - 1,
+      rng,
+      cells,
+      shapeMode,
+      overlap,
+      minSize,
+      splitRandomness,
+      splitBias,
+    );
     subdivide(
       { x: rect.x + widthA, y: rect.y, width: rect.width - widthA, height: rect.height },
       depth - 1,
@@ -263,10 +303,23 @@ function subdivide(rect: RenderRect, depth: number, rng: ReturnType<typeof mulbe
       cells,
       shapeMode,
       overlap,
+      minSize,
+      splitRandomness,
+      splitBias,
     );
   } else {
     const heightA = rect.height * split;
-    subdivide({ x: rect.x, y: rect.y, width: rect.width, height: heightA }, depth - 1, rng, cells, shapeMode, overlap);
+    subdivide(
+      { x: rect.x, y: rect.y, width: rect.width, height: heightA },
+      depth - 1,
+      rng,
+      cells,
+      shapeMode,
+      overlap,
+      minSize,
+      splitRandomness,
+      splitBias,
+    );
     subdivide(
       { x: rect.x, y: rect.y + heightA, width: rect.width, height: rect.height - heightA },
       depth - 1,
@@ -274,6 +327,9 @@ function subdivide(rect: RenderRect, depth: number, rng: ReturnType<typeof mulbe
       cells,
       shapeMode,
       overlap,
+      minSize,
+      splitRandomness,
+      splitBias,
     );
   }
 }
@@ -296,6 +352,9 @@ function generateBlocks(context: GeneratorContext) {
     cells,
     layout.shapeMode,
     compositing.overlap,
+    layout.blockMinSize,
+    layout.blockSplitRandomness,
+    layout.blockSplitBias,
   );
   return cells;
 }
@@ -548,6 +607,18 @@ function getStripThickness(slice: RenderSlice) {
   return slice.clipRect?.width ?? Math.min(slice.rect.width, slice.rect.height);
 }
 
+function expandStripClipRect(clipRect: RenderRect, amount: number) {
+  if (amount <= 0) {
+    return clipRect;
+  }
+
+  return {
+    ...clipRect,
+    x: clipRect.x - amount / 2,
+    width: clipRect.width + amount,
+  };
+}
+
 function assignDistributedCrops(
   slices: RenderSlice[],
   project: ProjectDocument,
@@ -635,16 +706,13 @@ function assignDistributedCrops(
   }));
 }
 
-function alignSingleAssetStripSlicesToCanvas(
+function alignDistributedStripSlicesToCanvas(
   slices: RenderSlice[],
   project: ProjectDocument,
-  assets: SourceAsset[],
 ) {
   if (
     project.layout.family !== "strips" ||
-    project.sourceMapping.cropDistribution !== "distributed" ||
-    project.sourceMapping.strategy !== "sequential" ||
-    assets.length !== 1
+    project.sourceMapping.cropDistribution !== "distributed"
   ) {
     return slices;
   }
@@ -693,23 +761,37 @@ function applyLetterbox(slices: RenderSlice[], project: ProjectDocument) {
   const scale = lerp(1, 0.02, amount);
   const canvasCenterX = project.canvas.width / 2;
   const canvasCenterY = project.canvas.height / 2;
+  const scaleRectAroundCanvasCenter = (rect: RenderRect | null) => {
+    if (!rect) return null;
+
+    const rectCenterX = rect.x + rect.width / 2;
+    const rectCenterY = rect.y + rect.height / 2;
+    const nextWidth = rect.width * scale;
+    const nextHeight = rect.height * scale;
+    const nextCenterX = canvasCenterX + (rectCenterX - canvasCenterX) * scale;
+    const nextCenterY = canvasCenterY + (rectCenterY - canvasCenterY) * scale;
+
+    return {
+      x: nextCenterX - nextWidth / 2,
+      y: nextCenterY - nextHeight / 2,
+      width: nextWidth,
+      height: nextHeight,
+    };
+  };
 
   return slices.map((slice) => {
-    const sliceCenterX = slice.rect.x + slice.rect.width / 2;
-    const sliceCenterY = slice.rect.y + slice.rect.height / 2;
-    const nextWidth = slice.rect.width * scale;
-    const nextHeight = slice.rect.height * scale;
-    const nextCenterX = canvasCenterX + (sliceCenterX - canvasCenterX) * scale;
-    const nextCenterY = canvasCenterY + (sliceCenterY - canvasCenterY) * scale;
+    const clipRect = scaleRectAroundCanvasCenter(slice.clipRect);
+    const imageRect = scaleRectAroundCanvasCenter(slice.imageRect);
+    const rect =
+      clipRect
+        ? getRotatedBounds(clipRect, slice.clipRotation)
+        : scaleRectAroundCanvasCenter(slice.rect) ?? slice.rect;
 
     return {
       ...slice,
-      rect: {
-        x: nextCenterX - nextWidth / 2,
-        y: nextCenterY - nextHeight / 2,
-        width: nextWidth,
-        height: nextHeight,
-      },
+      rect,
+      clipRect,
+      imageRect,
     };
   });
 }
@@ -747,6 +829,20 @@ export function buildRenderSlices(project: ProjectDocument, assets: SourceAsset[
       rng,
       project,
     );
+    const baseClipRect = cell.clipRect ?? null;
+    const clipRect =
+      project.layout.family === "strips" && baseClipRect
+        ? expandStripClipRect(baseClipRect, overlapSize)
+        : baseClipRect;
+    const rect =
+      clipRect && project.layout.family === "strips"
+        ? getRotatedBounds(clipRect, cell.clipRotation ?? 0)
+        : {
+            x: cell.x - overlapSize * rng.next(),
+            y: cell.y - overlapSize * rng.next(),
+            width: cell.width + overlapSize,
+            height: cell.height + overlapSize,
+          };
     const rotationNoise = (rng.next() - 0.5) * project.effects.rotationJitter;
     const scaleNoise = 1 + (rng.next() - 0.5) * project.effects.scaleJitter;
     const displacement = project.effects.displacement * (rng.next() - 0.5);
@@ -755,13 +851,8 @@ export function buildRenderSlices(project: ProjectDocument, assets: SourceAsset[
       id: `slice_${index}`,
       shape: cell.shape,
       assetId: asset.id,
-      rect: {
-        x: cell.x - overlapSize * rng.next(),
-        y: cell.y - overlapSize * rng.next(),
-        width: cell.width + overlapSize,
-        height: cell.height + overlapSize,
-      },
-      clipRect: cell.clipRect ?? null,
+      rect,
+      clipRect,
       clipRotation: cell.clipRotation ?? 0,
       imageRect: null,
       rotation: (rotationNoise * Math.PI) / 180,
@@ -780,10 +871,9 @@ export function buildRenderSlices(project: ProjectDocument, assets: SourceAsset[
 
   return hideRandomSlices(
     applyLetterbox(
-      alignSingleAssetStripSlicesToCanvas(
+      alignDistributedStripSlicesToCanvas(
         assignDistributedCrops(reflectSlices(slices, project), project, assets),
         project,
-        assets,
       ).sort(
         (a, b) => a.depth - b.depth,
       ),

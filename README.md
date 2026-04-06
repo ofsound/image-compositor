@@ -1,4 +1,4 @@
-# Image Grid
+# Compositor
 
 Local-first generative image compositor built with React 19, Vite 8, shadcn-style UI primitives, and Cloudflare-compatible tooling.
 

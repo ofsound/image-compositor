@@ -1,4 +1,5 @@
-import { app, BrowserWindow, shell } from "electron";
+import { app, BrowserWindow, nativeImage, shell } from "electron";
+import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -9,6 +10,21 @@ const rendererDistPath = path.resolve(__dirname, "../dist/client");
 const preloadPath = path.resolve(__dirname, "preload.js");
 const devServerUrl = process.env.ELECTRON_RENDERER_URL?.trim() || null;
 
+function getAppIconPath() {
+  const devIconPath = path.resolve(__dirname, "../public/electron-icon.png");
+  const packagedIconPath = path.resolve(rendererDistPath, "electron-icon.png");
+
+  if (devServerUrl && existsSync(devIconPath)) {
+    return devIconPath;
+  }
+
+  if (existsSync(packagedIconPath)) {
+    return packagedIconPath;
+  }
+
+  return null;
+}
+
 function applyUserDataOverride() {
   const userDataPath = process.env.IMAGE_GRID_USER_DATA_DIR?.trim();
 
@@ -18,6 +34,7 @@ function applyUserDataOverride() {
 }
 
 async function createMainWindow() {
+  const iconPath = getAppIconPath();
   const window = new BrowserWindow({
     width: 1480,
     height: 980,
@@ -25,6 +42,7 @@ async function createMainWindow() {
     minHeight: 760,
     show: false,
     backgroundColor: "#0e0a06",
+    ...(iconPath && process.platform !== "darwin" ? { icon: iconPath } : {}),
     webPreferences: {
       preload: preloadPath,
       contextIsolation: true,
@@ -54,6 +72,11 @@ async function createMainWindow() {
 applyUserDataOverride();
 
 app.whenReady().then(async () => {
+  const iconPath = getAppIconPath();
+  if (iconPath && process.platform === "darwin") {
+    app.dock?.setIcon(nativeImage.createFromPath(iconPath));
+  }
+
   if (!devServerUrl) {
     await registerAppProtocol(rendererDistPath);
   }

@@ -476,6 +476,7 @@ function App() {
   };
   const isStripsFamily = activeProject.layout.family === "strips";
   const isGridFamily = activeProject.layout.family === "grid";
+  const isBlocksFamily = activeProject.layout.family === "blocks";
   const isRectShapeMode = activeProject.layout.shapeMode === "rect";
   const isWedgeShapeMode =
     activeProject.layout.shapeMode === "wedge" ||
@@ -1108,6 +1109,82 @@ function App() {
                         patchProject((project) => ({
                           ...project,
                           layout: { ...project.layout, gutter: value },
+                        }))
+                      }
+                    />
+                    <SliderField
+                      label="Block Depth"
+                      disabled={!isBlocksFamily}
+                      min={0}
+                      max={7}
+                      step={1}
+                      value={activeProject.layout.blockDepth}
+                      formatter={(value) => `${Math.round(value)}`}
+                      onChange={(value) =>
+                        patchProject((project) => ({
+                          ...project,
+                          layout: {
+                            ...project.layout,
+                            blockDepth: Math.round(value),
+                          },
+                        }))
+                      }
+                    />
+                    <SliderField
+                      label="Split Randomness"
+                      disabled={!isBlocksFamily}
+                      min={0}
+                      max={1}
+                      step={0.01}
+                      value={activeProject.layout.blockSplitRandomness}
+                      formatter={(value) => `${Math.round(value * 100)}%`}
+                      onChange={(value) =>
+                        patchProject((project) => ({
+                          ...project,
+                          layout: {
+                            ...project.layout,
+                            blockSplitRandomness: value,
+                          },
+                        }))
+                      }
+                    />
+                    <SliderField
+                      label="Min Block Size"
+                      disabled={!isBlocksFamily}
+                      min={32}
+                      max={400}
+                      step={1}
+                      value={activeProject.layout.blockMinSize}
+                      formatter={(value) => `${Math.round(value)} px`}
+                      onChange={(value) =>
+                        patchProject((project) => ({
+                          ...project,
+                          layout: {
+                            ...project.layout,
+                            blockMinSize: Math.round(value),
+                          },
+                        }))
+                      }
+                    />
+                    <SliderField
+                      label="Split Bias"
+                      disabled={!isBlocksFamily}
+                      min={0}
+                      max={1}
+                      step={0.01}
+                      value={activeProject.layout.blockSplitBias}
+                      formatter={(value) => {
+                        if (value < 0.45) return "horizontal";
+                        if (value > 0.55) return "vertical";
+                        return "balanced";
+                      }}
+                      onChange={(value) =>
+                        patchProject((project) => ({
+                          ...project,
+                          layout: {
+                            ...project.layout,
+                            blockSplitBias: value,
+                          },
                         }))
                       }
                     />

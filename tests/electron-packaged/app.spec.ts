@@ -7,17 +7,17 @@ function resolvePackagedExecutablePath() {
   const candidates = [
     path.join(
       process.cwd(),
-      "release/mac-arm64/Image Grid.app/Contents/MacOS/Image Grid",
+      "release/mac-arm64/Compositor.app/Contents/MacOS/Compositor",
     ),
     path.join(
       process.cwd(),
-      "release/mac/Image Grid.app/Contents/MacOS/Image Grid",
+      "release/mac/Compositor.app/Contents/MacOS/Compositor",
     ),
   ];
 
   const executablePath = candidates.find((candidate) => fs.existsSync(candidate));
   if (!executablePath) {
-    throw new Error("Could not find a packaged Image Grid executable in release/.");
+    throw new Error("Could not find a packaged Compositor executable in release/.");
   }
 
   return executablePath;

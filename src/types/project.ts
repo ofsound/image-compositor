@@ -87,6 +87,9 @@ export interface LayoutSettings {
   rows: number;
   gutter: number;
   blockDepth: number;
+  blockSplitRandomness: number;
+  blockMinSize: number;
+  blockSplitBias: number;
   stripOrientation: "horizontal" | "vertical" | "mixed";
   radialSegments: number;
   radialRings: number;

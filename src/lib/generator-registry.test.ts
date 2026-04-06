@@ -102,6 +102,82 @@ describe("buildRenderSlices", () => {
     expect(first.length).toBeGreaterThan(0);
   });
 
+  it("increases block slice count as block depth rises", () => {
+    const project = createProjectDocument("Block Depth");
+    project.sourceIds = [assets[0]!.id];
+    project.layout.family = "blocks";
+    project.layout.symmetryMode = "none";
+    project.layout.blockMinSize = 32;
+
+    project.layout.blockDepth = 1;
+    const shallow = buildRenderSlices(project, [assets[0]!]);
+
+    project.layout.blockDepth = 4;
+    const deep = buildRenderSlices(project, [assets[0]!]);
+
+    expect(deep.length).toBeGreaterThan(shallow.length);
+  });
+
+  it("stops block subdivision earlier as the minimum block size increases", () => {
+    const project = createProjectDocument("Block Min Size");
+    project.sourceIds = [assets[0]!.id];
+    project.layout.family = "blocks";
+    project.layout.symmetryMode = "none";
+    project.layout.blockDepth = 5;
+
+    project.layout.blockMinSize = 32;
+    const compact = buildRenderSlices(project, [assets[0]!]);
+
+    project.layout.blockMinSize = 400;
+    const coarse = buildRenderSlices(project, [assets[0]!]);
+    const averageArea = (slices: typeof compact) =>
+      slices.reduce((sum, slice) => sum + slice.rect.width * slice.rect.height, 0) /
+      slices.length;
+
+    expect(coarse.length).toBeLessThan(compact.length);
+    expect(averageArea(coarse)).toBeGreaterThan(averageArea(compact));
+  });
+
+  it("centers first-level block splits when split randomness is zero", () => {
+    const project = createProjectDocument("Centered Blocks");
+    project.sourceIds = [assets[0]!.id];
+    project.layout.family = "blocks";
+    project.layout.symmetryMode = "none";
+    project.layout.blockDepth = 1;
+    project.layout.blockMinSize = 32;
+    project.layout.blockSplitRandomness = 0;
+    project.layout.blockSplitBias = 1;
+    project.compositing.overlap = 0;
+
+    const slices = buildRenderSlices(project, [assets[0]!]).sort(
+      (a, b) => a.rect.x - b.rect.x,
+    );
+
+    expect(slices).toHaveLength(2);
+    expect(slices[0]?.rect.width).toBeCloseTo(1440, 4);
+    expect(slices[1]?.rect.width).toBeCloseTo(1440, 4);
+    expect(slices[0]?.rect.height).toBeCloseTo(slices[1]?.rect.height ?? 0, 4);
+  });
+
+  it("favors vertical block splits as block split bias rises", () => {
+    const project = createProjectDocument("Block Bias");
+    project.sourceIds = [assets[0]!.id];
+    project.layout.family = "blocks";
+    project.layout.symmetryMode = "none";
+    project.layout.blockDepth = 1;
+    project.layout.blockMinSize = 32;
+    project.layout.blockSplitRandomness = 0;
+
+    project.layout.blockSplitBias = 0;
+    const horizontal = buildRenderSlices(project, [assets[0]!]);
+
+    project.layout.blockSplitBias = 1;
+    const vertical = buildRenderSlices(project, [assets[0]!]);
+
+    expect(horizontal.every((slice) => slice.rect.width > slice.rect.height)).toBe(true);
+    expect(vertical.every((slice) => slice.rect.width < slice.rect.height)).toBe(true);
+  });
+
   it("keeps all rectangles within a sensible padded canvas range", () => {
     const project = createProjectDocument("Bounds");
     project.sourceIds = assets.map((asset) => asset.id);
@@ -199,6 +275,35 @@ describe("buildRenderSlices", () => {
     expect(slices.every((slice) => slice.imageRect !== null)).toBe(true);
   });
 
+  it("keeps multi-source distributed strips aligned to the full canvas without zoomed crops", () => {
+    const project = createProjectDocument("Multi-source Strips");
+    project.sourceIds = assets.map((asset) => asset.id);
+    project.layout.family = "strips";
+    project.layout.density = 0;
+    project.layout.randomness = 0;
+    project.layout.gutter = 14;
+    project.layout.symmetryMode = "none";
+    project.sourceMapping.strategy = "sequential";
+    project.sourceMapping.cropDistribution = "distributed";
+    project.sourceMapping.preserveAspect = false;
+
+    const slices = buildRenderSlices(project, assets);
+    expect(slices).toHaveLength(4);
+    expect(slices.every((slice) => slice.sourceCrop === null)).toBe(true);
+    expect(
+      new Set(slices.map((slice) => JSON.stringify(slice.imageRect))).size,
+    ).toBe(1);
+    expect(new Set(slices.map((slice) => slice.assetId))).toEqual(
+      new Set(["asset_a", "asset_b"]),
+    );
+    expect(slices[0]?.imageRect).toEqual({
+      x: project.canvas.inset,
+      y: project.canvas.inset,
+      width: project.canvas.width - project.canvas.inset * 2,
+      height: project.canvas.height - project.canvas.inset * 2,
+    });
+  });
+
   it("covers the full inset canvas projection at representative strip angles", () => {
     for (const angle of [0, 21, 55, 90, 135]) {
       const project = createProjectDocument(`Coverage ${angle}`);
@@ -260,6 +365,31 @@ describe("buildRenderSlices", () => {
     expect(intervals[0]?.start).toBeCloseTo(range.min, 4);
     expect(intervals.at(-1)?.end).toBeCloseTo(range.max, 4);
     expect(intervals.every((interval) => interval.end - interval.start >= 1)).toBe(true);
+  });
+
+  it("expands visible strip thickness when overlap increases even with zero gutter", () => {
+    const project = createProjectDocument("Strip Overlap");
+    project.sourceIds = [assets[0]!.id];
+    project.layout.family = "strips";
+    project.layout.stripAngle = 0;
+    project.layout.density = 0;
+    project.layout.randomness = 0;
+    project.layout.gutter = 0;
+    project.layout.symmetryMode = "none";
+    project.sourceMapping.strategy = "sequential";
+    project.sourceMapping.cropDistribution = "distributed";
+    project.sourceMapping.preserveAspect = false;
+
+    project.compositing.overlap = 0;
+    const baseline = getStripIntervals(project, 0);
+
+    project.compositing.overlap = 1;
+    const overlapped = getStripIntervals(project, 0);
+
+    expect(overlapped.slices).toHaveLength(baseline.slices.length);
+    expect(overlapped.intervals[0]!.end - overlapped.intervals[0]!.start).toBeGreaterThan(
+      baseline.intervals[0]!.end - baseline.intervals[0]!.start,
+    );
   });
 
   it("keeps sequential assignment while distributing unique crops per asset", () => {
@@ -420,6 +550,55 @@ describe("buildRenderSlices", () => {
       expect(transformed.rect.width).toBeLessThan(original.rect.width);
       expect(transformed.rect.height).toBeLessThan(original.rect.height);
       expect(transformedDistance).toBeLessThan(originalDistance);
+    }
+  });
+
+  it("moves strips inward and scales their visible and source geometry when letterbox is applied", () => {
+    const project = createProjectDocument("Strip Letterbox");
+    project.sourceIds = [assets[0]!.id];
+    project.layout.family = "strips";
+    project.layout.stripAngle = 64;
+    project.layout.density = 0.78;
+    project.layout.randomness = 0;
+    project.layout.gutter = 154;
+    project.layout.symmetryMode = "none";
+    project.sourceMapping.strategy = "sequential";
+    project.sourceMapping.cropDistribution = "distributed";
+    project.sourceMapping.preserveAspect = false;
+
+    const baseline = buildRenderSlices(project, [assets[0]!]);
+    project.layout.letterbox = 0.5;
+    const letterboxed = buildRenderSlices(project, [assets[0]!]);
+    const canvasCenterX = project.canvas.width / 2;
+    const canvasCenterY = project.canvas.height / 2;
+
+    expect(letterboxed).toHaveLength(baseline.length);
+
+    for (let index = 0; index < baseline.length; index += 1) {
+      const original = baseline[index]!;
+      const transformed = letterboxed[index]!;
+      const originalBounds = original.clipRect ?? original.rect;
+      const transformedBounds = transformed.clipRect ?? transformed.rect;
+      const originalCenterX = originalBounds.x + originalBounds.width / 2;
+      const originalCenterY = originalBounds.y + originalBounds.height / 2;
+      const transformedCenterX = transformedBounds.x + transformedBounds.width / 2;
+      const transformedCenterY = transformedBounds.y + transformedBounds.height / 2;
+      const originalDistance = Math.hypot(
+        originalCenterX - canvasCenterX,
+        originalCenterY - canvasCenterY,
+      );
+      const transformedDistance = Math.hypot(
+        transformedCenterX - canvasCenterX,
+        transformedCenterY - canvasCenterY,
+      );
+
+      expect(transformedBounds.width).toBeLessThan(originalBounds.width);
+      expect(transformedBounds.height).toBeLessThan(originalBounds.height);
+      expect(transformedDistance).toBeLessThan(originalDistance);
+      expect(transformed.imageRect).not.toBeNull();
+      expect(original.imageRect).not.toBeNull();
+      expect(transformed.imageRect!.width).toBeLessThan(original.imageRect!.width);
+      expect(transformed.imageRect!.height).toBeLessThan(original.imageRect!.height);
     }
   });
 

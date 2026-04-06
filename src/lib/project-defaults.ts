@@ -44,6 +44,9 @@ export const DEFAULT_LAYOUT: LayoutSettings = {
   rows: 8,
   gutter: 14,
   blockDepth: 3,
+  blockSplitRandomness: 0.5,
+  blockMinSize: 140,
+  blockSplitBias: 0.5,
   stripOrientation: "mixed",
   radialSegments: 9,
   radialRings: 4,
@@ -138,6 +141,10 @@ export function normalizeLayoutSettings(
     rows: layout?.rows ?? DEFAULT_LAYOUT.rows,
     gutter: layout?.gutter ?? DEFAULT_LAYOUT.gutter,
     blockDepth: layout?.blockDepth ?? DEFAULT_LAYOUT.blockDepth,
+    blockSplitRandomness:
+      layout?.blockSplitRandomness ?? DEFAULT_LAYOUT.blockSplitRandomness,
+    blockMinSize: layout?.blockMinSize ?? DEFAULT_LAYOUT.blockMinSize,
+    blockSplitBias: layout?.blockSplitBias ?? DEFAULT_LAYOUT.blockSplitBias,
     stripOrientation:
       layout?.stripOrientation ?? DEFAULT_LAYOUT.stripOrientation,
     radialSegments: layout?.radialSegments ?? DEFAULT_LAYOUT.radialSegments,

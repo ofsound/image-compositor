@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createProjectDocument } from "@/lib/project-defaults";
 import App from "@/App";
@@ -170,6 +170,10 @@ describe("App conditional sliders", () => {
     expectSliderEnabled("Columns");
     expectSliderEnabled("Rows");
     expectSliderEnabled("Gutter");
+    expectSliderDisabled("Block Depth");
+    expectSliderDisabled("Split Randomness");
+    expectSliderDisabled("Min Block Size");
+    expectSliderDisabled("Split Bias");
     expectSliderDisabled("Radial Copies");
     expectSliderEnabled("Hide Percentage");
     expectSliderEnabled("Letterbox");
@@ -212,13 +216,7 @@ describe("App conditional sliders", () => {
 
     expect(screen.getByText("0.50")).toBeInTheDocument();
 
-    const densityControl = screen.getByText("Density").closest("div.space-y-1");
-    expect(densityControl).not.toBeNull();
-    if (!(densityControl instanceof HTMLElement)) {
-      throw new Error("Expected Density control container.");
-    }
-
-    const slider = within(densityControl).getByRole("slider");
+    const slider = screen.getByLabelText("Density");
     fireEvent.keyDown(slider, { key: "End" });
     fireEvent.keyUp(slider, { key: "End" });
 
@@ -247,6 +245,10 @@ describe("App conditional sliders", () => {
     expectSliderDisabled("Columns");
     expectSliderDisabled("Rows");
     expectSliderDisabled("Gutter");
+    expectSliderEnabled("Block Depth");
+    expectSliderEnabled("Split Randomness");
+    expectSliderEnabled("Min Block Size");
+    expectSliderEnabled("Split Bias");
     expectSliderEnabled("Radial Copies");
     expectSliderEnabled("Hide Percentage");
     expectSliderEnabled("Letterbox");

@@ -197,7 +197,7 @@ function ControlBlock({
   children: React.ReactNode;
 }) {
   return (
-    <div className="space-y-2.5 rounded-lg border border-border-subtle bg-surface-sunken p-3">
+    <div className="space-y-2">
       <div className="flex items-center justify-between gap-3">
         <Label>{label}</Label>
         {value ? (
@@ -378,7 +378,10 @@ function App() {
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      if ((!event.metaKey && !event.ctrlKey) || isEditableTarget(event.target)) {
+      if (
+        (!event.metaKey && !event.ctrlKey) ||
+        isEditableTarget(event.target)
+      ) {
         return;
       }
 
@@ -906,10 +909,10 @@ function App() {
               <CardHeader>
                 <CardTitle>Inspector</CardTitle>
               </CardHeader>
-              <CardContent className="overflow-y-auto">
-                <div className="grid grid-cols-3 gap-4">
-                  <div className="min-w-0 space-y-2.5">
-                    <div className="border-b border-border-subtle pb-2 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-text-muted">
+              <CardContent className="overflow-y-auto px-3 pb-2">
+                <div className="grid grid-cols-3 gap-6">
+                  <div className="min-w-0 space-y-6">
+                    <div className="border-b border-border-subtle pb-1 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-text-muted">
                       Layout
                     </div>
                     <ControlBlock label="Family">
@@ -1050,7 +1053,9 @@ function App() {
                           ...project,
                           layout: {
                             ...project.layout,
-                            density: Number((value * DENSITY_UI_SCALE).toFixed(2)),
+                            density: Number(
+                              (value * DENSITY_UI_SCALE).toFixed(2),
+                            ),
                           },
                         }))
                       }
@@ -1294,8 +1299,8 @@ function App() {
                     </ControlBlock>
                   </div>
 
-                  <div className="min-w-0 space-y-2.5">
-                    <div className="border-b border-border-subtle pb-2 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-text-muted">
+                  <div className="min-w-0 space-y-2">
+                    <div className="border-b border-border-subtle pb-1 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-text-muted">
                       Mapping
                     </div>
                     <ControlBlock label="Source Assignment">
@@ -1492,8 +1497,8 @@ function App() {
                     />
                   </div>
 
-                  <div className="min-w-0 space-y-2.5">
-                    <div className="border-b border-border-subtle pb-2 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-text-muted">
+                  <div className="min-w-0 space-y-2">
+                    <div className="border-b border-border-subtle pb-1 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-text-muted">
                       Effects
                     </div>
                     <SliderField

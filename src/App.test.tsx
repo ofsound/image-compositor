@@ -26,6 +26,8 @@ vi.mock("@/state/use-app-store", () => ({
 }));
 
 const mockedUseAppStore = vi.mocked(useAppStore);
+type AppStoreState = ReturnType<typeof useAppStore.getState>;
+type UpdateProject = AppStoreState["updateProject"];
 
 function createStoreState(overrides?: {
   family?: "grid" | "strips" | "blocks" | "radial";
@@ -64,10 +66,13 @@ function createStoreState(overrides?: {
   }
 
   const assets =
-    overrides?.assets?.map((asset) => ({ ...asset, projectId: project.id })) ?? [];
+    overrides?.assets?.map((asset) => ({ ...asset, projectId: project.id })) ??
+    [];
   if (assets.length > 0) {
     project.sourceIds = assets.map((asset) => asset.id);
   }
+
+  const updateProject = vi.fn<UpdateProject>(async () => undefined);
 
   return {
     ready: true,
@@ -88,7 +93,7 @@ function createStoreState(overrides?: {
     restoreProject: vi.fn(async () => undefined),
     purgeProject: vi.fn(async () => undefined),
     setActiveProject: vi.fn(async () => undefined),
-    updateProject: vi.fn(async () => undefined),
+    updateProject,
     importFiles: vi.fn(async () => undefined),
     addSolidSource: vi.fn(async () => undefined),
     addGradientSource: vi.fn(async () => undefined),
@@ -207,20 +212,22 @@ describe("App conditional sliders", () => {
 
     expect(screen.getByText("0.50")).toBeInTheDocument();
 
-    const densityControl = screen.getByText("Density").closest("div.rounded-lg");
+    const densityControl = screen.getByText("Density").closest("div.space-y-1");
     expect(densityControl).not.toBeNull();
+    if (!(densityControl instanceof HTMLElement)) {
+      throw new Error("Expected Density control container.");
+    }
 
-    const slider = within(densityControl!).getByRole("slider");
+    const slider = within(densityControl).getByRole("slider");
     fireEvent.keyDown(slider, { key: "End" });
     fireEvent.keyUp(slider, { key: "End" });
 
-    const updateProject = vi.mocked(state.updateProject);
-    expect(updateProject).toHaveBeenCalledTimes(1);
+    expect(state.updateProject).toHaveBeenCalledTimes(1);
 
-    const update = updateProject.mock.calls[0]?.[0];
+    const [[update]] = state.updateProject.mock.calls;
     expect(update).toBeTypeOf("function");
 
-    const nextProject = update!(structuredClone(state.projects[0]!));
+    const nextProject = update(structuredClone(state.projects[0]!));
     expect(nextProject.layout.density).toBe(4);
   });
 
@@ -290,9 +297,7 @@ describe("App conditional sliders", () => {
     expectSliderEnabled("Wedge Angle");
     expectSliderEnabled("Wedge Jitter");
 
-    mockedUseAppStore.mockReturnValue(
-      createStoreState({ shapeMode: "mixed" }),
-    );
+    mockedUseAppStore.mockReturnValue(createStoreState({ shapeMode: "mixed" }));
     render(<App />);
 
     expect(screen.getAllByLabelText("Wedge Angle")[1]).not.toHaveAttribute(

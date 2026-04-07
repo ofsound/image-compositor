@@ -843,6 +843,58 @@ describe("buildRenderSlices", () => {
     }
   });
 
+  it("cycles through mixed geometry shapes in radial layouts", () => {
+    const project = createProjectDocument("Radial Mixed");
+    project.sourceIds = [assets[0]!.id];
+    project.layout.family = "radial";
+    project.layout.symmetryMode = "none";
+    project.layout.radialSegments = 4;
+    project.layout.radialRings = 2;
+    project.layout.shapeMode = "mixed";
+
+    const slices = buildRenderSlices(project, [assets[0]!]);
+    const shapes = new Set(slices.map((slice) => slice.shape));
+
+    expect(shapes.size).toBeGreaterThan(1);
+    expect(shapes).toEqual(new Set(["rect", "triangle", "ring", "wedge"]));
+  });
+
+  it("applies wedge controls only to wedge slices in radial mixed mode", () => {
+    const project = createProjectDocument("Radial Mixed Wedges");
+    project.sourceIds = [assets[0]!.id];
+    project.layout.family = "radial";
+    project.layout.symmetryMode = "none";
+    project.layout.radialSegments = 4;
+    project.layout.radialRings = 2;
+    project.layout.shapeMode = "mixed";
+    project.layout.wedgeAngle = 90;
+    project.layout.wedgeJitter = 0;
+
+    const slices = buildRenderSlices(project, [assets[0]!]);
+
+    for (const slice of slices) {
+      if (slice.shape === "wedge") {
+        expect(slice.wedgeSweepRadians).toBe(Math.PI / 2);
+      } else {
+        expect(slice.wedgeSweepRadians).toBeNull();
+      }
+    }
+  });
+
+  it("keeps radial wedge layouts wedge-only", () => {
+    const project = createProjectDocument("Radial Wedge Only");
+    project.sourceIds = [assets[0]!.id];
+    project.layout.family = "radial";
+    project.layout.symmetryMode = "none";
+    project.layout.radialSegments = 4;
+    project.layout.radialRings = 2;
+    project.layout.shapeMode = "wedge";
+
+    const slices = buildRenderSlices(project, [assets[0]!]);
+
+    expect(slices.every((slice) => slice.shape === "wedge")).toBe(true);
+  });
+
   it("keeps a visible sliver at zero wedge angle", () => {
     const project = createProjectDocument("Wedge Sliver");
     project.sourceIds = [assets[0]!.id];

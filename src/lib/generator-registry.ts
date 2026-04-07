@@ -441,10 +441,7 @@ function generateRadial(context: GeneratorContext) {
         y: Math.min(...ys),
         width: Math.max(64, Math.max(...xs) - Math.min(...xs)),
         height: Math.max(64, Math.max(...ys) - Math.min(...ys)),
-        shape: assignShape(
-          segment + ring,
-          layout.shapeMode === "mixed" ? "wedge" : layout.shapeMode,
-        ),
+        shape: assignShape(segment + ring, layout.shapeMode),
         rotation,
       });
     }

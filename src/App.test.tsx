@@ -142,11 +142,6 @@ function createImageAsset(projectId: string): SourceAsset {
   };
 }
 
-function expectSliderDisabled(label: string) {
-  const slider = screen.getByLabelText(label);
-  expect(slider).toHaveAttribute("data-disabled");
-}
-
 function expectSliderEnabled(label: string) {
   const slider = screen.getByLabelText(label);
   expect(slider).not.toHaveAttribute("data-disabled");
@@ -161,7 +156,7 @@ describe("App conditional sliders", () => {
     mockedUseAppStore.mockReset();
   });
 
-  it("disables layout sliders outside their supported families", () => {
+  it("hides layout sliders outside their supported families", () => {
     renderApp({
       family: "grid",
       shapeMode: "rect",
@@ -170,10 +165,10 @@ describe("App conditional sliders", () => {
     });
 
     expectSliderEnabled("Corner Radius");
-    expectSliderDisabled("Strips Angle");
-    expectSliderDisabled("Wedge Angle");
-    expectSliderDisabled("Wedge Jitter");
-    expectSliderDisabled("Density");
+    expectSliderHidden("Strips Angle");
+    expectSliderHidden("Wedge Angle");
+    expectSliderHidden("Wedge Jitter");
+    expectSliderHidden("Density");
     expectSliderEnabled("Columns");
     expectSliderEnabled("Rows");
     expectSliderHidden("Radial Segments");
@@ -183,15 +178,15 @@ describe("App conditional sliders", () => {
     expectSliderHidden("Inner Radius");
     expect(screen.queryByLabelText("Child Rotation")).not.toBeInTheDocument();
     expectSliderEnabled("Gutter");
-    expectSliderDisabled("Block Depth");
-    expectSliderDisabled("Split Randomness");
-    expectSliderDisabled("Min Block Size");
-    expectSliderDisabled("Split Bias");
-    expectSliderDisabled("Radial Copies");
+    expectSliderHidden("Block Depth");
+    expectSliderHidden("Split Randomness");
+    expectSliderHidden("Min Block Size");
+    expectSliderHidden("Split Bias");
+    expectSliderHidden("Radial Copies");
     expectSliderEnabled("Hide Percentage");
     expectSliderEnabled("Letterbox");
-    expectSliderDisabled("Source Bias");
-    expectSliderDisabled("Palette Emphasis");
+    expectSliderHidden("Source Bias");
+    expectSliderHidden("Palette Emphasis");
   });
 
   it("enables strips-only density and gutter for strips layouts", () => {
@@ -204,11 +199,11 @@ describe("App conditional sliders", () => {
 
     expectSliderEnabled("Corner Radius");
     expectSliderEnabled("Strips Angle");
-    expectSliderDisabled("Wedge Angle");
-    expectSliderDisabled("Wedge Jitter");
+    expectSliderHidden("Wedge Angle");
+    expectSliderHidden("Wedge Jitter");
     expectSliderEnabled("Density");
-    expectSliderDisabled("Columns");
-    expectSliderDisabled("Rows");
+    expectSliderHidden("Columns");
+    expectSliderHidden("Rows");
     expectSliderHidden("Radial Segments");
     expectSliderHidden("Radial Rings");
     expectSliderHidden("Angle Offset");
@@ -216,7 +211,7 @@ describe("App conditional sliders", () => {
     expectSliderHidden("Inner Radius");
     expect(screen.queryByLabelText("Child Rotation")).not.toBeInTheDocument();
     expectSliderEnabled("Gutter");
-    expectSliderDisabled("Radial Copies");
+    expectSliderHidden("Radial Copies");
     expectSliderEnabled("Hide Percentage");
     expectSliderEnabled("Letterbox");
   });
@@ -248,7 +243,7 @@ describe("App conditional sliders", () => {
     expect(nextProject.layout.density).toBe(4);
   });
 
-  it("disables gutter for blocks layouts and enables weighted and radial controls when active", () => {
+  it("hides unrelated layout sliders for blocks layouts and shows weighted and radial controls when active", () => {
     renderApp({
       family: "blocks",
       shapeMode: "rect",
@@ -257,19 +252,19 @@ describe("App conditional sliders", () => {
     });
 
     expectSliderEnabled("Corner Radius");
-    expectSliderDisabled("Strips Angle");
-    expectSliderDisabled("Wedge Angle");
-    expectSliderDisabled("Wedge Jitter");
-    expectSliderDisabled("Density");
-    expectSliderDisabled("Columns");
-    expectSliderDisabled("Rows");
+    expectSliderHidden("Strips Angle");
+    expectSliderHidden("Wedge Angle");
+    expectSliderHidden("Wedge Jitter");
+    expectSliderHidden("Density");
+    expectSliderHidden("Columns");
+    expectSliderHidden("Rows");
     expectSliderHidden("Radial Segments");
     expectSliderHidden("Radial Rings");
     expectSliderHidden("Angle Offset");
     expectSliderHidden("Ring Phase");
     expectSliderHidden("Inner Radius");
     expect(screen.queryByLabelText("Child Rotation")).not.toBeInTheDocument();
-    expectSliderDisabled("Gutter");
+    expectSliderHidden("Gutter");
     expectSliderEnabled("Block Depth");
     expectSliderEnabled("Split Randomness");
     expectSliderEnabled("Min Block Size");
@@ -278,7 +273,7 @@ describe("App conditional sliders", () => {
     expectSliderEnabled("Hide Percentage");
     expectSliderEnabled("Letterbox");
     expectSliderEnabled("Source Bias");
-    expectSliderDisabled("Palette Emphasis");
+    expectSliderHidden("Palette Emphasis");
   });
 
   it("enables palette emphasis only for palette assignment", () => {
@@ -290,55 +285,49 @@ describe("App conditional sliders", () => {
     });
 
     expectSliderEnabled("Corner Radius");
-    expectSliderDisabled("Strips Angle");
-    expectSliderDisabled("Wedge Angle");
-    expectSliderDisabled("Wedge Jitter");
-    expectSliderDisabled("Density");
-    expectSliderDisabled("Columns");
-    expectSliderDisabled("Rows");
+    expectSliderHidden("Strips Angle");
+    expectSliderHidden("Wedge Angle");
+    expectSliderHidden("Wedge Jitter");
+    expectSliderHidden("Density");
+    expectSliderHidden("Columns");
+    expectSliderHidden("Rows");
     expectSliderEnabled("Radial Segments");
     expectSliderEnabled("Radial Rings");
     expectSliderEnabled("Angle Offset");
     expectSliderEnabled("Ring Phase");
     expectSliderEnabled("Inner Radius");
     expect(screen.getByLabelText("Child Rotation")).toBeInTheDocument();
-    expectSliderDisabled("Gutter");
-    expectSliderDisabled("Radial Copies");
+    expectSliderHidden("Gutter");
+    expectSliderHidden("Radial Copies");
     expectSliderEnabled("Hide Percentage");
     expectSliderEnabled("Letterbox");
-    expectSliderDisabled("Source Bias");
+    expectSliderHidden("Source Bias");
     expectSliderEnabled("Palette Emphasis");
   });
 
-  it("enables the corner radius slider only for rect shape mode", () => {
-    renderApp({ shapeMode: "rect" });
+  it("shows the corner radius slider only for rect shape mode", () => {
+    mockedUseAppStore.mockReturnValue(createStoreState({ shapeMode: "rect" }));
+    const { rerender } = render(<App />);
     expectSliderEnabled("Corner Radius");
+    expectSliderHidden("Wedge Angle");
 
-    mockedUseAppStore.mockReturnValue(
-      createStoreState({ shapeMode: "triangle" }),
-    );
-    render(<App />);
+    mockedUseAppStore.mockReturnValue(createStoreState({ shapeMode: "triangle" }));
+    rerender(<App />);
 
-    expect(screen.getAllByLabelText("Corner Radius")).toHaveLength(2);
-    expect(screen.getAllByLabelText("Corner Radius")[1]).toHaveAttribute(
-      "data-disabled",
-    );
+    expectSliderHidden("Corner Radius");
   });
 
-  it("enables wedge sliders for wedge and mixed geometry", () => {
-    renderApp({ shapeMode: "wedge" });
+  it("shows wedge sliders for wedge and mixed geometry only", () => {
+    mockedUseAppStore.mockReturnValue(createStoreState({ shapeMode: "wedge" }));
+    const { rerender } = render(<App />);
     expectSliderEnabled("Wedge Angle");
     expectSliderEnabled("Wedge Jitter");
 
     mockedUseAppStore.mockReturnValue(createStoreState({ shapeMode: "mixed" }));
-    render(<App />);
+    rerender(<App />);
 
-    expect(screen.getAllByLabelText("Wedge Angle")[1]).not.toHaveAttribute(
-      "data-disabled",
-    );
-    expect(screen.getAllByLabelText("Wedge Jitter")[1]).not.toHaveAttribute(
-      "data-disabled",
-    );
+    expectSliderEnabled("Wedge Angle");
+    expectSliderEnabled("Wedge Jitter");
   });
 
   it("includes interlock in geometry options only for grid layouts", () => {

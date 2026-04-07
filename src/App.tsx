@@ -936,7 +936,7 @@ function App() {
               </CardHeader>
               <CardContent className="overflow-y-auto px-3 pb-2">
                 <div className="grid grid-cols-3 gap-6">
-                  <div className="min-w-0 space-y-6">
+                  <div className="min-w-0 space-y-4">
                     <div className="border-b border-border-subtle pb-1 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-text-muted">
                       Layout
                     </div>
@@ -949,12 +949,12 @@ function App() {
                             return {
                               ...project,
                               layout: {
-                              ...project.layout,
-                              family: nextFamily,
-                              shapeMode: coerceShapeModeForFamily(
-                                nextFamily,
-                                project.layout.shapeMode,
-                              ),
+                                ...project.layout,
+                                family: nextFamily,
+                                shapeMode: coerceShapeModeForFamily(
+                                  nextFamily,
+                                  project.layout.shapeMode,
+                                ),
                               },
                             };
                           })
@@ -999,133 +999,142 @@ function App() {
                         </SelectContent>
                       </Select>
                     </ControlBlock>
-                    <SliderField
-                      label="Corner Radius"
-                      disabled={!isRectShapeMode}
-                      min={0}
-                      max={1}
-                      step={0.01}
-                      value={activeProject.layout.rectCornerRadius}
-                      formatter={(value) => `${Math.round(value * 100)}%`}
-                      onChange={(value) =>
-                        patchProject((project) => ({
-                          ...project,
-                          layout: {
-                            ...project.layout,
-                            rectCornerRadius: value,
-                          },
-                        }))
-                      }
-                    />
-                    <SliderField
-                      label="Strips Angle"
-                      disabled={!isStripsFamily}
-                      min={0}
-                      max={180}
-                      step={1}
-                      value={activeProject.layout.stripAngle}
-                      formatter={(value) => `${Math.round(value)}°`}
-                      onChange={(value) =>
-                        patchProject((project) => ({
-                          ...project,
-                          layout: {
-                            ...project.layout,
-                            stripAngle: value,
-                          },
-                        }))
-                      }
-                    />
-                    <SliderField
-                      label="Wedge Angle"
-                      disabled={!isWedgeShapeMode}
-                      min={0}
-                      max={360}
-                      step={1}
-                      value={activeProject.layout.wedgeAngle}
-                      formatter={(value) => `${Math.round(value)}°`}
-                      onChange={(value) =>
-                        patchProject((project) => ({
-                          ...project,
-                          layout: {
-                            ...project.layout,
-                            wedgeAngle: value,
-                          },
-                        }))
-                      }
-                    />
-                    <SliderField
-                      label="Wedge Jitter"
-                      disabled={!isWedgeShapeMode}
-                      min={0}
-                      max={360}
-                      step={1}
-                      value={activeProject.layout.wedgeJitter}
-                      formatter={(value) => `${Math.round(value)}°`}
-                      onChange={(value) =>
-                        patchProject((project) => ({
-                          ...project,
-                          layout: {
-                            ...project.layout,
-                            wedgeJitter: value,
-                          },
-                        }))
-                      }
-                    />
-                    <SliderField
-                      label="Density"
-                      disabled={!isStripsFamily}
-                      min={0.05}
-                      max={1}
-                      step={0.01}
-                      value={activeProject.layout.density / DENSITY_UI_SCALE}
-                      onChange={(value) =>
-                        patchProject((project) => ({
-                          ...project,
-                          layout: {
-                            ...project.layout,
-                            density: Number(
-                              (value * DENSITY_UI_SCALE).toFixed(2),
-                            ),
-                          },
-                        }))
-                      }
-                    />
-                    <SliderField
-                      label="Columns"
-                      disabled={!isGridFamily}
-                      min={2}
-                      max={32}
-                      step={1}
-                      value={activeProject.layout.columns}
-                      formatter={(value) => `${Math.round(value)}`}
-                      onChange={(value) =>
-                        patchProject((project) => ({
-                          ...project,
-                          layout: {
-                            ...project.layout,
-                            columns: Math.round(value),
-                          },
-                        }))
-                      }
-                    />
-                    <SliderField
-                      label="Rows"
-                      disabled={!isGridFamily}
-                      min={2}
-                      max={32}
-                      step={1}
-                      value={activeProject.layout.rows}
-                      formatter={(value) => `${Math.round(value)}`}
-                      onChange={(value) =>
-                        patchProject((project) => ({
-                          ...project,
-                          layout: {
-                            ...project.layout,
-                            rows: Math.round(value),
-                          },
-                        }))
-                      }
-                    />
+                    {isRectShapeMode ? (
+                      <SliderField
+                        label="Corner Radius"
+                        min={0}
+                        max={1}
+                        step={0.01}
+                        value={activeProject.layout.rectCornerRadius}
+                        formatter={(value) => `${Math.round(value * 100)}%`}
+                        onChange={(value) =>
+                          patchProject((project) => ({
+                            ...project,
+                            layout: {
+                              ...project.layout,
+                              rectCornerRadius: value,
+                            },
+                          }))
+                        }
+                      />
+                    ) : null}
+                    {isStripsFamily ? (
+                      <>
+                        <SliderField
+                          label="Strips Angle"
+                          min={0}
+                          max={180}
+                          step={1}
+                          value={activeProject.layout.stripAngle}
+                          formatter={(value) => `${Math.round(value)}°`}
+                          onChange={(value) =>
+                            patchProject((project) => ({
+                              ...project,
+                              layout: {
+                                ...project.layout,
+                                stripAngle: value,
+                              },
+                            }))
+                          }
+                        />
+                        <SliderField
+                          label="Density"
+                          min={0.05}
+                          max={1}
+                          step={0.01}
+                          value={
+                            activeProject.layout.density / DENSITY_UI_SCALE
+                          }
+                          onChange={(value) =>
+                            patchProject((project) => ({
+                              ...project,
+                              layout: {
+                                ...project.layout,
+                                density: Number(
+                                  (value * DENSITY_UI_SCALE).toFixed(2),
+                                ),
+                              },
+                            }))
+                          }
+                        />
+                      </>
+                    ) : null}
+                    {isWedgeShapeMode ? (
+                      <>
+                        <SliderField
+                          label="Wedge Angle"
+                          min={0}
+                          max={360}
+                          step={1}
+                          value={activeProject.layout.wedgeAngle}
+                          formatter={(value) => `${Math.round(value)}°`}
+                          onChange={(value) =>
+                            patchProject((project) => ({
+                              ...project,
+                              layout: {
+                                ...project.layout,
+                                wedgeAngle: value,
+                              },
+                            }))
+                          }
+                        />
+                        <SliderField
+                          label="Wedge Jitter"
+                          min={0}
+                          max={360}
+                          step={1}
+                          value={activeProject.layout.wedgeJitter}
+                          formatter={(value) => `${Math.round(value)}°`}
+                          onChange={(value) =>
+                            patchProject((project) => ({
+                              ...project,
+                              layout: {
+                                ...project.layout,
+                                wedgeJitter: value,
+                              },
+                            }))
+                          }
+                        />
+                      </>
+                    ) : null}
+                    {isGridFamily ? (
+                      <>
+                        <SliderField
+                          label="Columns"
+                          min={2}
+                          max={32}
+                          step={1}
+                          value={activeProject.layout.columns}
+                          formatter={(value) => `${Math.round(value)}`}
+                          onChange={(value) =>
+                            patchProject((project) => ({
+                              ...project,
+                              layout: {
+                                ...project.layout,
+                                columns: Math.round(value),
+                              },
+                            }))
+                          }
+                        />
+                        <SliderField
+                          label="Rows"
+                          min={2}
+                          max={32}
+                          step={1}
+                          value={activeProject.layout.rows}
+                          formatter={(value) => `${Math.round(value)}`}
+                          onChange={(value) =>
+                            patchProject((project) => ({
+                              ...project,
+                              layout: {
+                                ...project.layout,
+                                rows: Math.round(value),
+                              },
+                            }))
+                          }
+                        />
+                      </>
+                    ) : null}
                     {isRadialFamily ? (
                       <>
                         <SliderField
@@ -1241,97 +1250,98 @@ function App() {
                         </ControlBlock>
                       </>
                     ) : null}
-                    <SliderField
-                      label="Gutter"
-                      disabled={!usesGutter}
-                      min={0}
-                      max={300}
-                      step={1}
-                      value={activeProject.layout.gutter}
-                      formatter={(value) => `${Math.round(value)} px`}
-                      onChange={(value) =>
-                        patchProject((project) => ({
-                          ...project,
-                          layout: { ...project.layout, gutter: value },
-                        }))
-                      }
-                    />
-                    <SliderField
-                      label="Block Depth"
-                      disabled={!isBlocksFamily}
-                      min={0}
-                      max={7}
-                      step={1}
-                      value={activeProject.layout.blockDepth}
-                      formatter={(value) => `${Math.round(value)}`}
-                      onChange={(value) =>
-                        patchProject((project) => ({
-                          ...project,
-                          layout: {
-                            ...project.layout,
-                            blockDepth: Math.round(value),
-                          },
-                        }))
-                      }
-                    />
-                    <SliderField
-                      label="Split Randomness"
-                      disabled={!isBlocksFamily}
-                      min={0}
-                      max={1}
-                      step={0.01}
-                      value={activeProject.layout.blockSplitRandomness}
-                      formatter={(value) => `${Math.round(value * 100)}%`}
-                      onChange={(value) =>
-                        patchProject((project) => ({
-                          ...project,
-                          layout: {
-                            ...project.layout,
-                            blockSplitRandomness: value,
-                          },
-                        }))
-                      }
-                    />
-                    <SliderField
-                      label="Min Block Size"
-                      disabled={!isBlocksFamily}
-                      min={32}
-                      max={400}
-                      step={1}
-                      value={activeProject.layout.blockMinSize}
-                      formatter={(value) => `${Math.round(value)} px`}
-                      onChange={(value) =>
-                        patchProject((project) => ({
-                          ...project,
-                          layout: {
-                            ...project.layout,
-                            blockMinSize: Math.round(value),
-                          },
-                        }))
-                      }
-                    />
-                    <SliderField
-                      label="Split Bias"
-                      disabled={!isBlocksFamily}
-                      min={0}
-                      max={1}
-                      step={0.01}
-                      value={activeProject.layout.blockSplitBias}
-                      formatter={(value) => {
-                        if (value < 0.45) return "horizontal";
-                        if (value > 0.55) return "vertical";
-                        return "balanced";
-                      }}
-                      onChange={(value) =>
-                        patchProject((project) => ({
-                          ...project,
-                          layout: {
-                            ...project.layout,
-                            blockSplitBias: value,
-                          },
-                        }))
-                      }
-                    />
+                    {usesGutter ? (
+                      <SliderField
+                        label="Gutter"
+                        min={0}
+                        max={300}
+                        step={1}
+                        value={activeProject.layout.gutter}
+                        formatter={(value) => `${Math.round(value)} px`}
+                        onChange={(value) =>
+                          patchProject((project) => ({
+                            ...project,
+                            layout: { ...project.layout, gutter: value },
+                          }))
+                        }
+                      />
+                    ) : null}
+                    {isBlocksFamily ? (
+                      <>
+                        <SliderField
+                          label="Block Depth"
+                          min={0}
+                          max={7}
+                          step={1}
+                          value={activeProject.layout.blockDepth}
+                          formatter={(value) => `${Math.round(value)}`}
+                          onChange={(value) =>
+                            patchProject((project) => ({
+                              ...project,
+                              layout: {
+                                ...project.layout,
+                                blockDepth: Math.round(value),
+                              },
+                            }))
+                          }
+                        />
+                        <SliderField
+                          label="Split Randomness"
+                          min={0}
+                          max={1}
+                          step={0.01}
+                          value={activeProject.layout.blockSplitRandomness}
+                          formatter={(value) => `${Math.round(value * 100)}%`}
+                          onChange={(value) =>
+                            patchProject((project) => ({
+                              ...project,
+                              layout: {
+                                ...project.layout,
+                                blockSplitRandomness: value,
+                              },
+                            }))
+                          }
+                        />
+                        <SliderField
+                          label="Min Block Size"
+                          min={32}
+                          max={400}
+                          step={1}
+                          value={activeProject.layout.blockMinSize}
+                          formatter={(value) => `${Math.round(value)} px`}
+                          onChange={(value) =>
+                            patchProject((project) => ({
+                              ...project,
+                              layout: {
+                                ...project.layout,
+                                blockMinSize: Math.round(value),
+                              },
+                            }))
+                          }
+                        />
+                        <SliderField
+                          label="Split Bias"
+                          min={0}
+                          max={1}
+                          step={0.01}
+                          value={activeProject.layout.blockSplitBias}
+                          formatter={(value) => {
+                            if (value < 0.45) return "horizontal";
+                            if (value > 0.55) return "vertical";
+                            return "balanced";
+                          }}
+                          onChange={(value) =>
+                            patchProject((project) => ({
+                              ...project,
+                              layout: {
+                                ...project.layout,
+                                blockSplitBias: value,
+                              },
+                            }))
+                          }
+                        />
+                      </>
+                    ) : null}
                     <ControlBlock label="Symmetry">
                       <Select
                         value={activeProject.layout.symmetryMode}
@@ -1364,24 +1374,25 @@ function App() {
                         </SelectContent>
                       </Select>
                     </ControlBlock>
-                    <SliderField
-                      label="Radial Copies"
-                      disabled={!isRadialSymmetry}
-                      min={2}
-                      max={12}
-                      step={1}
-                      value={activeProject.layout.symmetryCopies}
-                      formatter={(value) => `${Math.round(value)}`}
-                      onChange={(value) =>
-                        patchProject((project) => ({
-                          ...project,
-                          layout: {
-                            ...project.layout,
-                            symmetryCopies: Math.round(value),
-                          },
-                        }))
-                      }
-                    />
+                    {isRadialSymmetry ? (
+                      <SliderField
+                        label="Radial Copies"
+                        min={2}
+                        max={12}
+                        step={1}
+                        value={activeProject.layout.symmetryCopies}
+                        formatter={(value) => `${Math.round(value)}`}
+                        onChange={(value) =>
+                          patchProject((project) => ({
+                            ...project,
+                            layout: {
+                              ...project.layout,
+                              symmetryCopies: Math.round(value),
+                            },
+                          }))
+                        }
+                      />
+                    ) : null}
                     <SliderField
                       label="Hide Percentage"
                       min={0}
@@ -1520,7 +1531,7 @@ function App() {
                     </ControlBlock>
                   </div>
 
-                  <div className="min-w-0 space-y-2">
+                  <div className="min-w-0 space-y-4">
                     <div className="border-b border-border-subtle pb-1 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-text-muted">
                       Mapping
                     </div>
@@ -1596,40 +1607,42 @@ function App() {
                         }))
                       }
                     />
-                    <SliderField
-                      label="Source Bias"
-                      disabled={!isWeightedAssignment}
-                      min={0}
-                      max={1}
-                      step={0.01}
-                      value={activeProject.sourceMapping.sourceBias}
-                      onChange={(value) =>
-                        patchProject((project) => ({
-                          ...project,
-                          sourceMapping: {
-                            ...project.sourceMapping,
-                            sourceBias: value,
-                          },
-                        }))
-                      }
-                    />
-                    <SliderField
-                      label="Palette Emphasis"
-                      disabled={!isPaletteAssignment}
-                      min={0}
-                      max={1}
-                      step={0.01}
-                      value={activeProject.sourceMapping.paletteEmphasis}
-                      onChange={(value) =>
-                        patchProject((project) => ({
-                          ...project,
-                          sourceMapping: {
-                            ...project.sourceMapping,
-                            paletteEmphasis: value,
-                          },
-                        }))
-                      }
-                    />
+                    {isWeightedAssignment ? (
+                      <SliderField
+                        label="Source Bias"
+                        min={0}
+                        max={1}
+                        step={0.01}
+                        value={activeProject.sourceMapping.sourceBias}
+                        onChange={(value) =>
+                          patchProject((project) => ({
+                            ...project,
+                            sourceMapping: {
+                              ...project.sourceMapping,
+                              sourceBias: value,
+                            },
+                          }))
+                        }
+                      />
+                    ) : null}
+                    {isPaletteAssignment ? (
+                      <SliderField
+                        label="Palette Emphasis"
+                        min={0}
+                        max={1}
+                        step={0.01}
+                        value={activeProject.sourceMapping.paletteEmphasis}
+                        onChange={(value) =>
+                          patchProject((project) => ({
+                            ...project,
+                            sourceMapping: {
+                              ...project.sourceMapping,
+                              paletteEmphasis: value,
+                            },
+                          }))
+                        }
+                      />
+                    ) : null}
                     <ControlBlock label="Preserve Aspect">
                       <div className="flex items-center justify-between rounded-md bg-surface-muted px-3 py-2.5">
                         <span className="text-xs text-text-muted">
@@ -1718,7 +1731,7 @@ function App() {
                     />
                   </div>
 
-                  <div className="min-w-0 space-y-2">
+                  <div className="min-w-0 space-y-4">
                     <div className="border-b border-border-subtle pb-1 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-text-muted">
                       Effects
                     </div>

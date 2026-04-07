@@ -74,6 +74,7 @@ import type {
   GeometryShape,
   LayoutFamily,
   ProjectDocument,
+  RadialChildRotationMode,
   SolidSourceAsset,
   SourceAsset,
   SourceAssignmentStrategy,
@@ -151,6 +152,21 @@ function formatGradientDirectionLabel(direction: GradientDirection) {
   if (direction === "diagonal-down") return "Diagonal down";
   if (direction === "diagonal-up") return "Diagonal up";
   return direction[0]!.toUpperCase() + direction.slice(1);
+}
+
+export function getGeometryOptions(family: LayoutFamily): GeometryShape[] {
+  return family === "grid"
+    ? ["mixed", "rect", "triangle", "interlock", "ring", "wedge"]
+    : ["mixed", "rect", "triangle", "ring", "wedge"];
+}
+
+export function coerceShapeModeForFamily(
+  family: LayoutFamily,
+  shapeMode: GeometryShape,
+): GeometryShape {
+  return family === "grid" || shapeMode !== "interlock"
+    ? shapeMode
+    : "triangle";
 }
 
 function SourceColorField({
@@ -477,6 +493,7 @@ function App() {
   const isStripsFamily = activeProject.layout.family === "strips";
   const isGridFamily = activeProject.layout.family === "grid";
   const isBlocksFamily = activeProject.layout.family === "blocks";
+  const isRadialFamily = activeProject.layout.family === "radial";
   const isRectShapeMode = activeProject.layout.shapeMode === "rect";
   const isWedgeShapeMode =
     activeProject.layout.shapeMode === "wedge" ||
@@ -487,6 +504,13 @@ function App() {
     activeProject.sourceMapping.strategy === "weighted";
   const isPaletteAssignment =
     activeProject.sourceMapping.strategy === "palette";
+  const geometryOptions = getGeometryOptions(activeProject.layout.family);
+  const geometryValue = geometryOptions.includes(activeProject.layout.shapeMode)
+    ? activeProject.layout.shapeMode
+    : coerceShapeModeForFamily(
+        activeProject.layout.family,
+        activeProject.layout.shapeMode,
+      );
 
   const captureThumbnail = () =>
     new Promise<Blob | null>((resolve) => {
@@ -920,13 +944,20 @@ function App() {
                       <Select
                         value={activeProject.layout.family}
                         onValueChange={(value) =>
-                          patchProject((project) => ({
-                            ...project,
-                            layout: {
+                          patchProject((project) => {
+                            const nextFamily = value as LayoutFamily;
+                            return {
+                              ...project,
+                              layout: {
                               ...project.layout,
-                              family: value as LayoutFamily,
-                            },
-                          }))
+                              family: nextFamily,
+                              shapeMode: coerceShapeModeForFamily(
+                                nextFamily,
+                                project.layout.shapeMode,
+                              ),
+                              },
+                            };
+                          })
                         }
                       >
                         <SelectTrigger>
@@ -945,7 +976,7 @@ function App() {
                     </ControlBlock>
                     <ControlBlock label="Geometry">
                       <Select
-                        value={activeProject.layout.shapeMode}
+                        value={geometryValue}
                         onValueChange={(value) =>
                           patchProject((project) => ({
                             ...project,
@@ -960,13 +991,11 @@ function App() {
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          {["mixed", "rect", "triangle", "ring", "wedge"].map(
-                            (option) => (
-                              <SelectItem key={option} value={option}>
-                                {option}
-                              </SelectItem>
-                            ),
-                          )}
+                          {geometryOptions.map((option) => (
+                            <SelectItem key={option} value={option}>
+                              {option}
+                            </SelectItem>
+                          ))}
                         </SelectContent>
                       </Select>
                     </ControlBlock>
@@ -1097,6 +1126,121 @@ function App() {
                         }))
                       }
                     />
+                    {isRadialFamily ? (
+                      <>
+                        <SliderField
+                          label="Radial Segments"
+                          min={2}
+                          max={36}
+                          step={1}
+                          value={activeProject.layout.radialSegments}
+                          formatter={(value) => `${Math.round(value)}`}
+                          onChange={(value) =>
+                            patchProject((project) => ({
+                              ...project,
+                              layout: {
+                                ...project.layout,
+                                radialSegments: Math.round(value),
+                              },
+                            }))
+                          }
+                        />
+                        <SliderField
+                          label="Radial Rings"
+                          min={1}
+                          max={12}
+                          step={1}
+                          value={activeProject.layout.radialRings}
+                          formatter={(value) => `${Math.round(value)}`}
+                          onChange={(value) =>
+                            patchProject((project) => ({
+                              ...project,
+                              layout: {
+                                ...project.layout,
+                                radialRings: Math.round(value),
+                              },
+                            }))
+                          }
+                        />
+                        <SliderField
+                          label="Angle Offset"
+                          min={0}
+                          max={360}
+                          step={1}
+                          value={activeProject.layout.radialAngleOffset}
+                          formatter={(value) => `${Math.round(value)}°`}
+                          onChange={(value) =>
+                            patchProject((project) => ({
+                              ...project,
+                              layout: {
+                                ...project.layout,
+                                radialAngleOffset: value,
+                              },
+                            }))
+                          }
+                        />
+                        <SliderField
+                          label="Ring Phase"
+                          min={-180}
+                          max={180}
+                          step={1}
+                          value={activeProject.layout.radialRingPhaseStep}
+                          formatter={(value) => `${Math.round(value)}°`}
+                          onChange={(value) =>
+                            patchProject((project) => ({
+                              ...project,
+                              layout: {
+                                ...project.layout,
+                                radialRingPhaseStep: value,
+                              },
+                            }))
+                          }
+                        />
+                        <SliderField
+                          label="Inner Radius"
+                          min={0}
+                          max={0.85}
+                          step={0.01}
+                          value={activeProject.layout.radialInnerRadius}
+                          formatter={(value) => `${Math.round(value * 100)}%`}
+                          onChange={(value) =>
+                            patchProject((project) => ({
+                              ...project,
+                              layout: {
+                                ...project.layout,
+                                radialInnerRadius: value,
+                              },
+                            }))
+                          }
+                        />
+                        <ControlBlock label="Child Rotation">
+                          <Select
+                            value={activeProject.layout.radialChildRotationMode}
+                            onValueChange={(value) =>
+                              patchProject((project) => ({
+                                ...project,
+                                layout: {
+                                  ...project.layout,
+                                  radialChildRotationMode:
+                                    value as RadialChildRotationMode,
+                                },
+                              }))
+                            }
+                          >
+                            <SelectTrigger aria-label="Child Rotation">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {["none", "tangent", "outward"].map((option) => (
+                                <SelectItem key={option} value={option}>
+                                  {option}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </ControlBlock>
+                      </>
+                    ) : null}
                     <SliderField
                       label="Gutter"
                       disabled={!usesGutter}

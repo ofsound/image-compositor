@@ -50,6 +50,10 @@ export const DEFAULT_LAYOUT: LayoutSettings = {
   stripOrientation: "mixed",
   radialSegments: 9,
   radialRings: 4,
+  radialAngleOffset: 0,
+  radialRingPhaseStep: 0,
+  radialInnerRadius: 0,
+  radialChildRotationMode: "tangent",
   symmetryMode: "none",
   symmetryCopies: 4,
   hidePercentage: 0,
@@ -149,6 +153,15 @@ export function normalizeLayoutSettings(
       layout?.stripOrientation ?? DEFAULT_LAYOUT.stripOrientation,
     radialSegments: layout?.radialSegments ?? DEFAULT_LAYOUT.radialSegments,
     radialRings: layout?.radialRings ?? DEFAULT_LAYOUT.radialRings,
+    radialAngleOffset:
+      layout?.radialAngleOffset ?? DEFAULT_LAYOUT.radialAngleOffset,
+    radialRingPhaseStep:
+      layout?.radialRingPhaseStep ?? DEFAULT_LAYOUT.radialRingPhaseStep,
+    radialInnerRadius:
+      layout?.radialInnerRadius ?? DEFAULT_LAYOUT.radialInnerRadius,
+    radialChildRotationMode:
+      layout?.radialChildRotationMode ??
+      DEFAULT_LAYOUT.radialChildRotationMode,
     symmetryMode: layout?.symmetryMode ?? DEFAULT_LAYOUT.symmetryMode,
     symmetryCopies: layout?.symmetryCopies ?? DEFAULT_LAYOUT.symmetryCopies,
     hidePercentage: layout?.hidePercentage ?? DEFAULT_LAYOUT.hidePercentage,

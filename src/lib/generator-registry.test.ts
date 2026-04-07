@@ -88,6 +88,17 @@ function getStripIntervals(
   return { slices, intervals };
 }
 
+function getRectCenterAngle(slice: { rect: { x: number; y: number; width: number; height: number } }, project: ReturnType<typeof createProjectDocument>) {
+  const centerX = slice.rect.x + slice.rect.width / 2 - project.canvas.width / 2;
+  const centerY = slice.rect.y + slice.rect.height / 2 - project.canvas.height / 2;
+  return Math.atan2(centerY, centerX);
+}
+
+function normalizeAngleDifference(angle: number) {
+  const fullTurn = Math.PI * 2;
+  return ((angle + Math.PI) % fullTurn + fullTurn) % fullTurn - Math.PI;
+}
+
 describe("buildRenderSlices", () => {
   it("builds deterministic slices for a seeded project", () => {
     const project = createProjectDocument("Determinism");
@@ -195,6 +206,94 @@ describe("buildRenderSlices", () => {
     }
   });
 
+  it("uses radial segment and ring counts to determine the base slice count", () => {
+    const project = createProjectDocument("Radial Count");
+    project.sourceIds = [assets[0]!.id];
+    project.layout.family = "radial";
+    project.layout.symmetryMode = "none";
+    project.layout.radialSegments = 7;
+    project.layout.radialRings = 3;
+
+    const slices = buildRenderSlices(project, [assets[0]!]);
+
+    expect(slices).toHaveLength(21);
+  });
+
+  it("keeps the canvas center outside every radial slice when inner radius is positive", () => {
+    const project = createProjectDocument("Radial Hole");
+    project.sourceIds = [assets[0]!.id];
+    project.layout.family = "radial";
+    project.layout.symmetryMode = "none";
+    project.layout.radialSegments = 8;
+    project.layout.radialRings = 2;
+    project.layout.radialInnerRadius = 0.35;
+    project.compositing.overlap = 0;
+
+    const slices = buildRenderSlices(project, [assets[0]!]);
+    const centerX = project.canvas.width / 2;
+    const centerY = project.canvas.height / 2;
+
+    expect(
+      slices.every(
+        (slice) =>
+          !(
+            slice.rect.x < centerX &&
+            slice.rect.x + slice.rect.width > centerX &&
+            slice.rect.y < centerY &&
+            slice.rect.y + slice.rect.height > centerY
+          ),
+      ),
+    ).toBe(true);
+  });
+
+  it("rotates the radial lattice deterministically with angle offset", () => {
+    const project = createProjectDocument("Radial Offset");
+    project.sourceIds = [assets[0]!.id];
+    project.layout.family = "radial";
+    project.layout.symmetryMode = "none";
+    project.layout.radialSegments = 4;
+    project.layout.radialRings = 1;
+    project.layout.radialInnerRadius = 0.2;
+    project.layout.radialChildRotationMode = "none";
+    project.compositing.overlap = 0;
+
+    const baseline = buildRenderSlices(project, [assets[0]!]);
+
+    project.layout.radialAngleOffset = 90;
+    const rotated = buildRenderSlices(project, [assets[0]!]);
+
+    const baselineSlice = baseline.find((slice) => slice.id === "slice_0");
+    const rotatedSlice = rotated.find((slice) => slice.id === "slice_0");
+    const angleDifference = normalizeAngleDifference(
+      getRectCenterAngle(rotatedSlice!, project) -
+        getRectCenterAngle(baselineSlice!, project),
+    );
+
+    expect(angleDifference).toBeCloseTo(Math.PI / 2, 1);
+  });
+
+  it("offsets each successive ring by the configured ring phase step", () => {
+    const project = createProjectDocument("Radial Ring Phase");
+    project.sourceIds = [assets[0]!.id];
+    project.layout.family = "radial";
+    project.layout.symmetryMode = "none";
+    project.layout.radialSegments = 6;
+    project.layout.radialRings = 2;
+    project.layout.radialInnerRadius = 0.15;
+    project.layout.radialRingPhaseStep = 30;
+    project.layout.radialChildRotationMode = "outward";
+    project.effects.rotationJitter = 0;
+
+    const slices = buildRenderSlices(project, [assets[0]!]);
+    const innerRingSlice = slices.find((slice) => slice.id === "slice_0");
+    const outerRingSlice = slices.find((slice) => slice.id === "slice_6");
+    const angleDifference = normalizeAngleDifference(
+      outerRingSlice!.rotation - innerRingSlice!.rotation,
+    );
+
+    expect(angleDifference).toBeCloseTo((30 * Math.PI) / 180, 1);
+  });
+
   it("increases strip count as density rises while staying deterministic", () => {
     const project = createProjectDocument("Dense Strips");
     project.sourceIds = [assets[0]!.id];
@@ -227,6 +326,52 @@ describe("buildRenderSlices", () => {
 
     expect(slices).toHaveLength(25);
     expect(new Set(slices.map((slice) => JSON.stringify(slice.sourceCrop))).size).toBe(25);
+  });
+
+  it("builds staggered interlock grids with alternating triangle rotation", () => {
+    const project = createProjectDocument("Interlock Grid");
+    project.sourceIds = [assets[0]!.id];
+    project.layout.family = "grid";
+    project.layout.shapeMode = "interlock";
+    project.layout.columns = 4;
+    project.layout.rows = 3;
+    project.layout.gutter = 0;
+    project.layout.symmetryMode = "none";
+    project.compositing.overlap = 0;
+    project.effects.rotationJitter = 0;
+
+    const slices = buildRenderSlices(project, [assets[0]!]).sort(
+      (a, b) => a.rect.y - b.rect.y || a.rect.x - b.rect.x,
+    );
+    const rowGroups = Array.from({ length: project.layout.rows }, (_, row) =>
+      slices.slice(
+        row * project.layout.columns,
+        (row + 1) * project.layout.columns,
+      ),
+    );
+    const triangleWidth =
+      rowGroups[0]?.[0]?.rect.width ?? 0;
+    const triangleStep = triangleWidth / 2;
+    const rightInset = project.canvas.width - project.canvas.inset;
+
+    expect(slices).toHaveLength(project.layout.columns * project.layout.rows);
+    expect(slices.every((slice) => slice.shape === "interlock")).toBe(true);
+    expect(rowGroups[0]?.[1]?.rect.x).toBeCloseTo(
+      (rowGroups[0]?.[0]?.rect.x ?? 0) + triangleStep,
+      4,
+    );
+    expect(rowGroups[1]?.[0]?.rect.x).toBeCloseTo(
+      (rowGroups[0]?.[0]?.rect.x ?? 0) - triangleStep,
+      4,
+    );
+    expect(rowGroups[0]?.[0]?.clipRotation).toBe(0);
+    expect(rowGroups[0]?.[1]?.clipRotation).toBe(Math.PI);
+    expect(rowGroups[1]?.[0]?.clipRotation).toBe(Math.PI);
+    expect((rowGroups[1]?.[0]?.rect.x ?? 0)).toBeLessThan(project.canvas.inset);
+    expect(
+      (rowGroups[0]?.at(-1)?.rect.x ?? 0) +
+        (rowGroups[0]?.at(-1)?.rect.width ?? 0),
+    ).toBeGreaterThan(rightInset);
   });
 
   it("draws single-image distributed strips against a full-canvas image rect", () => {
@@ -726,5 +871,72 @@ describe("buildRenderSlices", () => {
     const [slice] = buildRenderSlices(project, [assets[0]!]);
 
     expect(slice?.wedgeSweepRadians).toBeCloseTo(Math.PI * 2);
+  });
+
+  it("keeps radial child rotation at zero when rotation mode is none", () => {
+    const project = createProjectDocument("Radial No Rotation");
+    project.sourceIds = [assets[0]!.id];
+    project.layout.family = "radial";
+    project.layout.symmetryMode = "none";
+    project.layout.radialSegments = 4;
+    project.layout.radialRings = 1;
+    project.layout.radialChildRotationMode = "none";
+    project.effects.rotationJitter = 0;
+
+    const slices = buildRenderSlices(project, [assets[0]!]);
+
+    expect(slices.every((slice) => slice.rotation === 0)).toBe(true);
+  });
+
+  it("uses midpoint-based outward and tangent radial child rotations", () => {
+    const project = createProjectDocument("Radial Rotation Modes");
+    project.sourceIds = [assets[0]!.id];
+    project.layout.family = "radial";
+    project.layout.symmetryMode = "none";
+    project.layout.radialSegments = 4;
+    project.layout.radialRings = 1;
+    project.effects.rotationJitter = 0;
+
+    project.layout.radialChildRotationMode = "outward";
+    const outward = buildRenderSlices(project, [assets[0]!]);
+
+    project.layout.radialChildRotationMode = "tangent";
+    const tangent = buildRenderSlices(project, [assets[0]!]);
+
+    expect(outward.find((slice) => slice.id === "slice_0")?.rotation).toBeCloseTo(
+      Math.PI / 4,
+      6,
+    );
+    expect(tangent.find((slice) => slice.id === "slice_0")?.rotation).toBeCloseTo(
+      Math.PI * 0.75,
+      6,
+    );
+  });
+
+  it("keeps rotation jitter additive on top of the radial base rotation", () => {
+    const project = createProjectDocument("Radial Rotation Jitter");
+    project.sourceIds = [assets[0]!.id];
+    project.layout.family = "radial";
+    project.layout.symmetryMode = "none";
+    project.layout.radialSegments = 5;
+    project.layout.radialRings = 2;
+    project.layout.radialChildRotationMode = "outward";
+    project.effects.rotationJitter = 0;
+
+    const baseline = buildRenderSlices(project, [assets[0]!]);
+
+    project.effects.rotationJitter = 10;
+    const jittered = buildRenderSlices(project, [assets[0]!]);
+
+    expect(jittered).toHaveLength(baseline.length);
+    expect(
+      jittered.some((slice, index) => slice.rotation !== baseline[index]?.rotation),
+    ).toBe(true);
+
+    for (let index = 0; index < baseline.length; index += 1) {
+      expect(
+        Math.abs(jittered[index]!.rotation - baseline[index]!.rotation),
+      ).toBeLessThanOrEqual((5 * Math.PI) / 180 + 1e-8);
+    }
   });
 });

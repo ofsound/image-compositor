@@ -22,6 +22,7 @@ function createMockContext() {
     save: vi.fn(),
     restore: vi.fn(),
     fillRect: vi.fn(),
+    rect: vi.fn(),
     createLinearGradient: vi.fn(() => ({
       addColorStop: vi.fn(),
     })),
@@ -146,6 +147,49 @@ describe("renderProjectToCanvas", () => {
 
     expect(context.roundRect).not.toHaveBeenCalled();
     expect(context.lineTo).toHaveBeenCalled();
+  });
+
+  it("renders interlock slices as rotated triangle paths clipped to the inset area", async () => {
+    const project = createProjectDocument("Interlock Render");
+    project.layout.family = "grid";
+    project.layout.columns = 2;
+    project.layout.rows = 1;
+    project.layout.shapeMode = "interlock";
+    project.layout.gutter = 0;
+    project.layout.symmetryMode = "none";
+    project.compositing.overlap = 0;
+    project.compositing.shadow = 0;
+    project.effects.rotationJitter = 0;
+    project.effects.scaleJitter = 0;
+    project.effects.displacement = 0;
+    project.effects.distortion = 0;
+    project.effects.sharpen = 0;
+    project.effects.kaleidoscopeSegments = 1;
+
+    const context = createMockContext();
+    const canvas = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn(() => context),
+    } as unknown as HTMLCanvasElement;
+
+    await renderProjectToCanvas(
+      project,
+      [asset],
+      new Map([[asset.id, { asset, bitmap: {} as ImageBitmap }]]),
+      canvas,
+    );
+
+    expect(context.roundRect).not.toHaveBeenCalled();
+    expect(context.lineTo).toHaveBeenCalled();
+    expect(context.rect).toHaveBeenCalledWith(
+      project.canvas.inset,
+      project.canvas.inset,
+      project.canvas.width - project.canvas.inset * 2,
+      project.canvas.height - project.canvas.inset * 2,
+    );
+    expect(context.rotate).toHaveBeenCalledWith(Math.PI);
+    expect(context.rotate).toHaveBeenCalledWith(-Math.PI);
   });
 
   it("renders wedge sweeps from the configured wedge angle", async () => {

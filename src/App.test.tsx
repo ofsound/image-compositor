@@ -1,7 +1,10 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createProjectDocument } from "@/lib/project-defaults";
-import App from "@/App";
+import App, {
+  coerceShapeModeForFamily,
+  getGeometryOptions,
+} from "@/App";
 import type { SourceAsset } from "@/types/project";
 import { useAppStore } from "@/state/use-app-store";
 
@@ -31,7 +34,7 @@ type UpdateProject = AppStoreState["updateProject"];
 
 function createStoreState(overrides?: {
   family?: "grid" | "strips" | "blocks" | "radial";
-  shapeMode?: "rect" | "triangle" | "ring" | "wedge" | "mixed";
+  shapeMode?: "rect" | "triangle" | "interlock" | "ring" | "wedge" | "mixed";
   symmetryMode?: "none" | "mirror-x" | "mirror-y" | "quad" | "radial";
   density?: number;
   strategy?:
@@ -149,6 +152,10 @@ function expectSliderEnabled(label: string) {
   expect(slider).not.toHaveAttribute("data-disabled");
 }
 
+function expectSliderHidden(label: string) {
+  expect(screen.queryByLabelText(label)).not.toBeInTheDocument();
+}
+
 describe("App conditional sliders", () => {
   beforeEach(() => {
     mockedUseAppStore.mockReset();
@@ -169,6 +176,12 @@ describe("App conditional sliders", () => {
     expectSliderDisabled("Density");
     expectSliderEnabled("Columns");
     expectSliderEnabled("Rows");
+    expectSliderHidden("Radial Segments");
+    expectSliderHidden("Radial Rings");
+    expectSliderHidden("Angle Offset");
+    expectSliderHidden("Ring Phase");
+    expectSliderHidden("Inner Radius");
+    expect(screen.queryByLabelText("Child Rotation")).not.toBeInTheDocument();
     expectSliderEnabled("Gutter");
     expectSliderDisabled("Block Depth");
     expectSliderDisabled("Split Randomness");
@@ -196,6 +209,12 @@ describe("App conditional sliders", () => {
     expectSliderEnabled("Density");
     expectSliderDisabled("Columns");
     expectSliderDisabled("Rows");
+    expectSliderHidden("Radial Segments");
+    expectSliderHidden("Radial Rings");
+    expectSliderHidden("Angle Offset");
+    expectSliderHidden("Ring Phase");
+    expectSliderHidden("Inner Radius");
+    expect(screen.queryByLabelText("Child Rotation")).not.toBeInTheDocument();
     expectSliderEnabled("Gutter");
     expectSliderDisabled("Radial Copies");
     expectSliderEnabled("Hide Percentage");
@@ -244,6 +263,12 @@ describe("App conditional sliders", () => {
     expectSliderDisabled("Density");
     expectSliderDisabled("Columns");
     expectSliderDisabled("Rows");
+    expectSliderHidden("Radial Segments");
+    expectSliderHidden("Radial Rings");
+    expectSliderHidden("Angle Offset");
+    expectSliderHidden("Ring Phase");
+    expectSliderHidden("Inner Radius");
+    expect(screen.queryByLabelText("Child Rotation")).not.toBeInTheDocument();
     expectSliderDisabled("Gutter");
     expectSliderEnabled("Block Depth");
     expectSliderEnabled("Split Randomness");
@@ -271,6 +296,12 @@ describe("App conditional sliders", () => {
     expectSliderDisabled("Density");
     expectSliderDisabled("Columns");
     expectSliderDisabled("Rows");
+    expectSliderEnabled("Radial Segments");
+    expectSliderEnabled("Radial Rings");
+    expectSliderEnabled("Angle Offset");
+    expectSliderEnabled("Ring Phase");
+    expectSliderEnabled("Inner Radius");
+    expect(screen.getByLabelText("Child Rotation")).toBeInTheDocument();
     expectSliderDisabled("Gutter");
     expectSliderDisabled("Radial Copies");
     expectSliderEnabled("Hide Percentage");
@@ -308,6 +339,19 @@ describe("App conditional sliders", () => {
     expect(screen.getAllByLabelText("Wedge Jitter")[1]).not.toHaveAttribute(
       "data-disabled",
     );
+  });
+
+  it("includes interlock in geometry options only for grid layouts", () => {
+    expect(getGeometryOptions("grid")).toContain("interlock");
+    expect(getGeometryOptions("strips")).not.toContain("interlock");
+    expect(getGeometryOptions("blocks")).not.toContain("interlock");
+    expect(getGeometryOptions("radial")).not.toContain("interlock");
+  });
+
+  it("coerces interlock back to triangle when leaving grid", () => {
+    expect(coerceShapeModeForFamily("grid", "interlock")).toBe("interlock");
+    expect(coerceShapeModeForFamily("blocks", "interlock")).toBe("triangle");
+    expect(coerceShapeModeForFamily("strips", "triangle")).toBe("triangle");
   });
 });
 

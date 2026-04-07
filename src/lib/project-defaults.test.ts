@@ -20,6 +20,10 @@ describe("createProjectDocument", () => {
     expect(project.layout.blockSplitRandomness).toBe(0.5);
     expect(project.layout.blockMinSize).toBe(140);
     expect(project.layout.blockSplitBias).toBe(0.5);
+    expect(project.layout.radialAngleOffset).toBe(0);
+    expect(project.layout.radialRingPhaseStep).toBe(0);
+    expect(project.layout.radialInnerRadius).toBe(0);
+    expect(project.layout.radialChildRotationMode).toBe("tangent");
     expect(project.passes.map((pass) => pass.type)).toEqual([
       "layout",
       "assignment",
@@ -155,6 +159,43 @@ describe("createProjectDocument", () => {
     expect(normalizeProjectDocument(legacyProject).layout.wedgeJitter).toBe(0);
   });
 
+  it("normalizes legacy projects without radial controls to defaults", () => {
+    const project = createProjectDocument("Legacy Radial");
+    const legacyProject = {
+      ...project,
+      layout: {
+        family: project.layout.family,
+        shapeMode: project.layout.shapeMode,
+        rectCornerRadius: project.layout.rectCornerRadius,
+        density: project.layout.density,
+        stripAngle: project.layout.stripAngle,
+        columns: project.layout.columns,
+        rows: project.layout.rows,
+        gutter: project.layout.gutter,
+        blockDepth: project.layout.blockDepth,
+        blockSplitRandomness: project.layout.blockSplitRandomness,
+        blockMinSize: project.layout.blockMinSize,
+        blockSplitBias: project.layout.blockSplitBias,
+        stripOrientation: project.layout.stripOrientation,
+        radialSegments: project.layout.radialSegments,
+        radialRings: project.layout.radialRings,
+        symmetryMode: project.layout.symmetryMode,
+        symmetryCopies: project.layout.symmetryCopies,
+        hidePercentage: project.layout.hidePercentage,
+        letterbox: project.layout.letterbox,
+        wedgeAngle: project.layout.wedgeAngle,
+        wedgeJitter: project.layout.wedgeJitter,
+        randomness: project.layout.randomness,
+      },
+    } as unknown as ProjectDocument;
+
+    const normalized = normalizeProjectDocument(legacyProject).layout;
+    expect(normalized.radialAngleOffset).toBe(0);
+    expect(normalized.radialRingPhaseStep).toBe(0);
+    expect(normalized.radialInnerRadius).toBe(0);
+    expect(normalized.radialChildRotationMode).toBe("tangent");
+  });
+
   it("normalizes legacy projects without block controls to defaults", () => {
     const project = createProjectDocument("Legacy Blocks");
     const legacyProject = {
@@ -266,6 +307,58 @@ describe("createProjectDocument", () => {
 
     expect(normalizeProjectVersion(legacyVersion).snapshot.layout.wedgeAngle).toBe(120);
     expect(normalizeProjectVersion(legacyVersion).snapshot.layout.wedgeJitter).toBe(0);
+  });
+
+  it("normalizes legacy version snapshots without radial controls to defaults", () => {
+    const project = createProjectDocument("Legacy Radial Version");
+    const legacyVersion = {
+      id: "version_legacy_radial",
+      projectId: project.id,
+      label: "Legacy Radial Snapshot",
+      createdAt: new Date().toISOString(),
+      thumbnailPath: null,
+      snapshot: {
+        sourceIds: project.sourceIds,
+        canvas: structuredClone(project.canvas),
+        layout: {
+          family: project.layout.family,
+          shapeMode: project.layout.shapeMode,
+          rectCornerRadius: project.layout.rectCornerRadius,
+          density: project.layout.density,
+          stripAngle: project.layout.stripAngle,
+          columns: project.layout.columns,
+          rows: project.layout.rows,
+          gutter: project.layout.gutter,
+          blockDepth: project.layout.blockDepth,
+          blockSplitRandomness: project.layout.blockSplitRandomness,
+          blockMinSize: project.layout.blockMinSize,
+          blockSplitBias: project.layout.blockSplitBias,
+          stripOrientation: project.layout.stripOrientation,
+          radialSegments: project.layout.radialSegments,
+          radialRings: project.layout.radialRings,
+          symmetryMode: project.layout.symmetryMode,
+          symmetryCopies: project.layout.symmetryCopies,
+          hidePercentage: project.layout.hidePercentage,
+          letterbox: project.layout.letterbox,
+          wedgeAngle: project.layout.wedgeAngle,
+          wedgeJitter: project.layout.wedgeJitter,
+          randomness: project.layout.randomness,
+        },
+        sourceMapping: structuredClone(project.sourceMapping),
+        effects: structuredClone(project.effects),
+        compositing: structuredClone(project.compositing),
+        export: structuredClone(project.export),
+        activeSeed: project.activeSeed,
+        presets: structuredClone(project.presets),
+        passes: structuredClone(project.passes),
+      },
+    } as unknown as ProjectVersion;
+
+    const normalized = normalizeProjectVersion(legacyVersion).snapshot.layout;
+    expect(normalized.radialAngleOffset).toBe(0);
+    expect(normalized.radialRingPhaseStep).toBe(0);
+    expect(normalized.radialInnerRadius).toBe(0);
+    expect(normalized.radialChildRotationMode).toBe("tangent");
   });
 
   it("normalizes legacy version snapshots without strip angle to zero degrees", () => {

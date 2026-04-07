@@ -43,7 +43,7 @@ function drawShapePath(
 
   context.beginPath();
 
-  if (slice.shape === "triangle") {
+  if (slice.shape === "triangle" || slice.shape === "interlock") {
     context.moveTo(centerX, y);
     context.lineTo(x + width, y + height);
     context.lineTo(x, y + height);
@@ -85,6 +85,23 @@ function drawShapePath(
   const maxRadius = Math.min(width, height) / 2;
   const radius = clamp(project.layout.rectCornerRadius * maxRadius, 0, maxRadius);
   context.roundRect(x, y, width, height, radius);
+}
+
+function clipSliceToInsetArea(
+  context: RenderContext,
+  slice: RenderSlice,
+  project: ProjectDocument,
+) {
+  if (slice.shape !== "interlock") return;
+
+  context.beginPath();
+  context.rect(
+    project.canvas.inset,
+    project.canvas.inset,
+    project.canvas.width - project.canvas.inset * 2,
+    project.canvas.height - project.canvas.inset * 2,
+  );
+  context.clip();
 }
 
 function getSourceRect(slice: RenderSlice, asset: SourceAsset, project: ProjectDocument) {
@@ -185,6 +202,7 @@ async function drawSlice(
   context.filter = `blur(${project.effects.blur}px)`;
 
   context.save();
+  clipSliceToInsetArea(context, slice, project);
   context.translate(centerX, centerY);
   context.rotate(slice.rotation + slice.clipRotation);
   context.scale(scaleX, scaleY);
@@ -212,6 +230,7 @@ async function drawSlice(
     context.strokeStyle = "rgba(24, 15, 8, 0.2)";
     context.lineWidth = 2;
     context.save();
+    clipSliceToInsetArea(context, slice, project);
     context.translate(centerX, centerY);
     context.rotate(slice.rotation + slice.clipRotation);
     context.scale(scaleX, scaleY);

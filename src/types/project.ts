@@ -1,5 +1,12 @@
-export type GeometryShape = "rect" | "triangle" | "ring" | "wedge" | "mixed";
+export type GeometryShape =
+  | "rect"
+  | "triangle"
+  | "interlock"
+  | "ring"
+  | "wedge"
+  | "mixed";
 export type LayoutFamily = "grid" | "strips" | "blocks" | "radial";
+export type RadialChildRotationMode = "none" | "tangent" | "outward";
 export type CropDistribution = "center" | "distributed";
 export type SourceKind = "image" | "solid" | "gradient";
 export type GradientDirection =
@@ -93,6 +100,10 @@ export interface LayoutSettings {
   stripOrientation: "horizontal" | "vertical" | "mixed";
   radialSegments: number;
   radialRings: number;
+  radialAngleOffset: number;
+  radialRingPhaseStep: number;
+  radialInnerRadius: number;
+  radialChildRotationMode: RadialChildRotationMode;
   symmetryMode: "none" | "mirror-x" | "mirror-y" | "quad" | "radial";
   symmetryCopies: number;
   hidePercentage: number;

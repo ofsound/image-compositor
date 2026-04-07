@@ -16,10 +16,14 @@ interface GeneratorContext {
   assets: SourceAsset[];
 }
 
+type ConcreteGeometryShape = Exclude<GeometryShape, "mixed">;
+type MixedCycleShape = Exclude<GeometryShape, "mixed" | "interlock">;
+
 interface LayoutCell extends RenderRect {
-  shape: Exclude<GeometryShape, "mixed">;
+  shape: ConcreteGeometryShape;
   clipRect?: RenderRect;
   clipRotation?: number;
+  rotation?: number;
 }
 
 interface Point {
@@ -30,9 +34,14 @@ interface Point {
 const MIN_WEDGE_SWEEP_DEGREES = 0.5;
 const MAX_BLOCK_SPLIT_OFFSET = 0.18;
 
+function degToRad(degrees: number) {
+  return (degrees * Math.PI) / 180;
+}
+
 function assignShape(index: number, shapeMode: GeometryShape) {
+  if (shapeMode === "interlock") return "triangle";
   if (shapeMode !== "mixed") return shapeMode;
-  const cycle: Exclude<GeometryShape, "mixed">[] = ["rect", "triangle", "ring", "wedge"];
+  const cycle: MixedCycleShape[] = ["rect", "triangle", "ring", "wedge"];
   return cycle[index % cycle.length]!;
 }
 
@@ -162,8 +171,35 @@ function generateGrid(context: GeneratorContext) {
   const cells: LayoutCell[] = [];
   const innerWidth = canvas.width - canvas.inset * 2;
   const innerHeight = canvas.height - canvas.inset * 2;
-  const columnWidth = innerWidth / layout.columns;
   const rowHeight = innerHeight / layout.rows;
+  const insetAmount = layout.gutter * (1 - compositing.overlap);
+
+  if (layout.shapeMode === "interlock") {
+    const triangleWidth = (2 * innerWidth) / layout.columns;
+    const triangleStep = triangleWidth / 2;
+
+    for (let row = 0; row < layout.rows; row += 1) {
+      const rowOffset = row % 2 === 0 ? 0 : -triangleStep;
+
+      for (let column = 0; column < layout.columns; column += 1) {
+        const rect = {
+          x: canvas.inset + rowOffset + column * triangleStep,
+          y: canvas.inset + row * rowHeight,
+          width: triangleWidth,
+          height: rowHeight,
+        };
+        cells.push({
+          ...insetRect(rect, insetAmount),
+          shape: "interlock",
+          clipRotation: (row + column) % 2 === 0 ? 0 : Math.PI,
+        });
+      }
+    }
+
+    return cells;
+  }
+
+  const columnWidth = innerWidth / layout.columns;
 
   for (let row = 0; row < layout.rows; row += 1) {
     for (let column = 0; column < layout.columns; column += 1) {
@@ -174,7 +210,7 @@ function generateGrid(context: GeneratorContext) {
         height: rowHeight,
       };
       cells.push({
-        ...insetRect(rect, layout.gutter * (1 - compositing.overlap)),
+        ...insetRect(rect, insetAmount),
         shape: assignShape(row * layout.columns + column, layout.shapeMode),
       });
     }
@@ -365,25 +401,51 @@ function generateRadial(context: GeneratorContext) {
   } = context;
   const centerX = canvas.width / 2;
   const centerY = canvas.height / 2;
-  const radius = Math.min(canvas.width, canvas.height) / 2 - canvas.inset;
+  const maxRadius = Math.min(canvas.width, canvas.height) / 2 - canvas.inset;
+  const innerRadiusPx = maxRadius * clamp(layout.radialInnerRadius, 0, 0.85);
+  const segmentSweep = (Math.PI * 2) / layout.radialSegments;
   const cells: LayoutCell[] = [];
 
   for (let ring = 0; ring < layout.radialRings; ring += 1) {
-    const ringOuter = radius * ((ring + 1) / layout.radialRings);
-    const ringInner = radius * (ring / layout.radialRings);
+    const ringOuter =
+      innerRadiusPx +
+      (maxRadius - innerRadiusPx) * ((ring + 1) / layout.radialRings);
+    const ringInner =
+      innerRadiusPx +
+      (maxRadius - innerRadiusPx) * (ring / layout.radialRings);
+    const ringOffset = degToRad(
+      layout.radialAngleOffset + ring * layout.radialRingPhaseStep,
+    );
     for (let segment = 0; segment < layout.radialSegments; segment += 1) {
-      const angle = (Math.PI * 2 * segment) / layout.radialSegments;
-      const nextAngle = (Math.PI * 2 * (segment + 1)) / layout.radialSegments;
-      const x = centerX + Math.cos(angle) * ringInner;
-      const y = centerY + Math.sin(angle) * ringInner;
-      const x2 = centerX + Math.cos(nextAngle) * ringOuter;
-      const y2 = centerY + Math.sin(nextAngle) * ringOuter;
+      const angle = ringOffset + segmentSweep * segment;
+      const nextAngle = angle + segmentSweep;
+      const midAngle = angle + segmentSweep / 2;
+      const points = [
+        { x: centerX + Math.cos(angle) * ringInner, y: centerY + Math.sin(angle) * ringInner },
+        { x: centerX + Math.cos(nextAngle) * ringInner, y: centerY + Math.sin(nextAngle) * ringInner },
+        { x: centerX + Math.cos(angle) * ringOuter, y: centerY + Math.sin(angle) * ringOuter },
+        { x: centerX + Math.cos(nextAngle) * ringOuter, y: centerY + Math.sin(nextAngle) * ringOuter },
+      ];
+      const xs = points.map((point) => point.x);
+      const ys = points.map((point) => point.y);
+      let rotation = 0;
+
+      if (layout.radialChildRotationMode === "outward") {
+        rotation = midAngle;
+      } else if (layout.radialChildRotationMode === "tangent") {
+        rotation = midAngle + Math.PI / 2;
+      }
+
       cells.push({
-        x: Math.min(x, x2),
-        y: Math.min(y, y2),
-        width: Math.max(64, Math.abs(x2 - x)),
-        height: Math.max(64, Math.abs(y2 - y)),
-        shape: assignShape(segment + ring, layout.shapeMode === "mixed" ? "wedge" : layout.shapeMode),
+        x: Math.min(...xs),
+        y: Math.min(...ys),
+        width: Math.max(64, Math.max(...xs) - Math.min(...xs)),
+        height: Math.max(64, Math.max(...ys) - Math.min(...ys)),
+        shape: assignShape(
+          segment + ring,
+          layout.shapeMode === "mixed" ? "wedge" : layout.shapeMode,
+        ),
+        rotation,
       });
     }
   }
@@ -797,7 +859,7 @@ function applyLetterbox(slices: RenderSlice[], project: ProjectDocument) {
 }
 
 function getWedgeSweepRadians(
-  shape: Exclude<GeometryShape, "mixed">,
+  shape: ConcreteGeometryShape,
   project: ProjectDocument,
   rng: ReturnType<typeof mulberry32>,
 ) {
@@ -855,7 +917,7 @@ export function buildRenderSlices(project: ProjectDocument, assets: SourceAsset[
       clipRect,
       clipRotation: cell.clipRotation ?? 0,
       imageRect: null,
-      rotation: (rotationNoise * Math.PI) / 180,
+      rotation: (cell.rotation ?? 0) + (rotationNoise * Math.PI) / 180,
       scale: scaleNoise,
       opacity: project.compositing.opacity,
       blendMode: project.compositing.blendMode,

@@ -38,6 +38,7 @@ function createStoreState(overrides?: {
   symmetryMode?: "none" | "mirror-x" | "mirror-y" | "quad" | "radial";
   density?: number;
   kaleidoscopeSegments?: number;
+  sourceImportProgress?: { processed: number; total: number } | null;
   strategy?:
     | "random"
     | "weighted"
@@ -86,6 +87,7 @@ function createStoreState(overrides?: {
     ready: true,
     busy: false,
     status: "Ready.",
+    sourceImportProgress: overrides?.sourceImportProgress ?? null,
     projects: [project],
     assets,
     versions: [],
@@ -346,6 +348,38 @@ describe("App conditional sliders", () => {
     expect(coerceShapeModeForFamily("grid", "interlock")).toBe("interlock");
     expect(coerceShapeModeForFamily("blocks", "interlock")).toBe("triangle");
     expect(coerceShapeModeForFamily("strips", "triangle")).toBe("triangle");
+  });
+});
+
+describe("App source import progress badge", () => {
+  beforeEach(() => {
+    mockedUseAppStore.mockReset();
+  });
+
+  it("hides the source processing badge by default", () => {
+    renderApp();
+
+    expect(screen.queryByText("Processing Sources 0/3")).not.toBeInTheDocument();
+  });
+
+  it("shows the source processing badge when image imports are in progress", () => {
+    renderApp({
+      sourceImportProgress: { processed: 2, total: 8 },
+    });
+
+    expect(screen.getByText("Processing Sources 2/8")).toBeInTheDocument();
+  });
+
+  it("can show source processing alongside rendering", () => {
+    mockedUseAppStore.mockReturnValue(
+      createStoreState({
+        sourceImportProgress: { processed: 1, total: 3 },
+      }),
+    );
+    render(<App />);
+
+    expect(screen.getByText("Rendering")).toBeInTheDocument();
+    expect(screen.getByText("Processing Sources 1/3")).toBeInTheDocument();
   });
 });
 

@@ -1,6 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { db, createGeneratedSourceAsset, deleteBlob, readBlob, writeBlob } = vi.hoisted(() => ({
+const {
+  db,
+  createGeneratedSourceAsset,
+  persistProcessedAsset,
+  processImageFile,
+  deleteBlob,
+  readBlob,
+  writeBlob,
+} = vi.hoisted(() => ({
   db: {
     assets: {
       put: vi.fn(async () => undefined),
@@ -36,6 +44,8 @@ const { db, createGeneratedSourceAsset, deleteBlob, readBlob, writeBlob } = vi.h
     },
   },
   createGeneratedSourceAsset: vi.fn(),
+  persistProcessedAsset: vi.fn(),
+  processImageFile: vi.fn(),
   deleteBlob: vi.fn<() => Promise<void>>(async () => undefined),
   readBlob: vi.fn<(path: string) => Promise<Blob | null>>(async () => null),
   writeBlob: vi.fn<(path: string, blob: Blob) => Promise<void>>(async () => undefined),
@@ -45,13 +55,13 @@ vi.mock("@/lib/assets", () => ({
   createGeneratedSourceAsset,
   duplicateSourceAsset: vi.fn(),
   normalizeSourceAsset: vi.fn((asset) => asset),
-  persistProcessedAsset: vi.fn(),
+  persistProcessedAsset,
   updateGeneratedSourceAsset: vi.fn(),
 }));
 
 vi.mock("@/lib/db", () => ({ db }));
 vi.mock("@/lib/download", () => ({ downloadBlob: vi.fn() }));
-vi.mock("@/lib/image-worker-client", () => ({ processImageFile: vi.fn() }));
+vi.mock("@/lib/image-worker-client", () => ({ processImageFile }));
 vi.mock("@/lib/opfs", () => ({ deleteBlob, readBlob, writeBlob }));
 vi.mock("@/lib/render", () => ({ exportProjectImage: vi.fn() }));
 vi.mock("@/lib/serializer", () => ({
@@ -71,6 +81,7 @@ function resetStore() {
     ready: true,
     busy: false,
     status: "Ready.",
+    sourceImportProgress: null,
     projects: [project],
     assets: [],
     versions: [],
@@ -103,6 +114,27 @@ function createSolidAsset(projectId: string): SourceAsset {
     recipe: {
       color: "#123456",
     },
+  };
+}
+
+function createImageAsset(projectId: string, id: string): SourceAsset {
+  return {
+    id,
+    kind: "image",
+    projectId,
+    name: `Image ${id}`,
+    originalFileName: `${id}.jpg`,
+    mimeType: "image/jpeg",
+    width: 1200,
+    height: 800,
+    orientation: 1,
+    originalPath: `assets/original/${id}.jpg`,
+    normalizedPath: `assets/normalized/${id}.png`,
+    previewPath: `assets/previews/${id}.webp`,
+    averageColor: "#112233",
+    palette: ["#112233"],
+    luminance: 0.25,
+    createdAt: "2026-04-05T00:00:00.000Z",
   };
 }
 
@@ -246,5 +278,84 @@ describe("useAppStore history", () => {
     expect(deleteBlob).toHaveBeenCalledTimes(6);
     expect(db.assets.bulkDelete).toHaveBeenLastCalledWith([asset.id]);
     expect(useAppStore.getState().canRedo).toBe(false);
+  });
+});
+
+describe("useAppStore import progress", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resetStore();
+  });
+
+  it("tracks source import progress across imported files and clears it on success", async () => {
+    const project = useAppStore.getState().projects[0]!;
+    const files = [
+      new File(["a"], "a.jpg", { type: "image/jpeg" }),
+      new File(["b"], "b.jpg", { type: "image/jpeg" }),
+    ];
+    const progressSnapshots: string[] = [];
+    const firstPayload = { width: 10 } as never;
+    const secondPayload = { width: 20 } as never;
+    const firstAsset = createImageAsset(project.id, "asset_image_a");
+    const secondAsset = createImageAsset(project.id, "asset_image_b");
+
+    vi.mocked(processImageFile)
+      .mockResolvedValueOnce(firstPayload)
+      .mockResolvedValueOnce(secondPayload);
+    vi.mocked(persistProcessedAsset)
+      .mockImplementationOnce(async () => {
+        progressSnapshots.push(
+          JSON.stringify(useAppStore.getState().sourceImportProgress),
+        );
+        return firstAsset;
+      })
+      .mockImplementationOnce(async () => {
+        progressSnapshots.push(
+          JSON.stringify(useAppStore.getState().sourceImportProgress),
+        );
+        return secondAsset;
+      });
+
+    const importPromise = useAppStore.getState().importFiles(files);
+
+    expect(useAppStore.getState().sourceImportProgress).toEqual({
+      processed: 0,
+      total: 2,
+    });
+
+    await importPromise;
+
+    expect(progressSnapshots).toEqual([
+      JSON.stringify({ processed: 0, total: 2 }),
+      JSON.stringify({ processed: 1, total: 2 }),
+    ]);
+    expect(useAppStore.getState().sourceImportProgress).toBeNull();
+    expect(useAppStore.getState().assets.map((asset) => asset.id)).toEqual([
+      firstAsset.id,
+      secondAsset.id,
+    ]);
+  });
+
+  it("clears source import progress on failure", async () => {
+    const files = [new File(["a"], "a.jpg", { type: "image/jpeg" })];
+    vi.mocked(processImageFile).mockRejectedValueOnce(new Error("decode failed"));
+
+    await useAppStore.getState().importFiles(files);
+
+    expect(useAppStore.getState().sourceImportProgress).toBeNull();
+    expect(useAppStore.getState().status).toBe("Import failed: decode failed");
+  });
+
+  it("does not use source import progress for generated sources", async () => {
+    const project = useAppStore.getState().projects[0]!;
+    const asset = createSolidAsset(project.id);
+    createGeneratedSourceAsset.mockResolvedValue(asset);
+
+    await useAppStore.getState().addSolidSource({
+      name: "",
+      color: "#123456",
+    });
+
+    expect(useAppStore.getState().sourceImportProgress).toBeNull();
   });
 });

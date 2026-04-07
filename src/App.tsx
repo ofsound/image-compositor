@@ -358,6 +358,7 @@ function App() {
     ready,
     busy,
     status,
+    sourceImportProgress,
     projects,
     assets,
     versions,
@@ -705,6 +706,16 @@ function App() {
                   aria-live="polite"
                 >
                   Rendering
+                </div>
+              ) : null}
+              {sourceImportProgress ? (
+                <div
+                  className="shrink-0 rounded-md bg-sky-600 px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.08em] text-white"
+                  role="status"
+                  aria-live="polite"
+                >
+                  Processing Sources {sourceImportProgress.processed}/
+                  {sourceImportProgress.total}
                 </div>
               ) : null}
             </div>

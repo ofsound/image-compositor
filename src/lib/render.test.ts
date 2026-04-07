@@ -10,7 +10,10 @@ import { exportProjectImage, renderProjectToCanvas } from "@/lib/render";
 import type { SourceAsset } from "@/types/project";
 
 function createMockContext() {
-  return {
+  const drawImageCompositeOperations: string[] = [];
+  const globalCompositeOperationAssignments: string[] = [];
+  let globalCompositeOperation = "source-over";
+  const context = {
     arc: vi.fn(),
     beginPath: vi.fn(),
     clip: vi.fn(),
@@ -29,7 +32,9 @@ function createMockContext() {
     getImageData: vi.fn(),
     createImageData: vi.fn(),
     putImageData: vi.fn(),
-    drawImage: vi.fn(),
+    drawImage: vi.fn(() => {
+      drawImageCompositeOperations.push(globalCompositeOperation);
+    }),
     translate: vi.fn(),
     rotate: vi.fn(),
     scale: vi.fn(),
@@ -39,7 +44,23 @@ function createMockContext() {
     globalAlpha: 1,
     lineWidth: 1,
     filter: "",
+    drawImageCompositeOperations,
+    globalCompositeOperationAssignments,
   };
+
+  Object.defineProperty(context, "globalCompositeOperation", {
+    get() {
+      return globalCompositeOperation;
+    },
+    set(value: string) {
+      globalCompositeOperation = value;
+      globalCompositeOperationAssignments.push(value);
+    },
+    enumerable: true,
+    configurable: true,
+  });
+
+  return context;
 }
 
 const asset: SourceAsset = {
@@ -443,6 +464,91 @@ describe("renderProjectToCanvas", () => {
     );
     expect(context.scale).toHaveBeenNthCalledWith(1, 0.8, 0.8);
     expect(context.scale).toHaveBeenNthCalledWith(2, -0.6, 0.6);
+  });
+
+  it("applies the configured blend mode during kaleidoscope overlay draws", async () => {
+    const project = createProjectDocument("Kaleidoscope Blend Mode");
+    project.effects.sharpen = 0;
+    project.effects.kaleidoscopeSegments = 3;
+    project.effects.kaleidoscopeOpacity = 0.5;
+    project.layout.family = "grid";
+    project.layout.columns = 1;
+    project.layout.rows = 1;
+    project.layout.shapeMode = "rect";
+    project.layout.symmetryMode = "none";
+    project.compositing.blendMode = "multiply";
+    project.compositing.overlap = 0;
+    project.compositing.shadow = 0;
+    project.effects.rotationJitter = 0;
+    project.effects.scaleJitter = 0;
+    project.effects.displacement = 0;
+    project.effects.distortion = 0;
+
+    const context = createMockContext();
+    const sourceContext = createMockContext();
+    const canvas = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn(() => context),
+    } as unknown as HTMLCanvasElement;
+    const sourceCanvas = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn(() => sourceContext),
+    } as unknown as HTMLCanvasElement;
+    const createElementSpy = vi
+      .spyOn(document, "createElement")
+      .mockReturnValue(sourceCanvas as never);
+
+    try {
+      await renderProjectToCanvas(
+        project,
+        [asset],
+        new Map([[asset.id, { asset, bitmap: {} as ImageBitmap }]]),
+        canvas,
+      );
+    } finally {
+      createElementSpy.mockRestore();
+    }
+
+    expect(context.globalCompositeOperationAssignments).toContain("multiply");
+    expect(context.drawImageCompositeOperations.at(-1)).toBe("multiply");
+    expect(context.drawImageCompositeOperations.at(-2)).toBe("multiply");
+    expect(sourceContext.drawImageCompositeOperations).toEqual(["multiply"]);
+  });
+
+  it("keeps non-kaleidoscope rendering on the slice blend mode path", async () => {
+    const project = createProjectDocument("Slice Blend Mode");
+    project.effects.sharpen = 0;
+    project.effects.kaleidoscopeSegments = 1;
+    project.layout.family = "grid";
+    project.layout.columns = 1;
+    project.layout.rows = 1;
+    project.layout.shapeMode = "rect";
+    project.layout.symmetryMode = "none";
+    project.compositing.blendMode = "multiply";
+    project.compositing.overlap = 0;
+    project.compositing.shadow = 0;
+    project.effects.rotationJitter = 0;
+    project.effects.scaleJitter = 0;
+    project.effects.displacement = 0;
+    project.effects.distortion = 0;
+
+    const context = createMockContext();
+    const canvas = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn(() => context),
+    } as unknown as HTMLCanvasElement;
+
+    await renderProjectToCanvas(
+      project,
+      [asset],
+      new Map([[asset.id, { asset, bitmap: {} as ImageBitmap }]]),
+      canvas,
+    );
+
+    expect(context.drawImageCompositeOperations).toEqual(["multiply"]);
   });
 
   it("uses the configured kaleidoscope mirror mode when scaling clones", async () => {

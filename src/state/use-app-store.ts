@@ -37,6 +37,7 @@ import type {
 } from "@/types/project";
 
 type BundleImportResolution = "replace" | "copy";
+type SourceImportProgress = { processed: number; total: number };
 
 interface ProjectChangeHistoryEntry {
   kind: "project-change";
@@ -86,6 +87,7 @@ interface AppState {
   ready: boolean;
   busy: boolean;
   status: string;
+  sourceImportProgress: SourceImportProgress | null;
   projects: ProjectDocument[];
   assets: SourceAsset[];
   versions: ProjectVersion[];
@@ -361,6 +363,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   ready: false,
   busy: false,
   status: "Booting workspace…",
+  sourceImportProgress: null,
   projects: [],
   assets: [],
   versions: [],
@@ -569,7 +572,11 @@ export const useAppStore = create<AppState>((set, get) => ({
     const fileList = Array.from(files);
     if (fileList.length === 0) return;
 
-    set({ busy: true, status: `Importing ${fileList.length} source image(s)…` });
+    set({
+      busy: true,
+      status: `Importing ${fileList.length} source image(s)…`,
+      sourceImportProgress: { processed: 0, total: fileList.length },
+    });
 
     try {
       const importedAssets: SourceAsset[] = [];
@@ -578,6 +585,12 @@ export const useAppStore = create<AppState>((set, get) => ({
         const asset = await persistProcessedAsset(file, payload, activeProject.id);
         importedAssets.push(asset);
         await db.assets.put(asset);
+        set({
+          sourceImportProgress: {
+            processed: importedAssets.length,
+            total: fileList.length,
+          },
+        });
       }
 
       const nextProject = {
@@ -613,6 +626,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           projects: upsertProject(state.projects, nextProject),
           historyByProject,
           busy: false,
+          sourceImportProgress: null,
           status: `Imported ${importedAssets.length} source image(s).`,
           ...getHistoryFlags(historyByProject, state.activeProjectId),
         };
@@ -620,6 +634,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     } catch (error) {
       set({
         busy: false,
+        sourceImportProgress: null,
         status:
           error instanceof Error ? `Import failed: ${error.message}` : "Import failed.",
       });

@@ -327,6 +327,7 @@ function applyKaleidoscope(
 
   context.save();
   context.globalAlpha = clamp(effects.kaleidoscopeOpacity, 0, 1);
+  context.globalCompositeOperation = project.compositing.blendMode;
 
   for (let segment = 1; segment < effects.kaleidoscopeSegments; segment += 1) {
     const baseAngle = (Math.PI * 2 * segment) / effects.kaleidoscopeSegments;

@@ -7,6 +7,10 @@ export type GeometryShape =
   | "mixed";
 export type LayoutFamily = "grid" | "strips" | "blocks" | "radial";
 export type RadialChildRotationMode = "none" | "tangent" | "outward";
+export type KaleidoscopeMirrorMode =
+  | "rotate-only"
+  | "alternate"
+  | "mirror-all";
 export type CropDistribution = "center" | "distributed";
 export type SourceKind = "image" | "solid" | "gradient";
 export type GradientDirection =
@@ -126,8 +130,14 @@ export interface SourceMappingSettings {
 export interface EffectSettings {
   blur: number;
   sharpen: number;
-  mirror: boolean;
   kaleidoscopeSegments: number;
+  kaleidoscopeCenterX: number;
+  kaleidoscopeCenterY: number;
+  kaleidoscopeAngleOffset: number;
+  kaleidoscopeMirrorMode: KaleidoscopeMirrorMode;
+  kaleidoscopeRotationDrift: number;
+  kaleidoscopeScaleFalloff: number;
+  kaleidoscopeOpacity: number;
   rotationJitter: number;
   scaleJitter: number;
   displacement: number;

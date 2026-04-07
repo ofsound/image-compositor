@@ -37,6 +37,7 @@ function createStoreState(overrides?: {
   shapeMode?: "rect" | "triangle" | "interlock" | "ring" | "wedge" | "mixed";
   symmetryMode?: "none" | "mirror-x" | "mirror-y" | "quad" | "radial";
   density?: number;
+  kaleidoscopeSegments?: number;
   strategy?:
     | "random"
     | "weighted"
@@ -62,6 +63,10 @@ function createStoreState(overrides?: {
 
   if (overrides?.density !== undefined) {
     project.layout.density = overrides.density;
+  }
+
+  if (overrides?.kaleidoscopeSegments !== undefined) {
+    project.effects.kaleidoscopeSegments = overrides.kaleidoscopeSegments;
   }
 
   if (overrides?.strategy) {
@@ -341,6 +346,40 @@ describe("App conditional sliders", () => {
     expect(coerceShapeModeForFamily("grid", "interlock")).toBe("interlock");
     expect(coerceShapeModeForFamily("blocks", "interlock")).toBe("triangle");
     expect(coerceShapeModeForFamily("strips", "triangle")).toBe("triangle");
+  });
+});
+
+describe("App kaleidoscope controls", () => {
+  beforeEach(() => {
+    mockedUseAppStore.mockReset();
+  });
+
+  it("hides advanced kaleidoscope controls when the effect is inactive", () => {
+    renderApp({ kaleidoscopeSegments: 1 });
+
+    expectSliderEnabled("Kaleidoscope");
+    expectSliderHidden("Center X");
+    expectSliderHidden("Center Y");
+    expectSliderHidden("Angle Offset");
+    expectSliderHidden("Rotation Drift");
+    expectSliderHidden("Scale Falloff");
+    expectSliderHidden("Kaleidoscope Opacity");
+    expect(screen.queryByLabelText("Mirror Mode")).not.toBeInTheDocument();
+    expect(screen.queryByText("Mirror Overlay")).not.toBeInTheDocument();
+  });
+
+  it("shows advanced kaleidoscope controls when segments exceed one", () => {
+    renderApp({ kaleidoscopeSegments: 3 });
+
+    expectSliderEnabled("Kaleidoscope");
+    expectSliderEnabled("Center X");
+    expectSliderEnabled("Center Y");
+    expectSliderEnabled("Angle Offset");
+    expectSliderEnabled("Rotation Drift");
+    expectSliderEnabled("Scale Falloff");
+    expectSliderEnabled("Kaleidoscope Opacity");
+    expect(screen.getByLabelText("Mirror Mode")).toBeInTheDocument();
+    expect(screen.queryByText("Mirror Overlay")).not.toBeInTheDocument();
   });
 });
 

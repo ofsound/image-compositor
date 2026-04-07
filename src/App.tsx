@@ -72,6 +72,7 @@ import type {
   GradientDirection,
   GradientSourceAsset,
   GeometryShape,
+  KaleidoscopeMirrorMode,
   LayoutFamily,
   ProjectDocument,
   RadialChildRotationMode,
@@ -504,6 +505,8 @@ function App() {
     activeProject.sourceMapping.strategy === "weighted";
   const isPaletteAssignment =
     activeProject.sourceMapping.strategy === "palette";
+  const isKaleidoscopeActive =
+    activeProject.effects.kaleidoscopeSegments > 1;
   const geometryOptions = getGeometryOptions(activeProject.layout.family);
   const geometryValue = geometryOptions.includes(activeProject.layout.shapeMode)
     ? activeProject.layout.shapeMode
@@ -1836,22 +1839,140 @@ function App() {
                         }))
                       }
                     />
-                    <ControlBlock label="Mirror Overlay">
-                      <div className="flex items-center justify-between rounded-md bg-surface-muted px-3 py-2.5">
-                        <span className="text-xs text-text-muted">
-                          Mirror passes on base
-                        </span>
-                        <Switch
-                          checked={activeProject.effects.mirror}
-                          onCheckedChange={(checked) =>
+                    {isKaleidoscopeActive ? (
+                      <>
+                        <SliderField
+                          label="Center X"
+                          min={0}
+                          max={1}
+                          step={0.01}
+                          value={activeProject.effects.kaleidoscopeCenterX}
+                          formatter={(value) => `${Math.round(value * 100)}%`}
+                          onChange={(value) =>
                             patchProject((project) => ({
                               ...project,
-                              effects: { ...project.effects, mirror: checked },
+                              effects: {
+                                ...project.effects,
+                                kaleidoscopeCenterX: value,
+                              },
                             }))
                           }
                         />
-                      </div>
-                    </ControlBlock>
+                        <SliderField
+                          label="Center Y"
+                          min={0}
+                          max={1}
+                          step={0.01}
+                          value={activeProject.effects.kaleidoscopeCenterY}
+                          formatter={(value) => `${Math.round(value * 100)}%`}
+                          onChange={(value) =>
+                            patchProject((project) => ({
+                              ...project,
+                              effects: {
+                                ...project.effects,
+                                kaleidoscopeCenterY: value,
+                              },
+                            }))
+                          }
+                        />
+                        <SliderField
+                          label="Angle Offset"
+                          min={0}
+                          max={360}
+                          step={1}
+                          value={activeProject.effects.kaleidoscopeAngleOffset}
+                          formatter={(value) => `${Math.round(value)}°`}
+                          onChange={(value) =>
+                            patchProject((project) => ({
+                              ...project,
+                              effects: {
+                                ...project.effects,
+                                kaleidoscopeAngleOffset: value,
+                              },
+                            }))
+                          }
+                        />
+                        <SliderField
+                          label="Rotation Drift"
+                          min={-180}
+                          max={180}
+                          step={1}
+                          value={activeProject.effects.kaleidoscopeRotationDrift}
+                          formatter={(value) => `${Math.round(value)}°`}
+                          onChange={(value) =>
+                            patchProject((project) => ({
+                              ...project,
+                              effects: {
+                                ...project.effects,
+                                kaleidoscopeRotationDrift: value,
+                              },
+                            }))
+                          }
+                        />
+                        <SliderField
+                          label="Scale Falloff"
+                          min={0}
+                          max={1}
+                          step={0.01}
+                          value={activeProject.effects.kaleidoscopeScaleFalloff}
+                          formatter={(value) => `${Math.round(value * 100)}%`}
+                          onChange={(value) =>
+                            patchProject((project) => ({
+                              ...project,
+                              effects: {
+                                ...project.effects,
+                                kaleidoscopeScaleFalloff: value,
+                              },
+                            }))
+                          }
+                        />
+                        <SliderField
+                          label="Kaleidoscope Opacity"
+                          min={0}
+                          max={1}
+                          step={0.01}
+                          value={activeProject.effects.kaleidoscopeOpacity}
+                          formatter={(value) => `${Math.round(value * 100)}%`}
+                          onChange={(value) =>
+                            patchProject((project) => ({
+                              ...project,
+                              effects: {
+                                ...project.effects,
+                                kaleidoscopeOpacity: value,
+                              },
+                            }))
+                          }
+                        />
+                        <ControlBlock label="Mirror Mode">
+                          <Select
+                            value={activeProject.effects.kaleidoscopeMirrorMode}
+                            onValueChange={(value) =>
+                              patchProject((project) => ({
+                                ...project,
+                                effects: {
+                                  ...project.effects,
+                                  kaleidoscopeMirrorMode:
+                                    value as KaleidoscopeMirrorMode,
+                                },
+                              }))
+                            }
+                          >
+                            <SelectTrigger aria-label="Mirror Mode">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {["rotate-only", "alternate", "mirror-all"].map(
+                                (option) => (
+                                  <SelectItem key={option} value={option}>
+                                    {option}
+                                  </SelectItem>
+                                ),
+                              )}
+                            </SelectContent>
+                          </Select>
+                        </ControlBlock>
+                      </>
+                    ) : null}
                     <Separator />
                     <ControlBlock label="Export Format">
                       <Select

@@ -1,4 +1,9 @@
-import type { ProjectDocument, RenderSlice, SourceAsset } from "@/types/project";
+import type {
+  KaleidoscopeMirrorMode,
+  ProjectDocument,
+  RenderSlice,
+  SourceAsset,
+} from "@/types/project";
 import { withAlpha } from "@/lib/color";
 import { buildRenderSlices } from "@/lib/generator-registry";
 import { lockExportDimensionsToCanvas } from "@/lib/export-sizing";
@@ -277,12 +282,70 @@ function createRenderCanvas(width: number, height: number) {
   return canvas;
 }
 
+function degreesToRadians(degrees: number) {
+  return (degrees * Math.PI) / 180;
+}
+
 function getRenderContext(canvas: RenderCanvas) {
   const context = canvas.getContext("2d", RENDER_CONTEXT_OPTIONS);
   if (!context) throw new Error("Unable to acquire a canvas context.");
   context.imageSmoothingEnabled = true;
   context.imageSmoothingQuality = "high";
   return context;
+}
+
+function getKaleidoscopeScaleX(
+  mirrorMode: KaleidoscopeMirrorMode,
+  segment: number,
+) {
+  if (mirrorMode === "rotate-only") {
+    return 1;
+  }
+
+  if (mirrorMode === "mirror-all") {
+    return -1;
+  }
+
+  return segment % 2 === 0 ? -1 : 1;
+}
+
+function applyKaleidoscope(
+  context: RenderContext,
+  sourceCanvas: RenderCanvas,
+  project: ProjectDocument,
+) {
+  const { effects } = project;
+  if (effects.kaleidoscopeSegments <= 1) {
+    return;
+  }
+
+  const originX = project.canvas.width * effects.kaleidoscopeCenterX;
+  const originY = project.canvas.height * effects.kaleidoscopeCenterY;
+  const angleOffset = degreesToRadians(effects.kaleidoscopeAngleOffset);
+  const rotationDrift = degreesToRadians(effects.kaleidoscopeRotationDrift);
+  const scaleFalloff = clamp(effects.kaleidoscopeScaleFalloff, 0, 1);
+
+  context.save();
+  context.globalAlpha = clamp(effects.kaleidoscopeOpacity, 0, 1);
+
+  for (let segment = 1; segment < effects.kaleidoscopeSegments; segment += 1) {
+    const baseAngle = (Math.PI * 2 * segment) / effects.kaleidoscopeSegments;
+    const angle = baseAngle + angleOffset + rotationDrift * segment;
+    const progress = segment / Math.max(effects.kaleidoscopeSegments - 1, 1);
+    const segmentScale = 1 - scaleFalloff * progress;
+
+    context.translate(originX, originY);
+    context.rotate(angle);
+    context.scale(
+      segmentScale * getKaleidoscopeScaleX(effects.kaleidoscopeMirrorMode, segment),
+      segmentScale,
+    );
+    context.translate(-originX, -originY);
+    context.drawImage(sourceCanvas, 0, 0);
+    context.setTransform(1, 0, 0, 1, 0, 0);
+  }
+
+  context.restore();
 }
 
 function toBlob(
@@ -316,26 +379,31 @@ export async function renderProjectToCanvas(
     drawBackground(context, project);
   }
   const slices = buildRenderSlices(project, assets);
+  const kaleidoscopeSourceCanvas =
+    project.effects.kaleidoscopeSegments > 1
+      ? createRenderCanvas(project.canvas.width, project.canvas.height)
+      : null;
+  const kaleidoscopeSourceContext = kaleidoscopeSourceCanvas
+    ? getRenderContext(kaleidoscopeSourceCanvas)
+    : null;
 
   for (const slice of slices) {
     const assetBitmap = bitmaps.get(slice.assetId);
     if (!assetBitmap) continue;
     await drawSlice(context, slice, assetBitmap.bitmap, assetBitmap.asset, project);
+    if (kaleidoscopeSourceContext) {
+      await drawSlice(
+        kaleidoscopeSourceContext,
+        slice,
+        assetBitmap.bitmap,
+        assetBitmap.asset,
+        project,
+      );
+    }
   }
 
-  if (project.effects.mirror || project.effects.kaleidoscopeSegments > 1) {
-    context.save();
-    context.globalAlpha = 0.2;
-    for (let segment = 1; segment < project.effects.kaleidoscopeSegments; segment += 1) {
-      const angle = (Math.PI * 2 * segment) / project.effects.kaleidoscopeSegments;
-      context.translate(project.canvas.width / 2, project.canvas.height / 2);
-      context.rotate(angle);
-      context.scale(segment % 2 === 0 ? -1 : 1, 1);
-      context.translate(-project.canvas.width / 2, -project.canvas.height / 2);
-      context.drawImage(canvas, 0, 0);
-      context.setTransform(1, 0, 0, 1, 0, 0);
-    }
-    context.restore();
+  if (kaleidoscopeSourceCanvas) {
+    applyKaleidoscope(context, kaleidoscopeSourceCanvas, project);
   }
 
   applySharpen(context, canvas, project.effects.sharpen);

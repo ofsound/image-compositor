@@ -14,6 +14,10 @@ import type {
 } from "@/types/project";
 import { makeId } from "@/lib/id";
 
+type LegacyEffectSettings = Partial<EffectSettings> & {
+  mirror?: boolean;
+};
+
 export const DEFAULT_CANVAS: CanvasSettings = {
   width: 3000,
   height: 3000,
@@ -82,13 +86,64 @@ export const DEFAULT_SOURCE_MAPPING: SourceMappingSettings = {
 export const DEFAULT_EFFECTS: EffectSettings = {
   blur: 0,
   sharpen: 0,
-  mirror: false,
   kaleidoscopeSegments: 1,
+  kaleidoscopeCenterX: 0.5,
+  kaleidoscopeCenterY: 0.5,
+  kaleidoscopeAngleOffset: 0,
+  kaleidoscopeMirrorMode: "alternate",
+  kaleidoscopeRotationDrift: 0,
+  kaleidoscopeScaleFalloff: 0,
+  kaleidoscopeOpacity: 0.2,
   rotationJitter: 0,
   scaleJitter: 0,
   displacement: 0,
   distortion: 0,
 };
+
+function normalizeKaleidoscopeMirrorMode(
+  effects: LegacyEffectSettings | undefined,
+) {
+  if (effects?.kaleidoscopeMirrorMode) {
+    return effects.kaleidoscopeMirrorMode;
+  }
+
+  if (effects?.mirror === true) {
+    return "alternate";
+  }
+
+  return DEFAULT_EFFECTS.kaleidoscopeMirrorMode;
+}
+
+export function normalizeEffectSettings(
+  effects: LegacyEffectSettings | undefined,
+): EffectSettings {
+  return {
+    blur: effects?.blur ?? DEFAULT_EFFECTS.blur,
+    sharpen: effects?.sharpen ?? DEFAULT_EFFECTS.sharpen,
+    kaleidoscopeSegments:
+      effects?.kaleidoscopeSegments ?? DEFAULT_EFFECTS.kaleidoscopeSegments,
+    kaleidoscopeCenterX:
+      effects?.kaleidoscopeCenterX ?? DEFAULT_EFFECTS.kaleidoscopeCenterX,
+    kaleidoscopeCenterY:
+      effects?.kaleidoscopeCenterY ?? DEFAULT_EFFECTS.kaleidoscopeCenterY,
+    kaleidoscopeAngleOffset:
+      effects?.kaleidoscopeAngleOffset ??
+      DEFAULT_EFFECTS.kaleidoscopeAngleOffset,
+    kaleidoscopeMirrorMode: normalizeKaleidoscopeMirrorMode(effects),
+    kaleidoscopeRotationDrift:
+      effects?.kaleidoscopeRotationDrift ??
+      DEFAULT_EFFECTS.kaleidoscopeRotationDrift,
+    kaleidoscopeScaleFalloff:
+      effects?.kaleidoscopeScaleFalloff ??
+      DEFAULT_EFFECTS.kaleidoscopeScaleFalloff,
+    kaleidoscopeOpacity:
+      effects?.kaleidoscopeOpacity ?? DEFAULT_EFFECTS.kaleidoscopeOpacity,
+    rotationJitter: effects?.rotationJitter ?? DEFAULT_EFFECTS.rotationJitter,
+    scaleJitter: effects?.scaleJitter ?? DEFAULT_EFFECTS.scaleJitter,
+    displacement: effects?.displacement ?? DEFAULT_EFFECTS.displacement,
+    distortion: effects?.distortion ?? DEFAULT_EFFECTS.distortion,
+  };
+}
 
 export const DEFAULT_COMPOSITING: CompositingSettings = {
   blendMode: "source-over",
@@ -196,6 +251,7 @@ export function normalizeProjectSnapshot(
     canvas: normalizeCanvasSettings(snapshot.canvas),
     layout: normalizeLayoutSettings(snapshot.layout),
     sourceMapping: normalizeSourceMapping(snapshot.sourceMapping, fallbackCropDistribution),
+    effects: normalizeEffectSettings(snapshot.effects),
   };
 }
 
@@ -209,6 +265,7 @@ export function normalizeProjectDocument(
     canvas: normalizeCanvasSettings(project.canvas),
     layout: normalizeLayoutSettings(project.layout),
     sourceMapping: normalizeSourceMapping(project.sourceMapping, fallbackCropDistribution),
+    effects: normalizeEffectSettings(project.effects),
   };
 }
 

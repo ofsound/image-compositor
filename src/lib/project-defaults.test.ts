@@ -24,6 +24,13 @@ describe("createProjectDocument", () => {
     expect(project.layout.radialRingPhaseStep).toBe(0);
     expect(project.layout.radialInnerRadius).toBe(0);
     expect(project.layout.radialChildRotationMode).toBe("tangent");
+    expect(project.effects.kaleidoscopeCenterX).toBe(0.5);
+    expect(project.effects.kaleidoscopeCenterY).toBe(0.5);
+    expect(project.effects.kaleidoscopeAngleOffset).toBe(0);
+    expect(project.effects.kaleidoscopeMirrorMode).toBe("alternate");
+    expect(project.effects.kaleidoscopeRotationDrift).toBe(0);
+    expect(project.effects.kaleidoscopeScaleFalloff).toBe(0);
+    expect(project.effects.kaleidoscopeOpacity).toBe(0.2);
     expect(project.passes.map((pass) => pass.type)).toEqual([
       "layout",
       "assignment",
@@ -196,6 +203,32 @@ describe("createProjectDocument", () => {
     expect(normalized.radialChildRotationMode).toBe("tangent");
   });
 
+  it("normalizes legacy projects without kaleidoscope controls to defaults", () => {
+    const project = createProjectDocument("Legacy Kaleidoscope");
+    const legacyProject = {
+      ...project,
+      effects: {
+        blur: project.effects.blur,
+        sharpen: project.effects.sharpen,
+        mirror: true,
+        kaleidoscopeSegments: project.effects.kaleidoscopeSegments,
+        rotationJitter: project.effects.rotationJitter,
+        scaleJitter: project.effects.scaleJitter,
+        displacement: project.effects.displacement,
+        distortion: project.effects.distortion,
+      },
+    } as unknown as ProjectDocument;
+
+    const normalized = normalizeProjectDocument(legacyProject).effects;
+    expect(normalized.kaleidoscopeCenterX).toBe(0.5);
+    expect(normalized.kaleidoscopeCenterY).toBe(0.5);
+    expect(normalized.kaleidoscopeAngleOffset).toBe(0);
+    expect(normalized.kaleidoscopeMirrorMode).toBe("alternate");
+    expect(normalized.kaleidoscopeRotationDrift).toBe(0);
+    expect(normalized.kaleidoscopeScaleFalloff).toBe(0);
+    expect(normalized.kaleidoscopeOpacity).toBe(0.2);
+  });
+
   it("normalizes legacy projects without block controls to defaults", () => {
     const project = createProjectDocument("Legacy Blocks");
     const legacyProject = {
@@ -359,6 +392,47 @@ describe("createProjectDocument", () => {
     expect(normalized.radialRingPhaseStep).toBe(0);
     expect(normalized.radialInnerRadius).toBe(0);
     expect(normalized.radialChildRotationMode).toBe("tangent");
+  });
+
+  it("normalizes legacy version snapshots without kaleidoscope controls to defaults", () => {
+    const project = createProjectDocument("Legacy Kaleidoscope Version");
+    const legacyVersion = {
+      id: "version_legacy_kaleidoscope",
+      projectId: project.id,
+      label: "Legacy Kaleidoscope Snapshot",
+      createdAt: new Date().toISOString(),
+      thumbnailPath: null,
+      snapshot: {
+        sourceIds: project.sourceIds,
+        canvas: structuredClone(project.canvas),
+        layout: structuredClone(project.layout),
+        sourceMapping: structuredClone(project.sourceMapping),
+        effects: {
+          blur: project.effects.blur,
+          sharpen: project.effects.sharpen,
+          mirror: true,
+          kaleidoscopeSegments: project.effects.kaleidoscopeSegments,
+          rotationJitter: project.effects.rotationJitter,
+          scaleJitter: project.effects.scaleJitter,
+          displacement: project.effects.displacement,
+          distortion: project.effects.distortion,
+        },
+        compositing: structuredClone(project.compositing),
+        export: structuredClone(project.export),
+        activeSeed: project.activeSeed,
+        presets: structuredClone(project.presets),
+        passes: structuredClone(project.passes),
+      },
+    } as unknown as ProjectVersion;
+
+    const normalized = normalizeProjectVersion(legacyVersion).snapshot.effects;
+    expect(normalized.kaleidoscopeCenterX).toBe(0.5);
+    expect(normalized.kaleidoscopeCenterY).toBe(0.5);
+    expect(normalized.kaleidoscopeAngleOffset).toBe(0);
+    expect(normalized.kaleidoscopeMirrorMode).toBe("alternate");
+    expect(normalized.kaleidoscopeRotationDrift).toBe(0);
+    expect(normalized.kaleidoscopeScaleFalloff).toBe(0);
+    expect(normalized.kaleidoscopeOpacity).toBe(0.2);
   });
 
   it("normalizes legacy version snapshots without strip angle to zero degrees", () => {

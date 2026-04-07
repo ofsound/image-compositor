@@ -390,6 +390,141 @@ describe("renderProjectToCanvas", () => {
     expect(sourceHeights.every((value) => value === 50)).toBe(true);
   });
 
+  it("renders kaleidoscope clones from a frozen source canvas with configured transforms", async () => {
+    const project = createProjectDocument("Kaleidoscope Render");
+    project.effects.sharpen = 0;
+    project.effects.kaleidoscopeSegments = 3;
+    project.effects.kaleidoscopeCenterX = 0.25;
+    project.effects.kaleidoscopeCenterY = 0.75;
+    project.effects.kaleidoscopeAngleOffset = 15;
+    project.effects.kaleidoscopeMirrorMode = "alternate";
+    project.effects.kaleidoscopeRotationDrift = 10;
+    project.effects.kaleidoscopeScaleFalloff = 0.4;
+    project.effects.kaleidoscopeOpacity = 0.35;
+
+    const context = createMockContext();
+    const sourceContext = createMockContext();
+    const canvas = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn(() => context),
+    } as unknown as HTMLCanvasElement;
+    const sourceCanvas = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn(() => sourceContext),
+    } as unknown as HTMLCanvasElement;
+    const createElementSpy = vi
+      .spyOn(document, "createElement")
+      .mockReturnValue(sourceCanvas as never);
+
+    try {
+      await renderProjectToCanvas(project, [], new Map(), canvas);
+    } finally {
+      createElementSpy.mockRestore();
+    }
+
+    expect(sourceCanvas.width).toBe(project.canvas.width);
+    expect(sourceCanvas.height).toBe(project.canvas.height);
+    expect(sourceContext.drawImage).not.toHaveBeenCalledWith(canvas, 0, 0);
+    expect(context.drawImage).toHaveBeenNthCalledWith(1, sourceCanvas, 0, 0);
+    expect(context.drawImage).toHaveBeenNthCalledWith(2, sourceCanvas, 0, 0);
+    expect(context.translate).toHaveBeenCalledWith(
+      project.canvas.width * 0.25,
+      project.canvas.height * 0.75,
+    );
+    expect(context.rotate.mock.calls[0]?.[0]).toBeCloseTo(
+      (Math.PI * 2) / 3 + (25 * Math.PI) / 180,
+      10,
+    );
+    expect(context.rotate.mock.calls[1]?.[0]).toBeCloseTo(
+      (Math.PI * 4) / 3 + (35 * Math.PI) / 180,
+      10,
+    );
+    expect(context.scale).toHaveBeenNthCalledWith(1, 0.8, 0.8);
+    expect(context.scale).toHaveBeenNthCalledWith(2, -0.6, 0.6);
+  });
+
+  it("uses the configured kaleidoscope mirror mode when scaling clones", async () => {
+    const project = createProjectDocument("Kaleidoscope Mirror Mode");
+    project.effects.sharpen = 0;
+    project.effects.kaleidoscopeSegments = 3;
+    project.effects.kaleidoscopeMirrorMode = "mirror-all";
+
+    const context = createMockContext();
+    const sourceContext = createMockContext();
+    const canvas = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn(() => context),
+    } as unknown as HTMLCanvasElement;
+    const sourceCanvas = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn(() => sourceContext),
+    } as unknown as HTMLCanvasElement;
+    const createElementSpy = vi
+      .spyOn(document, "createElement")
+      .mockReturnValue(sourceCanvas as never);
+
+    try {
+      await renderProjectToCanvas(project, [], new Map(), canvas);
+    } finally {
+      createElementSpy.mockRestore();
+    }
+
+    expect(context.scale).toHaveBeenNthCalledWith(1, -1, 1);
+    expect(context.scale).toHaveBeenNthCalledWith(2, -1, 1);
+  });
+
+  it("does not wipe the canvas background when kaleidoscope opacity is 100%", async () => {
+    const project = createProjectDocument("Kaleidoscope Opaque");
+    project.effects.sharpen = 0;
+    project.effects.kaleidoscopeSegments = 3;
+    project.effects.kaleidoscopeOpacity = 1;
+    project.layout.family = "grid";
+    project.layout.columns = 1;
+    project.layout.rows = 1;
+    project.layout.shapeMode = "rect";
+    project.compositing.overlap = 0;
+    project.compositing.shadow = 0;
+    project.effects.rotationJitter = 0;
+    project.effects.scaleJitter = 0;
+    project.effects.displacement = 0;
+    project.effects.distortion = 0;
+
+    const context = createMockContext();
+    const sourceContext = createMockContext();
+    const canvas = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn(() => context),
+    } as unknown as HTMLCanvasElement;
+    const sourceCanvas = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn(() => sourceContext),
+    } as unknown as HTMLCanvasElement;
+    const createElementSpy = vi
+      .spyOn(document, "createElement")
+      .mockReturnValue(sourceCanvas as never);
+
+    try {
+      await renderProjectToCanvas(
+        project,
+        [asset],
+        new Map([[asset.id, { asset, bitmap: {} as ImageBitmap }]]),
+        canvas,
+      );
+    } finally {
+      createElementSpy.mockRestore();
+    }
+
+    expect(sourceContext.fillRect).not.toHaveBeenCalled();
+    expect(sourceContext.drawImage).toHaveBeenCalled();
+    expect(context.globalAlpha).toBe(1);
+  });
+
   it("keeps single-image distributed strips on the full canvas image placement", async () => {
     const project = createProjectDocument("Distributed Strips");
     project.layout.family = "strips";

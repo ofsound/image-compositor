@@ -1706,6 +1706,10 @@ export function buildRenderSlices(project: ProjectDocument, assets: SourceAsset[
     const rotationNoise = (rng.next() - 0.5) * project.effects.rotationJitter;
     const scaleNoise = 1 + (rng.next() - 0.5) * project.effects.scaleJitter;
     const displacement = project.effects.displacement * (rng.next() - 0.5);
+    const fogAmount =
+      project.layout.family === "3d" && cell.depthValue !== undefined
+        ? lerp(0, 0.22, (1 - cell.depthValue) ** 1.35)
+        : 0;
 
     return {
       id: `slice_${index}`,
@@ -1734,6 +1738,7 @@ export function buildRenderSlices(project: ProjectDocument, assets: SourceAsset[
       wedgeSweepRadians: getWedgeSweepRadians(cell.shape, project, rng),
       mirrorAxis: "none",
       depth: cell.depthValue ?? rng.next(),
+      fogAmount,
     };
   });
 

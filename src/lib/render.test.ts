@@ -230,6 +230,7 @@ describe("renderProjectToCanvas", () => {
     project.layout.family = "3d";
     project.layout.shapeMode = "rect";
     project.layout.symmetryMode = "none";
+    project.canvas.backgroundAlpha = 1;
     project.compositing.overlap = 0;
     project.compositing.shadow = 0;
     project.effects.rotationJitter = 0;
@@ -268,6 +269,7 @@ describe("renderProjectToCanvas", () => {
 
     expect(context.transform).toHaveBeenCalled();
     expect(context.drawImage).toHaveBeenCalled();
+    expect(surfaceContext.fillRect).toHaveBeenCalled();
   });
 
   it("renders interlock slices as rotated triangle paths clipped to the inset area", async () => {

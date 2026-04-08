@@ -299,6 +299,7 @@ export interface RenderSlice {
   wedgeSweepRadians: number | null;
   mirrorAxis: "none" | "x" | "y";
   depth: number;
+  fogAmount: number;
 }
 
 export interface ProcessedAssetPayload {

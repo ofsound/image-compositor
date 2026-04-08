@@ -289,6 +289,13 @@ function renderSliceSurface(
     width,
     height,
   );
+  if (slice.fogAmount > 0) {
+    surfaceContext.fillStyle = withAlpha(
+      project.canvas.background,
+      Math.min(0.36, slice.fogAmount),
+    );
+    surfaceContext.fillRect(0, 0, width, height);
+  }
   surfaceContext.restore();
 
   return surface;
@@ -449,6 +456,18 @@ async function drawSlice(
     width * (1 + slice.distortion),
     height * (1 + slice.distortion),
   );
+  if (slice.fogAmount > 0) {
+    context.fillStyle = withAlpha(
+      project.canvas.background,
+      Math.min(0.36, slice.fogAmount),
+    );
+    context.fillRect(
+      x + slice.displacementOffset.x,
+      y + slice.displacementOffset.y,
+      width * (1 + slice.distortion),
+      height * (1 + slice.distortion),
+    );
+  }
   context.restore();
 
   if (project.compositing.shadow > 0) {

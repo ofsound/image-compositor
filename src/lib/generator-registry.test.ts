@@ -443,6 +443,21 @@ describe("buildRenderSlices", () => {
     expect(shifted).not.toEqual(baseline);
   });
 
+  it("assigns more fog to farther 3d slices", () => {
+    const project = createProjectDocument("3D Fog");
+    project.sourceIds = [assets[0]!.id];
+    project.layout.family = "3d";
+    project.layout.shapeMode = "rect";
+    project.layout.symmetryMode = "none";
+
+    const slices = buildRenderSlices(project, [assets[0]!]);
+    const fogValues = slices.map((slice) => slice.fogAmount);
+
+    expect(Math.max(...fogValues)).toBeGreaterThan(0);
+    expect(Math.min(...fogValues)).toBeGreaterThanOrEqual(0);
+    expect(Math.max(...fogValues)).toBeGreaterThan(Math.min(...fogValues));
+  });
+
   it("increases strip count as density rises while staying deterministic", () => {
     const project = createProjectDocument("Dense Strips");
     project.sourceIds = [assets[0]!.id];

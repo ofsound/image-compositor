@@ -145,6 +145,7 @@ const GRADIENT_DIRECTIONS: GradientDirection[] = [
   "diagonal-down",
   "diagonal-up",
 ];
+const ORGANIC_DISTRIBUTION_MAX = 4_096;
 
 function formatSourceModeLabel(mode: SourceKind) {
   if (mode === "solid") return "Solid";
@@ -161,16 +162,28 @@ function formatGradientDirectionLabel(direction: GradientDirection) {
 export function getGeometryOptions(family: LayoutFamily): GeometryShape[] {
   return family === "grid"
     ? ["mixed", "rect", "triangle", "interlock", "ring", "wedge"]
-    : ["mixed", "rect", "triangle", "ring", "wedge"];
+    : family === "organic"
+      ? ["blob", "rect", "mixed", "ring", "wedge"]
+      : ["mixed", "rect", "triangle", "ring", "wedge"];
 }
 
 export function coerceShapeModeForFamily(
   family: LayoutFamily,
   shapeMode: GeometryShape,
 ): GeometryShape {
-  return family === "grid" || shapeMode !== "interlock"
-    ? shapeMode
-    : "triangle";
+  if (getGeometryOptions(family).includes(shapeMode)) {
+    return shapeMode;
+  }
+
+  if (family === "organic") {
+    return "blob";
+  }
+
+  if (shapeMode === "interlock") {
+    return "triangle";
+  }
+
+  return "rect";
 }
 
 function SourceColorField({
@@ -499,6 +512,7 @@ function App() {
   const isGridFamily = activeProject.layout.family === "grid";
   const isBlocksFamily = activeProject.layout.family === "blocks";
   const isRadialFamily = activeProject.layout.family === "radial";
+  const isOrganicFamily = activeProject.layout.family === "organic";
   const isRectShapeMode = activeProject.layout.shapeMode === "rect";
   const isWedgeShapeMode =
     activeProject.layout.shapeMode === "wedge" ||
@@ -980,7 +994,7 @@ function App() {
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          {["blocks", "grid", "strips", "radial"].map(
+                          {["blocks", "grid", "strips", "radial", "organic"].map(
                             (option) => (
                               <SelectItem key={option} value={option}>
                                 {option}
@@ -1034,25 +1048,27 @@ function App() {
                         }
                       />
                     ) : null}
-                    {isStripsFamily ? (
+                    {isStripsFamily || isOrganicFamily ? (
                       <>
-                        <SliderField
-                          label="Strips Angle"
-                          min={0}
-                          max={180}
-                          step={1}
-                          value={activeProject.layout.stripAngle}
-                          formatter={(value) => `${Math.round(value)}°`}
-                          onChange={(value) =>
-                            patchProject((project) => ({
-                              ...project,
-                              layout: {
-                                ...project.layout,
-                                stripAngle: value,
-                              },
-                            }))
-                          }
-                        />
+                        {isStripsFamily ? (
+                          <SliderField
+                            label="Strips Angle"
+                            min={0}
+                            max={180}
+                            step={1}
+                            value={activeProject.layout.stripAngle}
+                            formatter={(value) => `${Math.round(value)}°`}
+                            onChange={(value) =>
+                              patchProject((project) => ({
+                                ...project,
+                                layout: {
+                                  ...project.layout,
+                                  stripAngle: value,
+                                },
+                              }))
+                            }
+                          />
+                        ) : null}
                         <SliderField
                           label="Density"
                           min={0.05}
@@ -1073,6 +1089,25 @@ function App() {
                             }))
                           }
                         />
+                        {isOrganicFamily ? (
+                          <SliderField
+                            label="Distribution"
+                            min={0}
+                            max={ORGANIC_DISTRIBUTION_MAX}
+                            step={1}
+                            value={activeProject.layout.organicVariation}
+                            formatter={(value) => `${Math.round(value)}`}
+                            onChange={(value) =>
+                              patchProject((project) => ({
+                                ...project,
+                                layout: {
+                                  ...project.layout,
+                                  organicVariation: Math.round(value),
+                                },
+                              }))
+                            }
+                          />
+                        ) : null}
                       </>
                     ) : null}
                     {isWedgeShapeMode ? (

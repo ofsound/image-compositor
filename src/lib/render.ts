@@ -47,6 +47,16 @@ function drawShapePath(
 
   context.beginPath();
 
+  if (slice.clipPathPoints && slice.clipPathPoints.length > 2) {
+    const [firstPoint, ...remainingPoints] = slice.clipPathPoints;
+    context.moveTo(firstPoint!.x, firstPoint!.y);
+    for (const point of remainingPoints) {
+      context.lineTo(point.x, point.y);
+    }
+    context.closePath();
+    return;
+  }
+
   if (slice.shape === "triangle" || slice.shape === "interlock") {
     context.moveTo(centerX, y);
     context.lineTo(x + width, y + height);

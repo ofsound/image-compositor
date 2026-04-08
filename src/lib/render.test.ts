@@ -189,6 +189,41 @@ describe("renderProjectToCanvas", () => {
     expect(context.lineTo).toHaveBeenCalled();
   });
 
+  it("renders organic blob slices from custom clip paths", async () => {
+    const project = createProjectDocument("Organic Render");
+    project.layout.family = "organic";
+    project.layout.shapeMode = "blob";
+    project.layout.density = 0.05;
+    project.layout.symmetryMode = "none";
+    project.compositing.overlap = 0;
+    project.compositing.shadow = 0;
+    project.effects.rotationJitter = 0;
+    project.effects.scaleJitter = 0;
+    project.effects.displacement = 0;
+    project.effects.distortion = 0;
+    project.effects.sharpen = 0;
+    project.effects.kaleidoscopeSegments = 1;
+
+    const context = createMockContext();
+    const canvas = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn(() => context),
+    } as unknown as HTMLCanvasElement;
+
+    await renderProjectToCanvas(
+      project,
+      [asset],
+      new Map([[asset.id, { asset, bitmap: {} as ImageBitmap }]]),
+      canvas,
+    );
+
+    expect(context.roundRect).not.toHaveBeenCalled();
+    expect(context.arc).not.toHaveBeenCalled();
+    expect(context.moveTo).toHaveBeenCalled();
+    expect(context.lineTo.mock.calls.length).toBeGreaterThan(10);
+  });
+
   it("renders interlock slices as rotated triangle paths clipped to the inset area", async () => {
     const project = createProjectDocument("Interlock Render");
     project.layout.family = "grid";

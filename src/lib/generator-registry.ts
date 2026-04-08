@@ -2,6 +2,7 @@ import type {
   GeometryShape,
   LayoutFamily,
   NormalizedRect,
+  RenderPoint,
   ProjectDocument,
   RenderRect,
   RenderSlice,
@@ -17,11 +18,12 @@ interface GeneratorContext {
 }
 
 type ConcreteGeometryShape = Exclude<GeometryShape, "mixed">;
-type MixedCycleShape = Exclude<GeometryShape, "mixed" | "interlock">;
+type MixedCycleShape = Exclude<GeometryShape, "mixed" | "interlock" | "blob">;
 
 interface LayoutCell extends RenderRect {
   shape: ConcreteGeometryShape;
   clipRect?: RenderRect;
+  clipPathPoints?: RenderPoint[];
   clipRotation?: number;
   rotation?: number;
 }
@@ -33,15 +35,23 @@ interface Point {
 
 const MIN_WEDGE_SWEEP_DEGREES = 0.5;
 const MAX_BLOCK_SPLIT_OFFSET = 0.18;
+const ORGANIC_VARIATION_MAX = 4_096;
 
 function degToRad(degrees: number) {
   return (degrees * Math.PI) / 180;
 }
 
-function assignShape(index: number, shapeMode: GeometryShape) {
+function assignShape(
+  index: number,
+  shapeMode: GeometryShape,
+  family: LayoutFamily,
+) {
   if (shapeMode === "interlock") return "triangle";
   if (shapeMode !== "mixed") return shapeMode;
-  const cycle: MixedCycleShape[] = ["rect", "triangle", "ring", "wedge"];
+  const cycle: ConcreteGeometryShape[] =
+    family === "organic"
+      ? ["blob", "ring", "wedge"]
+      : (["rect", "triangle", "ring", "wedge"] as MixedCycleShape[]);
   return cycle[index % cycle.length]!;
 }
 
@@ -63,6 +73,51 @@ function getRectCenter(rect: RenderRect) {
     x: rect.x + rect.width / 2,
     y: rect.y + rect.height / 2,
   };
+}
+
+function getBoundsForPoints(points: RenderPoint[]): RenderRect {
+  const xs = points.map((point) => point.x);
+  const ys = points.map((point) => point.y);
+
+  return {
+    x: Math.min(...xs),
+    y: Math.min(...ys),
+    width: Math.max(...xs) - Math.min(...xs),
+    height: Math.max(...ys) - Math.min(...ys),
+  };
+}
+
+function scalePointsFromCenter(
+  points: RenderPoint[],
+  center: Point,
+  factor: number,
+) {
+  return points.map((point) => ({
+    x: center.x + (point.x - center.x) * factor,
+    y: center.y + (point.y - center.y) * factor,
+  }));
+}
+
+function translatePoints(points: RenderPoint[], dx: number, dy: number) {
+  return points.map((point) => ({
+    x: point.x + dx,
+    y: point.y + dy,
+  }));
+}
+
+function rotatePoints(points: RenderPoint[], angle: number, center: Point) {
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+
+  return points.map((point) => {
+    const x = point.x - center.x;
+    const y = point.y - center.y;
+
+    return {
+      x: center.x + x * cos - y * sin,
+      y: center.y + x * sin + y * cos,
+    };
+  });
 }
 
 function getRotatedBounds(rect: RenderRect, radians: number): RenderRect {
@@ -217,7 +272,11 @@ function generateGrid(context: GeneratorContext) {
       };
       cells.push({
         ...insetRect(rect, insetAmountHorizontal, insetAmountVertical),
-        shape: assignShape(row * layout.columns + column, layout.shapeMode),
+        shape: assignShape(
+          row * layout.columns + column,
+          layout.shapeMode,
+          layout.family,
+        ),
       });
     }
   }
@@ -276,7 +335,7 @@ function generateStrips(context: GeneratorContext) {
       ...getRotatedBounds(clipRect, angleRadians),
       clipRect,
       clipRotation: angleRadians,
-      shape: assignShape(index, layout.shapeMode),
+      shape: assignShape(index, layout.shapeMode, layout.family),
     });
     cursor += thickness + interStripGap;
   }
@@ -316,7 +375,7 @@ function subdivide(
   if (depth === 0 || rect.width < minSize || rect.height < minSize) {
     cells.push({
       ...insetRect(rect, 6 * (1 - overlap)),
-      shape: assignShape(cells.length, shapeMode),
+      shape: assignShape(cells.length, shapeMode, "blocks"),
     });
     return;
   }
@@ -447,7 +506,7 @@ function generateRadial(context: GeneratorContext) {
         y: Math.min(...ys),
         width: Math.max(64, Math.max(...xs) - Math.min(...xs)),
         height: Math.max(64, Math.max(...ys) - Math.min(...ys)),
-        shape: assignShape(segment + ring, layout.shapeMode),
+        shape: assignShape(segment + ring, layout.shapeMode, layout.family),
         rotation,
       });
     }
@@ -456,11 +515,261 @@ function generateRadial(context: GeneratorContext) {
   return cells;
 }
 
+interface OrganicAttractor {
+  x: number;
+  y: number;
+  strength: number;
+  radius: number;
+  swirl: number;
+}
+
+function evaluateOrganicField(
+  point: Point,
+  attractors: OrganicAttractor[],
+  innerRect: RenderRect,
+  phase: number,
+) {
+  const normalizedX = (point.x - innerRect.x) / Math.max(innerRect.width, 1);
+  const normalizedY = (point.y - innerRect.y) / Math.max(innerRect.height, 1);
+  let score = 0;
+  let vectorX = 0;
+  let vectorY = 0;
+
+  for (const attractor of attractors) {
+    const dx = attractor.x - point.x;
+    const dy = attractor.y - point.y;
+    const distance = Math.hypot(dx, dy) + 1;
+    const influence =
+      attractor.strength *
+      Math.exp(-((distance / attractor.radius) ** 2));
+    score += influence;
+    vectorX += (dx / distance) * influence + (-dy / distance) * attractor.swirl;
+    vectorY += (dy / distance) * influence + (dx / distance) * attractor.swirl;
+  }
+
+  const wave =
+    Math.sin((normalizedX * 2.2 + normalizedY * 1.6) * Math.PI + phase) * 0.14 +
+    Math.cos((normalizedY * 2.8 - normalizedX * 0.9) * Math.PI - phase * 0.6) *
+      0.12;
+  const edgeFalloff =
+    Math.sin(Math.PI * clamp(normalizedX, 0, 1)) *
+    Math.sin(Math.PI * clamp(normalizedY, 0, 1));
+
+  return {
+    score: score * (0.55 + edgeFalloff * 0.45) + wave,
+    angle: Math.atan2(vectorY, vectorX || 0.0001),
+  };
+}
+
+function clampPointToRect(point: RenderPoint, rect: RenderRect) {
+  return {
+    x: clamp(point.x, rect.x, rect.x + rect.width),
+    y: clamp(point.y, rect.y, rect.y + rect.height),
+  };
+}
+
+function buildOrganicBlobPoints(
+  center: Point,
+  radiusX: number,
+  radiusY: number,
+  angle: number,
+  innerRect: RenderRect,
+  rng: ReturnType<typeof mulberry32>,
+) {
+  const pointCount = 18;
+  const phaseA = rng.next() * Math.PI * 2;
+  const phaseB = rng.next() * Math.PI * 2;
+  const phaseC = rng.next() * Math.PI * 2;
+  const harmonicA = 0.16 + rng.next() * 0.09;
+  const harmonicB = 0.08 + rng.next() * 0.07;
+  const harmonicC = 0.04 + rng.next() * 0.05;
+  const points: RenderPoint[] = [];
+
+  for (let index = 0; index < pointCount; index += 1) {
+    const theta = (Math.PI * 2 * index) / pointCount;
+    const radiusScale = clamp(
+      1 +
+        harmonicA * Math.sin(theta * 2 + phaseA) +
+        harmonicB * Math.cos(theta * 3 + phaseB) +
+        harmonicC * Math.sin(theta * 5 + phaseC),
+      0.62,
+      1.45,
+    );
+    const anisotropy = 1 + 0.22 * Math.cos(theta - angle);
+    const localRadiusX = radiusX * radiusScale * anisotropy;
+    const localRadiusY = radiusY * radiusScale * (2 - anisotropy);
+    const rotatedTheta = theta + angle * 0.18;
+    const rawPoint = {
+      x: center.x + Math.cos(rotatedTheta) * localRadiusX,
+      y: center.y + Math.sin(rotatedTheta) * localRadiusY,
+    };
+
+    points.push(clampPointToRect(rawPoint, innerRect));
+  }
+
+  return points;
+}
+
+function getOrganicVariationCurve(variation: number) {
+  const normalized = clamp(variation / ORGANIC_VARIATION_MAX, 0, 1);
+  return 1 - (1 - normalized) ** 1.8;
+}
+
+function generateOrganic(context: GeneratorContext) {
+  const {
+    project: { canvas, layout, activeSeed },
+  } = context;
+  const variationCurve = getOrganicVariationCurve(layout.organicVariation);
+  const variationSeedOffset = Math.round(variationCurve * 4_194_301);
+  const rng = mulberry32(activeSeed + 313 + variationSeedOffset);
+  const innerRect = {
+    x: canvas.inset,
+    y: canvas.inset,
+    width: canvas.width - canvas.inset * 2,
+    height: canvas.height - canvas.inset * 2,
+  };
+  const count = Math.max(6, Math.round(8 + layout.density * 28));
+  const attractorCount = 3 + Math.floor(rng.next() * 3);
+  const attractors: OrganicAttractor[] = Array.from(
+    { length: attractorCount },
+    () => ({
+      x: innerRect.x + innerRect.width * (0.16 + rng.next() * 0.68),
+      y: innerRect.y + innerRect.height * (0.16 + rng.next() * 0.68),
+      strength: 0.7 + rng.next() * 0.9,
+      radius:
+        Math.min(innerRect.width, innerRect.height) * (0.16 + rng.next() * 0.18),
+      swirl: (rng.next() - 0.5) * 0.18,
+    }),
+  );
+  const phase =
+    rng.next() * Math.PI * 2 + variationCurve * Math.PI * 18;
+  const candidateColumns = Math.max(4, Math.ceil(Math.sqrt(count * 2.5)));
+  const candidateRows = Math.max(
+    4,
+    Math.ceil((count * 2.5) / candidateColumns),
+  );
+  const candidates: Array<{
+    center: Point;
+    score: number;
+    angle: number;
+  }> = [];
+
+  for (let row = 0; row < candidateRows; row += 1) {
+    for (let column = 0; column < candidateColumns; column += 1) {
+      const center = {
+        x:
+          innerRect.x +
+          ((column +
+            0.5 +
+            (rng.next() - 0.5) * lerp(0.42, 0.82, variationCurve)) /
+            candidateColumns) *
+            innerRect.width,
+        y:
+          innerRect.y +
+          ((row +
+            0.5 +
+            (rng.next() - 0.5) * lerp(0.42, 0.82, variationCurve)) /
+            candidateRows) *
+            innerRect.height,
+      };
+      const field = evaluateOrganicField(center, attractors, innerRect, phase);
+      candidates.push({
+        center,
+        score: field.score + (rng.next() - 0.5) * 0.08,
+        angle: field.angle,
+      });
+    }
+  }
+
+  candidates.sort((a, b) => b.score - a.score);
+
+  const selected: typeof candidates = [];
+  const minimumSpacing =
+    Math.min(innerRect.width, innerRect.height) / Math.sqrt(count) * 0.58;
+
+  for (const candidate of candidates) {
+    const proximityFactor = clamp(
+      1.05 - Math.max(0, candidate.score - candidates.at(0)!.score * 0.55),
+      0.6,
+      1.05,
+    );
+    const minDistance = minimumSpacing * proximityFactor;
+    const tooClose = selected.some(
+      (entry) =>
+        Math.hypot(
+          entry.center.x - candidate.center.x,
+          entry.center.y - candidate.center.y,
+        ) < minDistance,
+    );
+
+    if (tooClose) continue;
+    selected.push(candidate);
+    if (selected.length >= count) break;
+  }
+
+  const fallbackCandidates = selected.length < count ? candidates : [];
+  for (const candidate of fallbackCandidates) {
+    if (selected.length >= count) break;
+    if (selected.some((entry) => entry.center === candidate.center)) continue;
+    selected.push(candidate);
+  }
+
+  const scoreRange = {
+    min: Math.min(...selected.map((candidate) => candidate.score)),
+    max: Math.max(...selected.map((candidate) => candidate.score)),
+  };
+  const baseRadius =
+    Math.min(innerRect.width, innerRect.height) / Math.sqrt(count) * 0.42;
+
+  return selected.map<LayoutCell>((candidate, index) => {
+    const scoreT =
+      scoreRange.max - scoreRange.min < 0.0001
+        ? 0.5
+        : (candidate.score - scoreRange.min) /
+          (scoreRange.max - scoreRange.min);
+    const radiusX = baseRadius * (0.95 + scoreT * 0.55) * (0.88 + rng.next() * 0.32);
+    const radiusY = baseRadius * (0.82 + scoreT * 0.48) * (0.9 + rng.next() * 0.28);
+    const shape = assignShape(index, layout.shapeMode, layout.family);
+    const rect = {
+      x: candidate.center.x - radiusX,
+      y: candidate.center.y - radiusY,
+      width: radiusX * 2,
+      height: radiusY * 2,
+    };
+
+    if (shape !== "blob") {
+      return {
+        ...rect,
+        shape,
+        rotation: candidate.angle * 0.35,
+      };
+    }
+
+    const clipPathPoints = buildOrganicBlobPoints(
+      candidate.center,
+      radiusX,
+      radiusY,
+      candidate.angle,
+      innerRect,
+      rng,
+    );
+    const bounds = getBoundsForPoints(clipPathPoints);
+
+    return {
+      ...bounds,
+      shape,
+      clipPathPoints,
+      rotation: candidate.angle * 0.18,
+    };
+  });
+}
+
 const layoutRegistry: Record<LayoutFamily, (context: GeneratorContext) => LayoutCell[]> = {
   grid: generateGrid,
   strips: generateStrips,
   blocks: generateBlocks,
   radial: generateRadial,
+  organic: generateOrganic,
 };
 
 function assetByStrategy(
@@ -536,27 +845,47 @@ function reflectSlices(slices: RenderSlice[], project: ProjectDocument) {
 
   for (const slice of slices) {
     if (symmetryMode === "mirror-x" || symmetryMode === "quad") {
+      const mirroredRect = {
+        ...slice.rect,
+        x: centerX + (centerX - slice.rect.x - slice.rect.width),
+      };
+      const sliceCenter = getRectCenter(slice.rect);
+      const mirroredCenter = getRectCenter(mirroredRect);
       clones.push({
         ...slice,
         id: `${slice.id}_mx`,
-        rect: {
-          ...slice.rect,
-          x: centerX + (centerX - slice.rect.x - slice.rect.width),
-        },
+        rect: mirroredRect,
         clipRect: mirrorRect(slice.clipRect, "x"),
+        clipPathPoints: slice.clipPathPoints
+          ? translatePoints(
+              slice.clipPathPoints,
+              mirroredCenter.x - sliceCenter.x,
+              mirroredCenter.y - sliceCenter.y,
+            )
+          : null,
         mirrorAxis: "x",
       });
     }
 
     if (symmetryMode === "mirror-y" || symmetryMode === "quad") {
+      const mirroredRect = {
+        ...slice.rect,
+        y: centerY + (centerY - slice.rect.y - slice.rect.height),
+      };
+      const sliceCenter = getRectCenter(slice.rect);
+      const mirroredCenter = getRectCenter(mirroredRect);
       clones.push({
         ...slice,
         id: `${slice.id}_my`,
-        rect: {
-          ...slice.rect,
-          y: centerY + (centerY - slice.rect.y - slice.rect.height),
-        },
+        rect: mirroredRect,
         clipRect: mirrorRect(slice.clipRect, "y"),
+        clipPathPoints: slice.clipPathPoints
+          ? translatePoints(
+              slice.clipPathPoints,
+              mirroredCenter.x - sliceCenter.x,
+              mirroredCenter.y - sliceCenter.y,
+            )
+          : null,
         mirrorAxis: "y",
       });
     }
@@ -570,14 +899,22 @@ function reflectSlices(slices: RenderSlice[], project: ProjectDocument) {
         const x = slice.rect.x - centerX;
         const y = slice.rect.y - centerY;
         const clipCenter = slice.clipRect ? getRectCenter(slice.clipRect) : null;
+        const clipPathPoints = slice.clipPathPoints
+          ? rotatePoints(slice.clipPathPoints, angle, {
+              x: centerX,
+              y: centerY,
+            })
+          : null;
         radialClones.push({
           ...slice,
           id: `${slice.id}_r${copyIndex}`,
-          rect: {
-            ...slice.rect,
-            x: centerX + x * Math.cos(angle) - y * Math.sin(angle),
-            y: centerY + x * Math.sin(angle) + y * Math.cos(angle),
-          },
+          rect: clipPathPoints
+            ? getBoundsForPoints(clipPathPoints)
+            : {
+                ...slice.rect,
+                x: centerX + x * Math.cos(angle) - y * Math.sin(angle),
+                y: centerY + x * Math.sin(angle) + y * Math.cos(angle),
+              },
           clipRect: slice.clipRect && clipCenter
             ? {
                 ...slice.clipRect,
@@ -593,6 +930,7 @@ function reflectSlices(slices: RenderSlice[], project: ProjectDocument) {
                   slice.clipRect.height / 2,
               }
             : null,
+          clipPathPoints,
           clipRotation: slice.clipRotation + angle,
           rotation: slice.rotation + angle,
         });
@@ -847,8 +1185,14 @@ function applyLetterbox(slices: RenderSlice[], project: ProjectDocument) {
   return slices.map((slice) => {
     const clipRect = scaleRectAroundCanvasCenter(slice.clipRect);
     const imageRect = scaleRectAroundCanvasCenter(slice.imageRect);
+    const clipPathPoints = slice.clipPathPoints?.map((point) => ({
+      x: canvasCenterX + (point.x - canvasCenterX) * scale,
+      y: canvasCenterY + (point.y - canvasCenterY) * scale,
+    })) ?? null;
     const rect =
-      clipRect
+      clipPathPoints
+        ? getBoundsForPoints(clipPathPoints)
+        : clipRect
         ? getRotatedBounds(clipRect, slice.clipRotation)
         : scaleRectAroundCanvasCenter(slice.rect) ?? slice.rect;
 
@@ -856,6 +1200,7 @@ function applyLetterbox(slices: RenderSlice[], project: ProjectDocument) {
       ...slice,
       rect,
       clipRect,
+      clipPathPoints,
       imageRect,
     };
   });
@@ -895,12 +1240,25 @@ export function buildRenderSlices(project: ProjectDocument, assets: SourceAsset[
       project,
     );
     const baseClipRect = cell.clipRect ?? null;
+    const clipPathPoints =
+      cell.clipPathPoints && cell.clipPathPoints.length > 2
+        ? scalePointsFromCenter(
+            cell.clipPathPoints,
+            {
+              x: cell.x + cell.width / 2,
+              y: cell.y + cell.height / 2,
+            },
+            1 + overlapSize / Math.max(cell.width, cell.height, 1),
+          )
+        : null;
     const clipRect =
       project.layout.family === "strips" && baseClipRect
         ? expandStripClipRect(baseClipRect, overlapSize)
         : baseClipRect;
     const rect =
-      clipRect && project.layout.family === "strips"
+      clipPathPoints
+        ? getBoundsForPoints(clipPathPoints)
+        : clipRect && project.layout.family === "strips"
         ? getRotatedBounds(clipRect, cell.clipRotation ?? 0)
         : {
             x: cell.x - overlapSize * rng.next(),
@@ -918,6 +1276,7 @@ export function buildRenderSlices(project: ProjectDocument, assets: SourceAsset[
       assetId: asset.id,
       rect,
       clipRect,
+      clipPathPoints,
       clipRotation: cell.clipRotation ?? 0,
       imageRect: null,
       rotation: (cell.rotation ?? 0) + (rotationNoise * Math.PI) / 180,

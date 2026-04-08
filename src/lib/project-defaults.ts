@@ -67,6 +67,7 @@ export const DEFAULT_LAYOUT: LayoutSettings = {
   wedgeAngle: 120,
   wedgeJitter: 0,
   randomness: 0.52,
+  organicVariation: 0,
 };
 
 function normalizeStripAngle(layout: Partial<LayoutSettings> | undefined) {
@@ -234,6 +235,8 @@ export function normalizeLayoutSettings(
     wedgeAngle: layout?.wedgeAngle ?? DEFAULT_LAYOUT.wedgeAngle,
     wedgeJitter: layout?.wedgeJitter ?? DEFAULT_LAYOUT.wedgeJitter,
     randomness: layout?.randomness ?? DEFAULT_LAYOUT.randomness,
+    organicVariation:
+      layout?.organicVariation ?? DEFAULT_LAYOUT.organicVariation,
   };
 }
 

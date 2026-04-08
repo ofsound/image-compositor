@@ -2,10 +2,11 @@ export type GeometryShape =
   | "rect"
   | "triangle"
   | "interlock"
+  | "blob"
   | "ring"
   | "wedge"
   | "mixed";
-export type LayoutFamily = "grid" | "strips" | "blocks" | "radial";
+export type LayoutFamily = "grid" | "strips" | "blocks" | "radial" | "organic";
 export type RadialChildRotationMode = "none" | "tangent" | "outward";
 export type KaleidoscopeMirrorMode =
   | "rotate-only"
@@ -117,6 +118,7 @@ export interface LayoutSettings {
   wedgeAngle: number;
   wedgeJitter: number;
   randomness: number;
+  organicVariation: number;
 }
 
 export interface SourceMappingSettings {
@@ -250,6 +252,11 @@ export interface RenderRect {
   height: number;
 }
 
+export interface RenderPoint {
+  x: number;
+  y: number;
+}
+
 export interface NormalizedRect {
   x: number;
   y: number;
@@ -263,6 +270,7 @@ export interface RenderSlice {
   assetId: string;
   rect: RenderRect;
   clipRect: RenderRect | null;
+  clipPathPoints: RenderPoint[] | null;
   clipRotation: number;
   imageRect: RenderRect | null;
   rotation: number;

@@ -313,6 +313,83 @@ describe("buildRenderSlices", () => {
     expect(angleDifference).toBeCloseTo((30 * Math.PI) / 180, 1);
   });
 
+  it("builds deterministic organic blob slices from the attractor field", () => {
+    const project = createProjectDocument("Organic Determinism");
+    project.sourceIds = [assets[0]!.id];
+    project.layout.family = "organic";
+    project.layout.shapeMode = "blob";
+    project.layout.symmetryMode = "none";
+    project.layout.density = 0.5;
+    project.effects.rotationJitter = 0;
+
+    const first = buildRenderSlices(project, [assets[0]!]);
+    const second = buildRenderSlices(project, [assets[0]!]);
+
+    expect(first).toEqual(second);
+    expect(first.every((slice) => slice.clipPathPoints?.length)).toBe(true);
+  });
+
+  it("increases organic slice count as density rises", () => {
+    const project = createProjectDocument("Organic Density");
+    project.sourceIds = [assets[0]!.id];
+    project.layout.family = "organic";
+    project.layout.shapeMode = "blob";
+    project.layout.symmetryMode = "none";
+
+    project.layout.density = 0.2;
+    const sparse = buildRenderSlices(project, [assets[0]!]);
+
+    project.layout.density = 1;
+    const dense = buildRenderSlices(project, [assets[0]!]);
+
+    expect(dense.length).toBeGreaterThan(sparse.length);
+  });
+
+  it("re-seeds the organic distribution when the variation slider changes", () => {
+    const project = createProjectDocument("Organic Variation");
+    project.sourceIds = [assets[0]!.id];
+    project.layout.family = "organic";
+    project.layout.shapeMode = "blob";
+    project.layout.symmetryMode = "none";
+    project.layout.density = 0.5;
+
+    project.layout.organicVariation = 0;
+    const baseline = buildRenderSlices(project, [assets[0]!]);
+
+    project.layout.organicVariation = 137;
+    const shifted = buildRenderSlices(project, [assets[0]!]);
+    const shiftedRepeat = buildRenderSlices(project, [assets[0]!]);
+
+    expect(shifted).toEqual(shiftedRepeat);
+    expect(shifted).not.toEqual(baseline);
+  });
+
+  it("keeps organic blob paths inside the inset canvas bounds", () => {
+    const project = createProjectDocument("Organic Bounds");
+    project.sourceIds = [assets[0]!.id];
+    project.layout.family = "organic";
+    project.layout.shapeMode = "blob";
+    project.layout.symmetryMode = "none";
+
+    const slices = buildRenderSlices(project, [assets[0]!]);
+    const left = project.canvas.inset;
+    const top = project.canvas.inset;
+    const right = project.canvas.width - project.canvas.inset;
+    const bottom = project.canvas.height - project.canvas.inset;
+
+    expect(
+      slices.every((slice) =>
+        slice.clipPathPoints?.every(
+          (point) =>
+            point.x >= left &&
+            point.x <= right &&
+            point.y >= top &&
+            point.y <= bottom,
+        ),
+      ),
+    ).toBe(true);
+  });
+
   it("increases strip count as density rises while staying deterministic", () => {
     const project = createProjectDocument("Dense Strips");
     project.sourceIds = [assets[0]!.id];

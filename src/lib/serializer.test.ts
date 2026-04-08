@@ -56,6 +56,7 @@ const bundle: ImportedProjectBundle = {
       wedgeAngle: 120,
       wedgeJitter: 0,
       randomness: 0.1,
+      organicVariation: 0,
     },
     sourceMapping: {
       strategy: "random",
@@ -145,6 +146,7 @@ const bundle: ImportedProjectBundle = {
           wedgeAngle: 120,
           wedgeJitter: 0,
           randomness: 0.1,
+          organicVariation: 0,
         },
         sourceMapping: {
           strategy: "random",

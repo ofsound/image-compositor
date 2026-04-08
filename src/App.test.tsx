@@ -33,10 +33,18 @@ type AppStoreState = ReturnType<typeof useAppStore.getState>;
 type UpdateProject = AppStoreState["updateProject"];
 
 function createStoreState(overrides?: {
-  family?: "grid" | "strips" | "blocks" | "radial";
-  shapeMode?: "rect" | "triangle" | "interlock" | "ring" | "wedge" | "mixed";
+  family?: "grid" | "strips" | "blocks" | "radial" | "organic";
+  shapeMode?:
+    | "rect"
+    | "triangle"
+    | "interlock"
+    | "blob"
+    | "ring"
+    | "wedge"
+    | "mixed";
   symmetryMode?: "none" | "mirror-x" | "mirror-y" | "quad" | "radial";
   density?: number;
+  organicVariation?: number;
   kaleidoscopeSegments?: number;
   sourceImportProgress?: { processed: number; total: number } | null;
   strategy?:
@@ -64,6 +72,10 @@ function createStoreState(overrides?: {
 
   if (overrides?.density !== undefined) {
     project.layout.density = overrides.density;
+  }
+
+  if (overrides?.organicVariation !== undefined) {
+    project.layout.organicVariation = overrides.organicVariation;
   }
 
   if (overrides?.kaleidoscopeSegments !== undefined) {
@@ -196,6 +208,7 @@ describe("App conditional sliders", () => {
     expectSliderEnabled("Letterbox");
     expectSliderHidden("Source Bias");
     expectSliderHidden("Palette Emphasis");
+    expectSliderHidden("Distribution");
   });
 
   it("enables strips-only density and gutter for strips layouts", () => {
@@ -225,6 +238,7 @@ describe("App conditional sliders", () => {
     expectSliderHidden("Radial Copies");
     expectSliderEnabled("Hide Percentage");
     expectSliderEnabled("Letterbox");
+    expectSliderHidden("Distribution");
   });
 
   it("shows density on the new UI scale and stores quadruple the committed value", () => {
@@ -287,6 +301,7 @@ describe("App conditional sliders", () => {
     expectSliderEnabled("Letterbox");
     expectSliderEnabled("Source Bias");
     expectSliderHidden("Palette Emphasis");
+    expectSliderHidden("Distribution");
   });
 
   it("enables palette emphasis only for palette assignment", () => {
@@ -318,6 +333,7 @@ describe("App conditional sliders", () => {
     expectSliderEnabled("Letterbox");
     expectSliderHidden("Source Bias");
     expectSliderEnabled("Palette Emphasis");
+    expectSliderHidden("Distribution");
   });
 
   it("shows the corner radius slider only for rect shape mode", () => {
@@ -350,12 +366,82 @@ describe("App conditional sliders", () => {
     expect(getGeometryOptions("strips")).not.toContain("interlock");
     expect(getGeometryOptions("blocks")).not.toContain("interlock");
     expect(getGeometryOptions("radial")).not.toContain("interlock");
+    expect(getGeometryOptions("organic")).toContain("blob");
+    expect(getGeometryOptions("organic")).toContain("rect");
   });
 
   it("coerces interlock back to triangle when leaving grid", () => {
     expect(coerceShapeModeForFamily("grid", "interlock")).toBe("interlock");
     expect(coerceShapeModeForFamily("blocks", "interlock")).toBe("triangle");
     expect(coerceShapeModeForFamily("strips", "triangle")).toBe("triangle");
+    expect(coerceShapeModeForFamily("organic", "rect")).toBe("rect");
+    expect(coerceShapeModeForFamily("grid", "blob")).toBe("rect");
+  });
+
+  it("shows density for organic layouts while hiding unrelated family controls", () => {
+    renderApp({
+      family: "organic",
+      shapeMode: "blob",
+      symmetryMode: "none",
+      strategy: "random",
+    });
+
+    expectSliderHidden("Corner Radius");
+    expectSliderHidden("Strips Angle");
+    expectSliderHidden("Columns");
+    expectSliderHidden("Rows");
+    expectSliderHidden("Radial Segments");
+    expectSliderHidden("Radial Rings");
+    expectSliderHidden("Angle Offset");
+    expectSliderHidden("Ring Phase");
+    expectSliderHidden("Inner Radius");
+    expectSliderHidden("Gutter");
+    expectSliderHidden("Gutter Horizontal");
+    expectSliderHidden("Gutter Vertical");
+    expectSliderHidden("Block Depth");
+    expectSliderHidden("Split Randomness");
+    expectSliderHidden("Min Block Size");
+    expectSliderHidden("Split Bias");
+    expectSliderEnabled("Density");
+    expectSliderEnabled("Distribution");
+    expectSliderEnabled("Hide Percentage");
+    expectSliderEnabled("Letterbox");
+  });
+
+  it("allows rect geometry inside organic layouts", () => {
+    renderApp({
+      family: "organic",
+      shapeMode: "rect",
+      symmetryMode: "none",
+      strategy: "random",
+    });
+
+    expectSliderEnabled("Corner Radius");
+    expectSliderEnabled("Density");
+    expectSliderEnabled("Distribution");
+  });
+
+  it("stores the organic distribution slider as an integer variation seed", () => {
+    const state = createStoreState({
+      family: "organic",
+      shapeMode: "blob",
+      symmetryMode: "none",
+      strategy: "random",
+      organicVariation: 0,
+    });
+    mockedUseAppStore.mockReturnValue(state);
+
+    render(<App />);
+
+    const slider = screen.getByLabelText("Distribution");
+    fireEvent.keyDown(slider, { key: "End" });
+    fireEvent.keyUp(slider, { key: "End" });
+
+    expect(state.updateProject).toHaveBeenCalledTimes(1);
+
+    const [[update]] = state.updateProject.mock.calls;
+    const nextProject = update(structuredClone(state.projects[0]!));
+    expect(nextProject.layout.organicVariation).toBe(4096);
   });
 });
 

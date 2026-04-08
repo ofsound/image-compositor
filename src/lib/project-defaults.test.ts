@@ -26,6 +26,7 @@ describe("createProjectDocument", () => {
     expect(project.layout.radialRingPhaseStep).toBe(0);
     expect(project.layout.radialInnerRadius).toBe(0);
     expect(project.layout.radialChildRotationMode).toBe("tangent");
+    expect(project.layout.organicVariation).toBe(0);
     expect(project.effects.kaleidoscopeCenterX).toBe(0.5);
     expect(project.effects.kaleidoscopeCenterY).toBe(0.5);
     expect(project.effects.kaleidoscopeAngleOffset).toBe(0);
@@ -102,6 +103,39 @@ describe("createProjectDocument", () => {
     } as unknown as ProjectDocument;
 
     expect(normalizeProjectDocument(legacyProject).layout.letterbox).toBe(0);
+  });
+
+  it("normalizes legacy projects without organic variation to zero", () => {
+    const project = createProjectDocument("Legacy Organic Variation");
+    const legacyProject = {
+      ...project,
+      layout: {
+        family: project.layout.family,
+        shapeMode: project.layout.shapeMode,
+        rectCornerRadius: project.layout.rectCornerRadius,
+        density: project.layout.density,
+        stripAngle: project.layout.stripAngle,
+        columns: project.layout.columns,
+        rows: project.layout.rows,
+        gutter: project.layout.gutter,
+        blockDepth: project.layout.blockDepth,
+        blockSplitRandomness: project.layout.blockSplitRandomness,
+        blockMinSize: project.layout.blockMinSize,
+        blockSplitBias: project.layout.blockSplitBias,
+        stripOrientation: project.layout.stripOrientation,
+        radialSegments: project.layout.radialSegments,
+        radialRings: project.layout.radialRings,
+        symmetryMode: project.layout.symmetryMode,
+        symmetryCopies: project.layout.symmetryCopies,
+        hidePercentage: project.layout.hidePercentage,
+        letterbox: project.layout.letterbox,
+        wedgeAngle: project.layout.wedgeAngle,
+        wedgeJitter: project.layout.wedgeJitter,
+        randomness: project.layout.randomness,
+      },
+    } as unknown as ProjectDocument;
+
+    expect(normalizeProjectDocument(legacyProject).layout.organicVariation).toBe(0);
   });
 
   it("normalizes legacy projects without grid gutter axes from the single gutter", () => {

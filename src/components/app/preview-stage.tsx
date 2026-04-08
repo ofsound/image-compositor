@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 
+import { getSourceContentSignature } from "@/lib/assets";
 import { buildBitmapMap, renderProjectToCanvas } from "@/lib/render";
 import { readBlob } from "@/lib/opfs";
 import type {
@@ -26,7 +27,7 @@ export function PreviewStage({
   assets,
   onRenderState,
 }: PreviewStageProps) {
-  const assetSignature = assets.map((asset) => asset.id).join("|");
+  const assetSignature = assets.map(getSourceContentSignature).join("|");
 
   useEffect(() => {
     let cancelled = false;

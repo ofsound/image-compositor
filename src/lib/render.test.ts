@@ -7,6 +7,7 @@ import {
   normalizeProjectSnapshot,
 } from "@/lib/project-defaults";
 import { exportProjectImage, renderProjectToCanvas } from "@/lib/render";
+import { buildBitmapMap } from "@/lib/render";
 import type { SourceAsset } from "@/types/project";
 
 function createMockContext() {
@@ -32,7 +33,7 @@ function createMockContext() {
     getImageData: vi.fn(),
     createImageData: vi.fn(),
     putImageData: vi.fn(),
-    drawImage: vi.fn(() => {
+    drawImage: vi.fn((..._args: unknown[]) => {
       drawImageCompositeOperations.push(globalCompositeOperation);
     }),
     translate: vi.fn(),
@@ -83,6 +84,24 @@ const asset: SourceAsset = {
 };
 
 describe("renderProjectToCanvas", () => {
+  it("rebuilds image bitmaps for distinct blobs with identical metadata", async () => {
+    const createImageBitmapMock = vi.fn(async () => ({}) as ImageBitmap);
+    vi.stubGlobal("createImageBitmap", createImageBitmapMock);
+    const firstBlob = new Blob(["A"], { type: "image/png" });
+    const secondBlob = new Blob(["B"], { type: "image/png" });
+
+    try {
+      const firstMap = await buildBitmapMap([asset], async () => firstBlob);
+      const secondMap = await buildBitmapMap([asset], async () => secondBlob);
+
+      expect(firstMap.get(asset.id)?.bitmap).toBeDefined();
+      expect(secondMap.get(asset.id)?.bitmap).toBeDefined();
+      expect(createImageBitmapMock).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("defaults missing rect corner radius values to zero during normalization", () => {
     const project = createProjectDocument("Normalize Radius");
     const snapshot = structuredClone(project);

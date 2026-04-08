@@ -45,12 +45,16 @@ function assignShape(index: number, shapeMode: GeometryShape) {
   return cycle[index % cycle.length]!;
 }
 
-function insetRect(rect: RenderRect, amount: number): RenderRect {
+function insetRect(
+  rect: RenderRect,
+  horizontalAmount: number,
+  verticalAmount = horizontalAmount,
+): RenderRect {
   return {
-    x: rect.x + amount,
-    y: rect.y + amount,
-    width: Math.max(1, rect.width - amount * 2),
-    height: Math.max(1, rect.height - amount * 2),
+    x: rect.x + horizontalAmount,
+    y: rect.y + verticalAmount,
+    width: Math.max(1, rect.width - horizontalAmount * 2),
+    height: Math.max(1, rect.height - verticalAmount * 2),
   };
 }
 
@@ -172,7 +176,9 @@ function generateGrid(context: GeneratorContext) {
   const innerWidth = canvas.width - canvas.inset * 2;
   const innerHeight = canvas.height - canvas.inset * 2;
   const rowHeight = innerHeight / layout.rows;
-  const insetAmount = layout.gutter * (1 - compositing.overlap);
+  const insetAmountHorizontal =
+    layout.gutterHorizontal * (1 - compositing.overlap);
+  const insetAmountVertical = layout.gutterVertical * (1 - compositing.overlap);
 
   if (layout.shapeMode === "interlock") {
     const triangleWidth = (2 * innerWidth) / layout.columns;
@@ -189,7 +195,7 @@ function generateGrid(context: GeneratorContext) {
           height: rowHeight,
         };
         cells.push({
-          ...insetRect(rect, insetAmount),
+          ...insetRect(rect, insetAmountHorizontal, insetAmountVertical),
           shape: "interlock",
           clipRotation: (row + column) % 2 === 0 ? 0 : Math.PI,
         });
@@ -210,7 +216,7 @@ function generateGrid(context: GeneratorContext) {
         height: rowHeight,
       };
       cells.push({
-        ...insetRect(rect, insetAmount),
+        ...insetRect(rect, insetAmountHorizontal, insetAmountVertical),
         shape: assignShape(row * layout.columns + column, layout.shapeMode),
       });
     }

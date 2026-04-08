@@ -184,7 +184,9 @@ describe("App conditional sliders", () => {
     expectSliderHidden("Ring Phase");
     expectSliderHidden("Inner Radius");
     expect(screen.queryByLabelText("Child Rotation")).not.toBeInTheDocument();
-    expectSliderEnabled("Gutter");
+    expectSliderHidden("Gutter");
+    expectSliderEnabled("Gutter Horizontal");
+    expectSliderEnabled("Gutter Vertical");
     expectSliderHidden("Block Depth");
     expectSliderHidden("Split Randomness");
     expectSliderHidden("Min Block Size");
@@ -218,6 +220,8 @@ describe("App conditional sliders", () => {
     expectSliderHidden("Inner Radius");
     expect(screen.queryByLabelText("Child Rotation")).not.toBeInTheDocument();
     expectSliderEnabled("Gutter");
+    expectSliderHidden("Gutter Horizontal");
+    expectSliderHidden("Gutter Vertical");
     expectSliderHidden("Radial Copies");
     expectSliderEnabled("Hide Percentage");
     expectSliderEnabled("Letterbox");
@@ -272,6 +276,8 @@ describe("App conditional sliders", () => {
     expectSliderHidden("Inner Radius");
     expect(screen.queryByLabelText("Child Rotation")).not.toBeInTheDocument();
     expectSliderHidden("Gutter");
+    expectSliderHidden("Gutter Horizontal");
+    expectSliderHidden("Gutter Vertical");
     expectSliderEnabled("Block Depth");
     expectSliderEnabled("Split Randomness");
     expectSliderEnabled("Min Block Size");
@@ -305,6 +311,8 @@ describe("App conditional sliders", () => {
     expectSliderEnabled("Inner Radius");
     expect(screen.getByLabelText("Child Rotation")).toBeInTheDocument();
     expectSliderHidden("Gutter");
+    expectSliderHidden("Gutter Horizontal");
+    expectSliderHidden("Gutter Vertical");
     expectSliderHidden("Radial Copies");
     expectSliderEnabled("Hide Percentage");
     expectSliderEnabled("Letterbox");

@@ -2,6 +2,12 @@
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "image-grid",
   "compatibility_date": "2026-03-30",
+  "routes": [
+    {
+      "pattern": "compositor.csstune.com",
+      "custom_domain": true
+    }
+  ],
   "assets": {
     "directory": "./dist",
     "binding": "ASSETS"

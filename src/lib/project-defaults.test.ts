@@ -20,6 +20,8 @@ describe("createProjectDocument", () => {
     expect(project.layout.blockSplitRandomness).toBe(0.5);
     expect(project.layout.blockMinSize).toBe(140);
     expect(project.layout.blockSplitBias).toBe(0.5);
+    expect(project.layout.gutterHorizontal).toBe(14);
+    expect(project.layout.gutterVertical).toBe(14);
     expect(project.layout.radialAngleOffset).toBe(0);
     expect(project.layout.radialRingPhaseStep).toBe(0);
     expect(project.layout.radialInnerRadius).toBe(0);
@@ -100,6 +102,45 @@ describe("createProjectDocument", () => {
     } as unknown as ProjectDocument;
 
     expect(normalizeProjectDocument(legacyProject).layout.letterbox).toBe(0);
+  });
+
+  it("normalizes legacy projects without grid gutter axes from the single gutter", () => {
+    const project = createProjectDocument("Legacy Grid Gutter");
+    const legacyProject = {
+      ...project,
+      layout: {
+        family: project.layout.family,
+        shapeMode: project.layout.shapeMode,
+        rectCornerRadius: project.layout.rectCornerRadius,
+        density: project.layout.density,
+        stripAngle: project.layout.stripAngle,
+        columns: project.layout.columns,
+        rows: project.layout.rows,
+        gutter: 22,
+        blockDepth: project.layout.blockDepth,
+        blockSplitRandomness: project.layout.blockSplitRandomness,
+        blockMinSize: project.layout.blockMinSize,
+        blockSplitBias: project.layout.blockSplitBias,
+        stripOrientation: project.layout.stripOrientation,
+        radialSegments: project.layout.radialSegments,
+        radialRings: project.layout.radialRings,
+        radialAngleOffset: project.layout.radialAngleOffset,
+        radialRingPhaseStep: project.layout.radialRingPhaseStep,
+        radialInnerRadius: project.layout.radialInnerRadius,
+        radialChildRotationMode: project.layout.radialChildRotationMode,
+        symmetryMode: project.layout.symmetryMode,
+        symmetryCopies: project.layout.symmetryCopies,
+        hidePercentage: project.layout.hidePercentage,
+        letterbox: project.layout.letterbox,
+        wedgeAngle: project.layout.wedgeAngle,
+        wedgeJitter: project.layout.wedgeJitter,
+        randomness: project.layout.randomness,
+      },
+    } as unknown as ProjectDocument;
+
+    const normalized = normalizeProjectDocument(legacyProject).layout;
+    expect(normalized.gutterHorizontal).toBe(22);
+    expect(normalized.gutterVertical).toBe(22);
   });
 
   it("normalizes legacy projects without strip angle to zero degrees", () => {
@@ -340,6 +381,60 @@ describe("createProjectDocument", () => {
 
     expect(normalizeProjectVersion(legacyVersion).snapshot.layout.wedgeAngle).toBe(120);
     expect(normalizeProjectVersion(legacyVersion).snapshot.layout.wedgeJitter).toBe(0);
+  });
+
+  it("normalizes legacy version snapshots without grid gutter axes from the single gutter", () => {
+    const project = createProjectDocument("Legacy Grid Gutter Version");
+    const legacyVersion = {
+      id: "version_legacy_grid_gutter",
+      projectId: project.id,
+      label: "Legacy Grid Gutter Snapshot",
+      createdAt: new Date().toISOString(),
+      thumbnailPath: null,
+      snapshot: {
+        sourceIds: project.sourceIds,
+        canvas: structuredClone(project.canvas),
+        layout: {
+          family: project.layout.family,
+          shapeMode: project.layout.shapeMode,
+          rectCornerRadius: project.layout.rectCornerRadius,
+          density: project.layout.density,
+          stripAngle: project.layout.stripAngle,
+          columns: project.layout.columns,
+          rows: project.layout.rows,
+          gutter: 18,
+          blockDepth: project.layout.blockDepth,
+          blockSplitRandomness: project.layout.blockSplitRandomness,
+          blockMinSize: project.layout.blockMinSize,
+          blockSplitBias: project.layout.blockSplitBias,
+          stripOrientation: project.layout.stripOrientation,
+          radialSegments: project.layout.radialSegments,
+          radialRings: project.layout.radialRings,
+          radialAngleOffset: project.layout.radialAngleOffset,
+          radialRingPhaseStep: project.layout.radialRingPhaseStep,
+          radialInnerRadius: project.layout.radialInnerRadius,
+          radialChildRotationMode: project.layout.radialChildRotationMode,
+          symmetryMode: project.layout.symmetryMode,
+          symmetryCopies: project.layout.symmetryCopies,
+          hidePercentage: project.layout.hidePercentage,
+          letterbox: project.layout.letterbox,
+          wedgeAngle: project.layout.wedgeAngle,
+          wedgeJitter: project.layout.wedgeJitter,
+          randomness: project.layout.randomness,
+        },
+        sourceMapping: structuredClone(project.sourceMapping),
+        effects: structuredClone(project.effects),
+        compositing: structuredClone(project.compositing),
+        export: structuredClone(project.export),
+        activeSeed: project.activeSeed,
+        presets: structuredClone(project.presets),
+        passes: structuredClone(project.passes),
+      },
+    } as unknown as ProjectVersion;
+
+    const normalized = normalizeProjectVersion(legacyVersion).snapshot.layout;
+    expect(normalized.gutterHorizontal).toBe(18);
+    expect(normalized.gutterVertical).toBe(18);
   });
 
   it("normalizes legacy version snapshots without radial controls to defaults", () => {

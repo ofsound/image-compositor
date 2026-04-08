@@ -47,6 +47,8 @@ export const DEFAULT_LAYOUT: LayoutSettings = {
   columns: 8,
   rows: 8,
   gutter: 14,
+  gutterHorizontal: 14,
+  gutterVertical: 14,
   blockDepth: 3,
   blockSplitRandomness: 0.5,
   blockMinSize: 140,
@@ -199,6 +201,14 @@ export function normalizeLayoutSettings(
     columns: layout?.columns ?? DEFAULT_LAYOUT.columns,
     rows: layout?.rows ?? DEFAULT_LAYOUT.rows,
     gutter: layout?.gutter ?? DEFAULT_LAYOUT.gutter,
+    gutterHorizontal:
+      layout?.gutterHorizontal ??
+      layout?.gutter ??
+      DEFAULT_LAYOUT.gutterHorizontal,
+    gutterVertical:
+      layout?.gutterVertical ??
+      layout?.gutter ??
+      DEFAULT_LAYOUT.gutterVertical,
     blockDepth: layout?.blockDepth ?? DEFAULT_LAYOUT.blockDepth,
     blockSplitRandomness:
       layout?.blockSplitRandomness ?? DEFAULT_LAYOUT.blockSplitRandomness,

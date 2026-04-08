@@ -211,6 +211,30 @@ export function getSourceKindLabel(kind: SourceKind) {
   return "Image";
 }
 
+export function getSourceContentSignature(asset: SourceAsset) {
+  const base = [
+    asset.id,
+    asset.kind,
+    asset.normalizedPath,
+    asset.previewPath,
+    asset.averageColor,
+    asset.palette.join(","),
+    asset.luminance,
+    asset.width,
+    asset.height,
+  ].join("|");
+
+  if (asset.kind === "solid") {
+    return `${base}|${asset.recipe.color}`;
+  }
+
+  if (asset.kind === "gradient") {
+    return `${base}|${asset.recipe.from}|${asset.recipe.to}|${asset.recipe.direction}`;
+  }
+
+  return base;
+}
+
 export function getDefaultGradientDirection(): GradientDirection {
   return DEFAULT_GRADIENT_DIRECTION;
 }

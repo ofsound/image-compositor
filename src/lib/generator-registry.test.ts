@@ -206,6 +206,25 @@ describe("buildRenderSlices", () => {
     }
   });
 
+  it("applies horizontal and vertical grid gutters independently", () => {
+    const project = createProjectDocument("Grid Axis Gutters");
+    project.sourceIds = [assets[0]!.id];
+    project.layout.family = "grid";
+    project.layout.columns = 1;
+    project.layout.rows = 1;
+    project.layout.symmetryMode = "none";
+    project.layout.gutterHorizontal = 20;
+    project.layout.gutterVertical = 30;
+    project.compositing.overlap = 0;
+
+    const [slice] = buildRenderSlices(project, [assets[0]!]);
+
+    expect(slice?.rect.x).toBe(project.canvas.inset + 20);
+    expect(slice?.rect.y).toBe(project.canvas.inset + 30);
+    expect(slice?.rect.width).toBe(project.canvas.width - project.canvas.inset * 2 - 40);
+    expect(slice?.rect.height).toBe(project.canvas.height - project.canvas.inset * 2 - 60);
+  });
+
   it("uses radial segment and ring counts to determine the base slice count", () => {
     const project = createProjectDocument("Radial Count");
     project.sourceIds = [assets[0]!.id];
@@ -336,6 +355,8 @@ describe("buildRenderSlices", () => {
     project.layout.columns = 4;
     project.layout.rows = 3;
     project.layout.gutter = 0;
+    project.layout.gutterHorizontal = 0;
+    project.layout.gutterVertical = 0;
     project.layout.symmetryMode = "none";
     project.compositing.overlap = 0;
     project.effects.rotationJitter = 0;

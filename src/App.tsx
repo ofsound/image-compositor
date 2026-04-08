@@ -57,6 +57,7 @@ import { Switch } from "@/components/ui/switch";
 import {
   ACCEPTED_IMAGE_TYPES,
   getDefaultGradientDirection,
+  getSourceContentSignature,
   normalizeGradientInput,
   normalizeSolidInput,
 } from "@/lib/assets";
@@ -83,7 +84,7 @@ import type {
 } from "@/types/project";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
-function useObjectUrl(path: string | null) {
+function useObjectUrl(path: string | null, versionKey?: string) {
   const [url, setUrl] = useState<string | null>(null);
 
   useEffect(() => {
@@ -108,7 +109,7 @@ function useObjectUrl(path: string | null) {
       active = false;
       if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
-  }, [path]);
+  }, [path, versionKey]);
 
   return url;
 }
@@ -116,11 +117,13 @@ function useObjectUrl(path: string | null) {
 function SourceThumbnail({
   previewPath,
   label,
+  versionKey,
 }: {
   previewPath: string;
   label: string;
+  versionKey: string;
 }) {
-  const previewUrl = useObjectUrl(previewPath);
+  const previewUrl = useObjectUrl(previewPath, versionKey);
 
   return previewUrl ? (
     <img
@@ -500,7 +503,6 @@ function App() {
   const isWedgeShapeMode =
     activeProject.layout.shapeMode === "wedge" ||
     activeProject.layout.shapeMode === "mixed";
-  const usesGutter = isGridFamily || isStripsFamily;
   const isRadialSymmetry = activeProject.layout.symmetryMode === "radial";
   const isWeightedAssignment =
     activeProject.sourceMapping.strategy === "weighted";
@@ -934,6 +936,7 @@ function App() {
                             <SourceThumbnail
                               previewPath={asset.previewPath}
                               label={asset.name}
+                              versionKey={getSourceContentSignature(asset)}
                             />
                           }
                         />
@@ -1264,7 +1267,7 @@ function App() {
                         </ControlBlock>
                       </>
                     ) : null}
-                    {usesGutter ? (
+                    {isStripsFamily ? (
                       <SliderField
                         label="Gutter"
                         min={0}
@@ -1279,6 +1282,44 @@ function App() {
                           }))
                         }
                       />
+                    ) : null}
+                    {isGridFamily ? (
+                      <>
+                        <SliderField
+                          label="Gutter Horizontal"
+                          min={0}
+                          max={300}
+                          step={1}
+                          value={activeProject.layout.gutterHorizontal}
+                          formatter={(value) => `${Math.round(value)} px`}
+                          onChange={(value) =>
+                            patchProject((project) => ({
+                              ...project,
+                              layout: {
+                                ...project.layout,
+                                gutterHorizontal: value,
+                              },
+                            }))
+                          }
+                        />
+                        <SliderField
+                          label="Gutter Vertical"
+                          min={0}
+                          max={300}
+                          step={1}
+                          value={activeProject.layout.gutterVertical}
+                          formatter={(value) => `${Math.round(value)} px`}
+                          onChange={(value) =>
+                            patchProject((project) => ({
+                              ...project,
+                              layout: {
+                                ...project.layout,
+                                gutterVertical: value,
+                              },
+                            }))
+                          }
+                        />
+                      </>
                     ) : null}
                     {isBlocksFamily ? (
                       <>

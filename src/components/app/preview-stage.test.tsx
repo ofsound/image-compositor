@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { PreviewStage } from "@/components/app/preview-stage";
 import { createProjectDocument } from "@/lib/project-defaults";
+import { buildBitmapMap } from "@/lib/render";
 import type { SourceAsset } from "@/types/project";
 
 vi.mock("@/lib/render", () => ({
@@ -62,5 +63,38 @@ describe("PreviewStage", () => {
       ready: false,
       lastRenderedPreview: null,
     });
+  });
+
+  it("rerenders when a source changes without changing its id", async () => {
+    const project = createProjectDocument("Preview Asset Update");
+    const canvasRef = { current: document.createElement("canvas") };
+    const { rerender } = render(
+      <PreviewStage
+        canvasRef={canvasRef}
+        project={project}
+        assets={[asset]}
+      />,
+    );
+
+    await waitFor(() => expect(buildBitmapMap).toHaveBeenCalled());
+    const initialCallCount = vi.mocked(buildBitmapMap).mock.calls.length;
+
+    const updatedAsset: SourceAsset = {
+      ...asset,
+      averageColor: "#445566",
+      palette: ["#445566"],
+    };
+
+    rerender(
+      <PreviewStage
+        canvasRef={canvasRef}
+        project={project}
+        assets={[updatedAsset]}
+      />,
+    );
+
+    await waitFor(() =>
+      expect(buildBitmapMap).toHaveBeenCalledTimes(initialCallCount + 1),
+    );
   });
 });

@@ -97,6 +97,8 @@ export interface LayoutSettings {
   columns: number;
   rows: number;
   gutter: number;
+  gutterHorizontal: number;
+  gutterVertical: number;
   blockDepth: number;
   blockSplitRandomness: number;
   blockMinSize: number;

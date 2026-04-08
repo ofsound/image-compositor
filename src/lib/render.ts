@@ -22,18 +22,17 @@ type RenderCanvas = HTMLCanvasElement;
 type RenderContext = CanvasRenderingContext2D;
 const FULL_CIRCLE_RADIANS = Math.PI * 2;
 
-const bitmapCache = new Map<string, Promise<ImageBitmap>>();
+const bitmapCache = new WeakMap<Blob, Promise<ImageBitmap>>();
 const RENDER_CONTEXT_OPTIONS = {
   alpha: true,
   colorSpace: "srgb",
 } as CanvasRenderingContext2DSettings & { colorSpace?: "srgb" };
 
-async function loadBitmap(asset: SourceAsset, blob: Blob) {
-  const cacheKey = `${asset.id}:${blob.size}:${blob.type}`;
-  if (!bitmapCache.has(cacheKey)) {
-    bitmapCache.set(cacheKey, createImageBitmap(blob));
+async function loadBitmap(blob: Blob) {
+  if (!bitmapCache.has(blob)) {
+    bitmapCache.set(blob, createImageBitmap(blob));
   }
-  return bitmapCache.get(cacheKey)!;
+  return bitmapCache.get(blob)!;
 }
 
 function drawShapePath(
@@ -267,7 +266,7 @@ export async function buildBitmapMap(
     assets.map(async (asset) => {
       const blob = await blobLookup(asset);
       if (!blob) return null;
-      const bitmap = await loadBitmap(asset, blob);
+      const bitmap = await loadBitmap(blob);
       return [asset.id, { asset, bitmap }] as const;
     }),
   );

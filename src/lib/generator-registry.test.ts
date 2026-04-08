@@ -390,6 +390,59 @@ describe("buildRenderSlices", () => {
     ).toBe(true);
   });
 
+  it("builds deterministic 3d slices for a seeded structure", () => {
+    const project = createProjectDocument("3D Determinism");
+    project.sourceIds = [assets[0]!.id];
+    project.layout.family = "3d";
+    project.layout.shapeMode = "rect";
+    project.layout.threeDStructure = "sphere";
+    project.layout.symmetryMode = "none";
+    project.effects.rotationJitter = 0;
+
+    const first = buildRenderSlices(project, [assets[0]!]);
+    const second = buildRenderSlices(project, [assets[0]!]);
+
+    expect(first).toEqual(second);
+    expect(first.length).toBeGreaterThan(0);
+  });
+
+  it("changes the 3d arrangement across structure modes", () => {
+    const project = createProjectDocument("3D Structures");
+    project.sourceIds = [assets[0]!.id];
+    project.layout.family = "3d";
+    project.layout.shapeMode = "rect";
+    project.layout.symmetryMode = "none";
+    project.effects.rotationJitter = 0;
+
+    project.layout.threeDStructure = "sphere";
+    const sphere = buildRenderSlices(project, [assets[0]!]);
+
+    project.layout.threeDStructure = "torus";
+    const torus = buildRenderSlices(project, [assets[0]!]);
+
+    project.layout.threeDStructure = "attractor";
+    const attractor = buildRenderSlices(project, [assets[0]!]);
+
+    expect(torus).not.toEqual(sphere);
+    expect(attractor).not.toEqual(sphere);
+  });
+
+  it("re-seeds the 3d arrangement when distribution changes", () => {
+    const project = createProjectDocument("3D Distribution");
+    project.sourceIds = [assets[0]!.id];
+    project.layout.family = "3d";
+    project.layout.shapeMode = "rect";
+    project.layout.symmetryMode = "none";
+
+    project.layout.threeDDistribution = 0;
+    const baseline = buildRenderSlices(project, [assets[0]!]);
+
+    project.layout.threeDDistribution = 512;
+    const shifted = buildRenderSlices(project, [assets[0]!]);
+
+    expect(shifted).not.toEqual(baseline);
+  });
+
   it("increases strip count as density rises while staying deterministic", () => {
     const project = createProjectDocument("Dense Strips");
     project.sourceIds = [assets[0]!.id];

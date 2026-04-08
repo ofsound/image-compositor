@@ -68,6 +68,17 @@ export const DEFAULT_LAYOUT: LayoutSettings = {
   wedgeJitter: 0,
   randomness: 0.52,
   organicVariation: 0,
+  threeDStructure: "sphere",
+  threeDDistribution: 0,
+  threeDDepth: 0.6,
+  threeDCameraDistance: 0.62,
+  threeDPanX: 0,
+  threeDPanY: 0,
+  threeDYaw: 28,
+  threeDPitch: -18,
+  threeDPerspective: 0.68,
+  threeDBillboard: 0.78,
+  threeDZJitter: 0.18,
 };
 
 function normalizeStripAngle(layout: Partial<LayoutSettings> | undefined) {
@@ -237,6 +248,22 @@ export function normalizeLayoutSettings(
     randomness: layout?.randomness ?? DEFAULT_LAYOUT.randomness,
     organicVariation:
       layout?.organicVariation ?? DEFAULT_LAYOUT.organicVariation,
+    threeDStructure:
+      layout?.threeDStructure ?? DEFAULT_LAYOUT.threeDStructure,
+    threeDDistribution:
+      layout?.threeDDistribution ?? DEFAULT_LAYOUT.threeDDistribution,
+    threeDDepth: layout?.threeDDepth ?? DEFAULT_LAYOUT.threeDDepth,
+    threeDCameraDistance:
+      layout?.threeDCameraDistance ?? DEFAULT_LAYOUT.threeDCameraDistance,
+    threeDPanX: layout?.threeDPanX ?? DEFAULT_LAYOUT.threeDPanX,
+    threeDPanY: layout?.threeDPanY ?? DEFAULT_LAYOUT.threeDPanY,
+    threeDYaw: layout?.threeDYaw ?? DEFAULT_LAYOUT.threeDYaw,
+    threeDPitch: layout?.threeDPitch ?? DEFAULT_LAYOUT.threeDPitch,
+    threeDPerspective:
+      layout?.threeDPerspective ?? DEFAULT_LAYOUT.threeDPerspective,
+    threeDBillboard:
+      layout?.threeDBillboard ?? DEFAULT_LAYOUT.threeDBillboard,
+    threeDZJitter: layout?.threeDZJitter ?? DEFAULT_LAYOUT.threeDZJitter,
   };
 }
 

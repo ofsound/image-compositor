@@ -20,6 +20,10 @@ interface RenderOptions {
 
 type RenderCanvas = HTMLCanvasElement;
 type RenderContext = CanvasRenderingContext2D;
+interface TrianglePoint {
+  x: number;
+  y: number;
+}
 const FULL_CIRCLE_RADIANS = Math.PI * 2;
 
 const bitmapCache = new WeakMap<Blob, Promise<ImageBitmap>>();
@@ -162,6 +166,186 @@ function getSourceRect(slice: RenderSlice, asset: SourceAsset, project: ProjectD
   };
 }
 
+function solveAffineTransform(
+  source: [TrianglePoint, TrianglePoint, TrianglePoint],
+  destination: [TrianglePoint, TrianglePoint, TrianglePoint],
+) {
+  const [s0, s1, s2] = source;
+  const [d0, d1, d2] = destination;
+  const denominator =
+    s0.x * (s1.y - s2.y) +
+    s1.x * (s2.y - s0.y) +
+    s2.x * (s0.y - s1.y);
+
+  if (Math.abs(denominator) < 0.0001) {
+    return null;
+  }
+
+  const a =
+    (d0.x * (s1.y - s2.y) +
+      d1.x * (s2.y - s0.y) +
+      d2.x * (s0.y - s1.y)) /
+    denominator;
+  const b =
+    (d0.y * (s1.y - s2.y) +
+      d1.y * (s2.y - s0.y) +
+      d2.y * (s0.y - s1.y)) /
+    denominator;
+  const c =
+    (d0.x * (s2.x - s1.x) +
+      d1.x * (s0.x - s2.x) +
+      d2.x * (s1.x - s0.x)) /
+    denominator;
+  const d =
+    (d0.y * (s2.x - s1.x) +
+      d1.y * (s0.x - s2.x) +
+      d2.y * (s1.x - s0.x)) /
+    denominator;
+  const e =
+    (d0.x * (s1.x * s2.y - s2.x * s1.y) +
+      d1.x * (s2.x * s0.y - s0.x * s2.y) +
+      d2.x * (s0.x * s1.y - s1.x * s0.y)) /
+    denominator;
+  const f =
+    (d0.y * (s1.x * s2.y - s2.x * s1.y) +
+      d1.y * (s2.x * s0.y - s0.x * s2.y) +
+      d2.y * (s0.x * s1.y - s1.x * s0.y)) /
+    denominator;
+
+  return { a, b, c, d, e, f };
+}
+
+function drawCanvasTriangle(
+  context: RenderContext,
+  sourceCanvas: RenderCanvas,
+  source: [TrianglePoint, TrianglePoint, TrianglePoint],
+  destination: [TrianglePoint, TrianglePoint, TrianglePoint],
+) {
+  const transform = solveAffineTransform(source, destination);
+  if (!transform) return;
+
+  context.save();
+  context.beginPath();
+  context.moveTo(destination[0].x, destination[0].y);
+  context.lineTo(destination[1].x, destination[1].y);
+  context.lineTo(destination[2].x, destination[2].y);
+  context.closePath();
+  context.clip();
+  context.transform(
+    transform.a,
+    transform.b,
+    transform.c,
+    transform.d,
+    transform.e,
+    transform.f,
+  );
+  context.drawImage(sourceCanvas, 0, 0);
+  context.restore();
+}
+
+function renderSliceSurface(
+  slice: RenderSlice,
+  bitmap: ImageBitmap,
+  asset: SourceAsset,
+  project: ProjectDocument,
+) {
+  const width = Math.max(1, Math.ceil(slice.rect.width));
+  const height = Math.max(1, Math.ceil(slice.rect.height));
+  const surface = createRenderCanvas(width, height);
+  const surfaceContext = getRenderContext(surface);
+  const { sourceX, sourceY, sourceWidth, sourceHeight } = getSourceRect(
+    slice,
+    asset,
+    project,
+  );
+  const localSlice: RenderSlice = {
+    ...slice,
+    rect: { x: 0, y: 0, width, height },
+    clipRect: null,
+    clipPathPoints: null,
+    quadPoints: null,
+    clipRotation: 0,
+    imageRect: null,
+    rotation: 0,
+    rotationX: 0,
+    rotationY: 0,
+    scale: 1,
+    displacementOffset: { x: 0, y: 0 },
+    distortion: 0,
+    mirrorAxis: "none",
+  };
+
+  surfaceContext.save();
+  drawShapePath(surfaceContext, localSlice, project);
+  surfaceContext.clip("evenodd");
+  surfaceContext.drawImage(
+    bitmap,
+    sourceX,
+    sourceY,
+    sourceWidth,
+    sourceHeight,
+    0,
+    0,
+    width,
+    height,
+  );
+  surfaceContext.restore();
+
+  return surface;
+}
+
+function drawWarpedSlice(
+  context: RenderContext,
+  slice: RenderSlice,
+  bitmap: ImageBitmap,
+  asset: SourceAsset,
+  project: ProjectDocument,
+) {
+  if (!slice.quadPoints || slice.quadPoints.length !== 4) {
+    return false;
+  }
+
+  const surface = renderSliceSurface(slice, bitmap, asset, project);
+  const width = surface.width;
+  const height = surface.height;
+  const [p0, p1, p2, p3] = slice.quadPoints as [
+    TrianglePoint,
+    TrianglePoint,
+    TrianglePoint,
+    TrianglePoint,
+  ];
+  const displacement = slice.displacementOffset;
+  const destinationPoints: [TrianglePoint, TrianglePoint, TrianglePoint, TrianglePoint] = [
+    { x: p0.x + displacement.x, y: p0.y + displacement.y },
+    { x: p1.x + displacement.x, y: p1.y + displacement.y },
+    { x: p2.x + displacement.x, y: p2.y + displacement.y },
+    { x: p3.x + displacement.x, y: p3.y + displacement.y },
+  ];
+
+  drawCanvasTriangle(
+    context,
+    surface,
+    [
+      { x: 0, y: 0 },
+      { x: width, y: 0 },
+      { x: width, y: height },
+    ],
+    [destinationPoints[0], destinationPoints[1], destinationPoints[2]],
+  );
+  drawCanvasTriangle(
+    context,
+    surface,
+    [
+      { x: 0, y: 0 },
+      { x: width, y: height },
+      { x: 0, y: height },
+    ],
+    [destinationPoints[0], destinationPoints[2], destinationPoints[3]],
+  );
+
+  return true;
+}
+
 function applySharpen(
   context: RenderContext,
   canvas: RenderCanvas,
@@ -207,13 +391,41 @@ async function drawSlice(
   const centerX = bounds.x + bounds.width / 2;
   const centerY = bounds.y + bounds.height / 2;
   const { sourceX, sourceY, sourceWidth, sourceHeight } = getSourceRect(slice, asset, project);
-  const scaleX = slice.scale * (slice.mirrorAxis === "x" ? -1 : 1);
-  const scaleY = slice.scale * (slice.mirrorAxis === "y" ? -1 : 1);
+  const planeScaleX = Math.max(0.22, Math.cos(slice.rotationY));
+  const planeScaleY = Math.max(0.22, Math.cos(slice.rotationX));
+  const scaleX =
+    slice.scale * planeScaleX * (slice.mirrorAxis === "x" ? -1 : 1);
+  const scaleY =
+    slice.scale * planeScaleY * (slice.mirrorAxis === "y" ? -1 : 1);
 
   context.save();
   context.globalAlpha = slice.opacity;
   context.globalCompositeOperation = slice.blendMode;
   context.filter = `blur(${project.effects.blur}px)`;
+
+  if (drawWarpedSlice(context, slice, bitmap, asset, project)) {
+    if (project.compositing.shadow > 0 && slice.quadPoints) {
+      context.globalAlpha = project.compositing.shadow * 0.4;
+      context.strokeStyle = "rgba(24, 15, 8, 0.2)";
+      context.lineWidth = 2;
+      context.beginPath();
+      context.moveTo(
+        slice.quadPoints[0]!.x + slice.displacementOffset.x,
+        slice.quadPoints[0]!.y + slice.displacementOffset.y,
+      );
+      for (const point of slice.quadPoints.slice(1)) {
+        context.lineTo(
+          point!.x + slice.displacementOffset.x,
+          point!.y + slice.displacementOffset.y,
+        );
+      }
+      context.closePath();
+      context.stroke();
+    }
+
+    context.restore();
+    return;
+  }
 
   context.save();
   clipSliceToInsetArea(context, slice, project);

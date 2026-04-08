@@ -8,6 +8,7 @@ import type {
   RenderSlice,
   SourceAsset,
   SourceAssignmentStrategy,
+  ThreeDStructureMode,
 } from "@/types/project";
 import { mulberry32 } from "@/lib/rng";
 import { clamp, lerp } from "@/lib/utils";
@@ -24,8 +25,12 @@ interface LayoutCell extends RenderRect {
   shape: ConcreteGeometryShape;
   clipRect?: RenderRect;
   clipPathPoints?: RenderPoint[];
+  quadPoints?: RenderPoint[];
   clipRotation?: number;
   rotation?: number;
+  rotationX?: number;
+  rotationY?: number;
+  depthValue?: number;
 }
 
 interface Point {
@@ -33,9 +38,22 @@ interface Point {
   y: number;
 }
 
+interface Point3D {
+  x: number;
+  y: number;
+  z: number;
+}
+
+interface ThreeDAnchor {
+  position: Point3D;
+  tangent: Point3D;
+  normal: Point3D;
+}
+
 const MIN_WEDGE_SWEEP_DEGREES = 0.5;
 const MAX_BLOCK_SPLIT_OFFSET = 0.18;
 const ORGANIC_VARIATION_MAX = 4_096;
+const THREE_D_DISTRIBUTION_MAX = 4_096;
 
 function degToRad(degrees: number) {
   return (degrees * Math.PI) / 180;
@@ -153,6 +171,69 @@ function getRotatedBounds(rect: RenderRect, radians: number): RenderRect {
 
 function projectPoint(point: Point, axis: Point) {
   return point.x * axis.x + point.y * axis.y;
+}
+
+function addPoint3D(a: Point3D, b: Point3D): Point3D {
+  return {
+    x: a.x + b.x,
+    y: a.y + b.y,
+    z: a.z + b.z,
+  };
+}
+
+function subtractPoint3D(a: Point3D, b: Point3D): Point3D {
+  return {
+    x: a.x - b.x,
+    y: a.y - b.y,
+    z: a.z - b.z,
+  };
+}
+
+function scalePoint3D(point: Point3D, scalar: number): Point3D {
+  return {
+    x: point.x * scalar,
+    y: point.y * scalar,
+    z: point.z * scalar,
+  };
+}
+
+function getPoint3DLength(point: Point3D) {
+  return Math.hypot(point.x, point.y, point.z);
+}
+
+function normalizePoint3D(point: Point3D): Point3D {
+  const length = getPoint3DLength(point);
+  if (length < 0.0001) {
+    return { x: 0, y: 0, z: 1 };
+  }
+
+  return scalePoint3D(point, 1 / length);
+}
+
+function crossPoint3D(a: Point3D, b: Point3D): Point3D {
+  return {
+    x: a.y * b.z - a.z * b.y,
+    y: a.z * b.x - a.x * b.z,
+    z: a.x * b.y - a.y * b.x,
+  };
+}
+
+function rotatePoint3D(point: Point3D, yawRadians: number, pitchRadians: number) {
+  const yawCos = Math.cos(yawRadians);
+  const yawSin = Math.sin(yawRadians);
+  const pitchCos = Math.cos(pitchRadians);
+  const pitchSin = Math.sin(pitchRadians);
+  const yawRotated = {
+    x: point.x * yawCos - point.z * yawSin,
+    y: point.y,
+    z: point.x * yawSin + point.z * yawCos,
+  };
+
+  return {
+    x: yawRotated.x,
+    y: yawRotated.y * pitchCos - yawRotated.z * pitchSin,
+    z: yawRotated.y * pitchSin + yawRotated.z * pitchCos,
+  };
 }
 
 function getInsetCanvasCorners(project: ProjectDocument): Point[] {
@@ -615,6 +696,11 @@ function getOrganicVariationCurve(variation: number) {
   return 1 - (1 - normalized) ** 1.8;
 }
 
+function getThreeDDistributionCurve(variation: number) {
+  const normalized = clamp(variation / THREE_D_DISTRIBUTION_MAX, 0, 1);
+  return 1 - (1 - normalized) ** 1.55;
+}
+
 function generateOrganic(context: GeneratorContext) {
   const {
     project: { canvas, layout, activeSeed },
@@ -764,12 +850,316 @@ function generateOrganic(context: GeneratorContext) {
   });
 }
 
+function createSphereAnchors(
+  count: number,
+  distributionCurve: number,
+): ThreeDAnchor[] {
+  const goldenAngle = Math.PI * (3 - Math.sqrt(5));
+  const phase = distributionCurve * Math.PI * 2;
+  const anchors: ThreeDAnchor[] = [];
+
+  for (let index = 0; index < count; index += 1) {
+    const offset = count === 1 ? 0 : index / (count - 1);
+    const y = lerp(0.96, -0.96, offset);
+    const radius = Math.sqrt(Math.max(0, 1 - y * y));
+    const theta = goldenAngle * index + phase;
+    const position = {
+      x: Math.cos(theta) * radius,
+      y,
+      z: Math.sin(theta) * radius,
+    };
+    const tangent = normalizePoint3D({
+      x: -Math.sin(theta),
+      y: 0,
+      z: Math.cos(theta),
+    });
+    const normal = normalizePoint3D(position);
+
+    anchors.push({
+      position,
+      tangent,
+      normal,
+    });
+  }
+
+  return anchors;
+}
+
+function createTorusAnchors(
+  count: number,
+  distributionCurve: number,
+): ThreeDAnchor[] {
+  const majorCount = Math.max(4, Math.round(Math.sqrt(count * 1.75)));
+  const minorCount = Math.max(3, Math.ceil(count / majorCount));
+  const majorRadius = 1;
+  const minorRadius = 0.38;
+  const uOffset = distributionCurve * Math.PI * 2;
+  const vOffset = distributionCurve * Math.PI * 4;
+  const anchors: ThreeDAnchor[] = [];
+
+  for (let index = 0; index < count; index += 1) {
+    const majorIndex = index % majorCount;
+    const minorIndex = Math.floor(index / majorCount) % minorCount;
+    const u = (Math.PI * 2 * majorIndex) / majorCount + uOffset;
+    const v = (Math.PI * 2 * minorIndex) / minorCount + vOffset;
+    const ringRadius = majorRadius + minorRadius * Math.cos(v);
+    const position = {
+      x: Math.cos(u) * ringRadius,
+      y: Math.sin(v) * minorRadius,
+      z: Math.sin(u) * ringRadius,
+    };
+    const tangent = normalizePoint3D({
+      x: -Math.sin(u) * ringRadius,
+      y: 0,
+      z: Math.cos(u) * ringRadius,
+    });
+    const normal = normalizePoint3D({
+      x: Math.cos(u) * Math.cos(v),
+      y: Math.sin(v),
+      z: Math.sin(u) * Math.cos(v),
+    });
+
+    anchors.push({
+      position,
+      tangent,
+      normal,
+    });
+  }
+
+  return anchors;
+}
+
+function createAttractorAnchors(
+  count: number,
+  distributionCurve: number,
+): ThreeDAnchor[] {
+  const sigma = lerp(9, 18, distributionCurve);
+  const rho = lerp(24, 36, distributionCurve);
+  const beta = lerp(2.2, 3.1, distributionCurve);
+  const dt = 0.009;
+  const totalSteps = Math.max(2_400, count * 48);
+  const burnIn = 640;
+  let x = 0.12 + distributionCurve * 0.08;
+  let y = 0.08;
+  let z = 0.14 + distributionCurve * 0.06;
+  const points: Point3D[] = [];
+
+  for (let step = 0; step < totalSteps + burnIn; step += 1) {
+    const dx = sigma * (y - x);
+    const dy = x * (rho - z) - y;
+    const dz = x * y - beta * z;
+    x += dx * dt;
+    y += dy * dt;
+    z += dz * dt;
+
+    if (step >= burnIn) {
+      points.push({ x, y, z });
+    }
+  }
+
+  const maxExtent = Math.max(
+    ...points.flatMap((point) => [Math.abs(point.x), Math.abs(point.y), Math.abs(point.z)]),
+    1,
+  );
+  const normalizedPoints = points.map((point) => ({
+    x: point.x / maxExtent,
+    y: point.y / maxExtent,
+    z: point.z / maxExtent,
+  }));
+  const anchors: ThreeDAnchor[] = [];
+
+  for (let index = 0; index < count; index += 1) {
+    const pointIndex = Math.min(
+      normalizedPoints.length - 2,
+      Math.floor((index / count) * (normalizedPoints.length - 1)),
+    );
+    const position = normalizedPoints[pointIndex]!;
+    const previous = normalizedPoints[Math.max(0, pointIndex - 1)]!;
+    const next = normalizedPoints[Math.min(normalizedPoints.length - 1, pointIndex + 1)]!;
+    const tangent = normalizePoint3D(subtractPoint3D(next, previous));
+    const normal = normalizePoint3D(
+      crossPoint3D(tangent, normalizePoint3D(addPoint3D(position, { x: 0.12, y: 0.24, z: 0.48 }))),
+    );
+
+    anchors.push({
+      position,
+      tangent,
+      normal: getPoint3DLength(normal) < 0.0001 ? { x: 0, y: 1, z: 0 } : normal,
+    });
+  }
+
+  return anchors;
+}
+
+function buildThreeDAnchors(
+  structure: ThreeDStructureMode,
+  count: number,
+  distributionCurve: number,
+) {
+  if (structure === "torus") {
+    return createTorusAnchors(count, distributionCurve);
+  }
+
+  if (structure === "attractor") {
+    return createAttractorAnchors(count, distributionCurve);
+  }
+
+  return createSphereAnchors(count, distributionCurve);
+}
+
+function projectThreeDPoint(
+  point: Point3D,
+  innerRect: RenderRect,
+  focalLength: number,
+  cameraDistance: number,
+  pan: Point,
+) {
+  const depth = cameraDistance + point.z;
+  const safeDepth = Math.max(depth, focalLength * 0.12);
+  const scale = focalLength / safeDepth;
+
+  return {
+    point: {
+      x: innerRect.x + innerRect.width / 2 + pan.x + point.x * scale,
+      y: innerRect.y + innerRect.height / 2 + pan.y + point.y * scale,
+    },
+    depth: safeDepth,
+    scale,
+  };
+}
+
+function generateThreeD(context: GeneratorContext) {
+  const {
+    project: { canvas, layout, activeSeed },
+  } = context;
+  const rng = mulberry32(activeSeed + 2_173 + Math.round(layout.threeDDistribution) * 379);
+  const innerRect = {
+    x: canvas.inset,
+    y: canvas.inset,
+    width: canvas.width - canvas.inset * 2,
+    height: canvas.height - canvas.inset * 2,
+  };
+  const minDimension = Math.min(innerRect.width, innerRect.height);
+  const count = Math.max(12, Math.round(10 + layout.density * 24));
+  const distributionCurve = getThreeDDistributionCurve(layout.threeDDistribution);
+  const worldRadius = minDimension * lerp(0.18, 0.56, layout.threeDDepth);
+  const cameraDistance = worldRadius * lerp(2.2, 7.2, layout.threeDCameraDistance);
+  const focalLength = minDimension * lerp(0.42, 1.45, layout.threeDPerspective);
+  const pan = {
+    x: innerRect.width * layout.threeDPanX * 0.42,
+    y: innerRect.height * layout.threeDPanY * 0.42,
+  };
+  const anchors = buildThreeDAnchors(layout.threeDStructure, count, distributionCurve);
+  const yawRadians = degToRad(layout.threeDYaw);
+  const pitchRadians = degToRad(layout.threeDPitch);
+  const jitterAmount = worldRadius * layout.threeDZJitter * 0.55;
+  const baseCardSize = clamp(minDimension / Math.sqrt(count) * 0.68, 72, minDimension * 0.22);
+  const billboard = clamp(layout.threeDBillboard, 0, 1);
+  const billboardRight = { x: 1, y: 0, z: 0 };
+  const billboardUp = { x: 0, y: 1, z: 0 };
+  const cells: LayoutCell[] = [];
+
+  for (let index = 0; index < anchors.length; index += 1) {
+    const anchor = anchors[index]!;
+    const jitteredPosition = {
+      x: anchor.position.x * worldRadius,
+      y: anchor.position.y * worldRadius,
+      z: anchor.position.z * worldRadius + (rng.next() - 0.5) * jitterAmount,
+    };
+    const rotatedPosition = rotatePoint3D(jitteredPosition, yawRadians, pitchRadians);
+    const rotatedTangent = normalizePoint3D(
+      rotatePoint3D(anchor.tangent, yawRadians, pitchRadians),
+    );
+    const rotatedNormal = normalizePoint3D(
+      rotatePoint3D(anchor.normal, yawRadians, pitchRadians),
+    );
+    const projected = projectThreeDPoint(
+      rotatedPosition,
+      innerRect,
+      focalLength,
+      cameraDistance,
+      pan,
+    );
+    const tangentSample = projectThreeDPoint(
+      addPoint3D(rotatedPosition, scalePoint3D(rotatedTangent, baseCardSize * 0.55)),
+      innerRect,
+      focalLength,
+      cameraDistance,
+      pan,
+    );
+    const depthValue = clamp(
+      1 - (projected.depth - (cameraDistance - worldRadius)) / (worldRadius * 2.35),
+      0,
+      1,
+    );
+    const tangentAngle = Math.atan2(
+      tangentSample.point.y - projected.point.y,
+      tangentSample.point.x - projected.point.x,
+    );
+    const normalX = clamp(rotatedNormal.x, -1, 1);
+    const normalY = clamp(rotatedNormal.y, -1, 1);
+    const cardWidth = baseCardSize * projected.scale * (0.9 + rng.next() * 0.32);
+    const cardHeight = baseCardSize * projected.scale * (0.78 + rng.next() * 0.24);
+    const orientedUp = normalizePoint3D(crossPoint3D(rotatedNormal, rotatedTangent));
+    const cardRight = normalizePoint3D({
+      x: lerp(rotatedTangent.x, billboardRight.x, billboard),
+      y: lerp(rotatedTangent.y, billboardRight.y, billboard),
+      z: lerp(rotatedTangent.z, billboardRight.z, billboard),
+    });
+    const cardUp = normalizePoint3D({
+      x: lerp(orientedUp.x, billboardUp.x, billboard),
+      y: lerp(orientedUp.y, billboardUp.y, billboard),
+      z: lerp(orientedUp.z, billboardUp.z, billboard),
+    });
+    const halfWidthWorld = baseCardSize * (0.9 + rng.next() * 0.32) / 2;
+    const halfHeightWorld = baseCardSize * (0.78 + rng.next() * 0.24) / 2;
+    const projectedCorners = [
+      addPoint3D(
+        addPoint3D(rotatedPosition, scalePoint3D(cardRight, -halfWidthWorld)),
+        scalePoint3D(cardUp, -halfHeightWorld),
+      ),
+      addPoint3D(
+        addPoint3D(rotatedPosition, scalePoint3D(cardRight, halfWidthWorld)),
+        scalePoint3D(cardUp, -halfHeightWorld),
+      ),
+      addPoint3D(
+        addPoint3D(rotatedPosition, scalePoint3D(cardRight, halfWidthWorld)),
+        scalePoint3D(cardUp, halfHeightWorld),
+      ),
+      addPoint3D(
+        addPoint3D(rotatedPosition, scalePoint3D(cardRight, -halfWidthWorld)),
+        scalePoint3D(cardUp, halfHeightWorld),
+      ),
+    ].map((corner) =>
+      projectThreeDPoint(corner, innerRect, focalLength, cameraDistance, pan).point,
+    );
+    const rect = getBoundsForPoints(projectedCorners);
+    const shape = assignShape(index, layout.shapeMode, layout.family);
+
+    cells.push({
+      ...rect,
+      shape,
+      quadPoints: projectedCorners,
+      rotation: 0,
+      rotationX: 0,
+      rotationY: 0,
+      depthValue,
+    });
+  }
+
+  return cells.sort(
+    (a, b) =>
+      (a.depthValue ?? 0) - (b.depthValue ?? 0),
+  );
+}
+
 const layoutRegistry: Record<LayoutFamily, (context: GeneratorContext) => LayoutCell[]> = {
   grid: generateGrid,
   strips: generateStrips,
   blocks: generateBlocks,
   radial: generateRadial,
   organic: generateOrganic,
+  "3d": generateThreeD,
 };
 
 function assetByStrategy(
@@ -863,6 +1253,14 @@ function reflectSlices(slices: RenderSlice[], project: ProjectDocument) {
               mirroredCenter.y - sliceCenter.y,
             )
           : null,
+        quadPoints: slice.quadPoints
+          ? translatePoints(
+              slice.quadPoints,
+              mirroredCenter.x - sliceCenter.x,
+              mirroredCenter.y - sliceCenter.y,
+            )
+          : null,
+        rotationY: -slice.rotationY,
         mirrorAxis: "x",
       });
     }
@@ -886,6 +1284,14 @@ function reflectSlices(slices: RenderSlice[], project: ProjectDocument) {
               mirroredCenter.y - sliceCenter.y,
             )
           : null,
+        quadPoints: slice.quadPoints
+          ? translatePoints(
+              slice.quadPoints,
+              mirroredCenter.x - sliceCenter.x,
+              mirroredCenter.y - sliceCenter.y,
+            )
+          : null,
+        rotationX: -slice.rotationX,
         mirrorAxis: "y",
       });
     }
@@ -905,10 +1311,18 @@ function reflectSlices(slices: RenderSlice[], project: ProjectDocument) {
               y: centerY,
             })
           : null;
+        const quadPoints = slice.quadPoints
+          ? rotatePoints(slice.quadPoints, angle, {
+              x: centerX,
+              y: centerY,
+            })
+          : null;
         radialClones.push({
           ...slice,
           id: `${slice.id}_r${copyIndex}`,
-          rect: clipPathPoints
+          rect: quadPoints
+            ? getBoundsForPoints(quadPoints)
+            : clipPathPoints
             ? getBoundsForPoints(clipPathPoints)
             : {
                 ...slice.rect,
@@ -931,8 +1345,11 @@ function reflectSlices(slices: RenderSlice[], project: ProjectDocument) {
               }
             : null,
           clipPathPoints,
+          quadPoints,
           clipRotation: slice.clipRotation + angle,
           rotation: slice.rotation + angle,
+          rotationX: slice.rotationX,
+          rotationY: slice.rotationY,
         });
       }
     }
@@ -1189,8 +1606,14 @@ function applyLetterbox(slices: RenderSlice[], project: ProjectDocument) {
       x: canvasCenterX + (point.x - canvasCenterX) * scale,
       y: canvasCenterY + (point.y - canvasCenterY) * scale,
     })) ?? null;
+    const quadPoints = slice.quadPoints?.map((point) => ({
+      x: canvasCenterX + (point.x - canvasCenterX) * scale,
+      y: canvasCenterY + (point.y - canvasCenterY) * scale,
+    })) ?? null;
     const rect =
-      clipPathPoints
+      quadPoints
+        ? getBoundsForPoints(quadPoints)
+        : clipPathPoints
         ? getBoundsForPoints(clipPathPoints)
         : clipRect
         ? getRotatedBounds(clipRect, slice.clipRotation)
@@ -1201,6 +1624,7 @@ function applyLetterbox(slices: RenderSlice[], project: ProjectDocument) {
       rect,
       clipRect,
       clipPathPoints,
+      quadPoints,
       imageRect,
     };
   });
@@ -1251,12 +1675,25 @@ export function buildRenderSlices(project: ProjectDocument, assets: SourceAsset[
             1 + overlapSize / Math.max(cell.width, cell.height, 1),
           )
         : null;
+    const quadPoints =
+      cell.quadPoints && cell.quadPoints.length === 4
+        ? scalePointsFromCenter(
+            cell.quadPoints,
+            {
+              x: cell.x + cell.width / 2,
+              y: cell.y + cell.height / 2,
+            },
+            1 + overlapSize / Math.max(cell.width, cell.height, 1),
+          )
+        : null;
     const clipRect =
       project.layout.family === "strips" && baseClipRect
         ? expandStripClipRect(baseClipRect, overlapSize)
         : baseClipRect;
     const rect =
-      clipPathPoints
+      quadPoints
+        ? getBoundsForPoints(quadPoints)
+        : clipPathPoints
         ? getBoundsForPoints(clipPathPoints)
         : clipRect && project.layout.family === "strips"
         ? getRotatedBounds(clipRect, cell.clipRotation ?? 0)
@@ -1277,11 +1714,18 @@ export function buildRenderSlices(project: ProjectDocument, assets: SourceAsset[
       rect,
       clipRect,
       clipPathPoints,
+      quadPoints,
       clipRotation: cell.clipRotation ?? 0,
       imageRect: null,
       rotation: (cell.rotation ?? 0) + (rotationNoise * Math.PI) / 180,
+      rotationX: cell.rotationX ?? 0,
+      rotationY: cell.rotationY ?? 0,
       scale: scaleNoise,
-      opacity: project.compositing.opacity,
+      opacity:
+        project.layout.family === "3d" && cell.depthValue !== undefined
+          ? project.compositing.opacity *
+            lerp(0.72, 1, cell.depthValue)
+          : project.compositing.opacity,
       blendMode: project.compositing.blendMode,
       clipInset: project.compositing.feather,
       displacementOffset: { x: displacement, y: displacement * (rng.next() - 0.5) },
@@ -1289,7 +1733,7 @@ export function buildRenderSlices(project: ProjectDocument, assets: SourceAsset[
       sourceCrop: null,
       wedgeSweepRadians: getWedgeSweepRadians(cell.shape, project, rng),
       mirrorAxis: "none",
-      depth: rng.next(),
+      depth: cell.depthValue ?? rng.next(),
     };
   });
 

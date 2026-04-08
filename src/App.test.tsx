@@ -33,7 +33,7 @@ type AppStoreState = ReturnType<typeof useAppStore.getState>;
 type UpdateProject = AppStoreState["updateProject"];
 
 function createStoreState(overrides?: {
-  family?: "grid" | "strips" | "blocks" | "radial" | "organic";
+  family?: "grid" | "strips" | "blocks" | "radial" | "organic" | "3d";
   shapeMode?:
     | "rect"
     | "triangle"
@@ -209,6 +209,16 @@ describe("App conditional sliders", () => {
     expectSliderHidden("Source Bias");
     expectSliderHidden("Palette Emphasis");
     expectSliderHidden("Distribution");
+    expect(screen.queryByLabelText("Structure")).not.toBeInTheDocument();
+    expectSliderHidden("Depth");
+    expectSliderHidden("Camera Distance");
+    expectSliderHidden("Yaw");
+    expectSliderHidden("Pitch");
+    expectSliderHidden("Perspective");
+    expectSliderHidden("Billboard");
+    expectSliderHidden("Z Jitter");
+    expectSliderHidden("Pan X");
+    expectSliderHidden("Pan Y");
   });
 
   it("enables strips-only density and gutter for strips layouts", () => {
@@ -239,6 +249,7 @@ describe("App conditional sliders", () => {
     expectSliderEnabled("Hide Percentage");
     expectSliderEnabled("Letterbox");
     expectSliderHidden("Distribution");
+    expect(screen.queryByLabelText("Structure")).not.toBeInTheDocument();
   });
 
   it("shows density on the new UI scale and stores quadruple the committed value", () => {
@@ -266,6 +277,28 @@ describe("App conditional sliders", () => {
 
     const nextProject = update(structuredClone(state.projects[0]!));
     expect(nextProject.layout.density).toBe(4);
+  });
+
+  it("updates slider-backed settings continuously while dragging", () => {
+    const state = createStoreState({
+      family: "organic",
+      shapeMode: "blob",
+      symmetryMode: "none",
+      strategy: "random",
+      organicVariation: 0,
+    });
+    mockedUseAppStore.mockReturnValue(state);
+
+    render(<App />);
+
+    const slider = screen.getByLabelText("Distribution");
+    fireEvent.keyDown(slider, { key: "ArrowRight" });
+
+    expect(state.updateProject).toHaveBeenCalledTimes(1);
+
+    const [[update]] = state.updateProject.mock.calls;
+    const nextProject = update(structuredClone(state.projects[0]!));
+    expect(nextProject.layout.organicVariation).toBe(1);
   });
 
   it("hides unrelated layout sliders for blocks layouts and shows weighted and radial controls when active", () => {
@@ -302,6 +335,7 @@ describe("App conditional sliders", () => {
     expectSliderEnabled("Source Bias");
     expectSliderHidden("Palette Emphasis");
     expectSliderHidden("Distribution");
+    expect(screen.queryByLabelText("Structure")).not.toBeInTheDocument();
   });
 
   it("enables palette emphasis only for palette assignment", () => {
@@ -334,6 +368,7 @@ describe("App conditional sliders", () => {
     expectSliderHidden("Source Bias");
     expectSliderEnabled("Palette Emphasis");
     expectSliderHidden("Distribution");
+    expect(screen.queryByLabelText("Structure")).not.toBeInTheDocument();
   });
 
   it("shows the corner radius slider only for rect shape mode", () => {
@@ -368,6 +403,7 @@ describe("App conditional sliders", () => {
     expect(getGeometryOptions("radial")).not.toContain("interlock");
     expect(getGeometryOptions("organic")).toContain("blob");
     expect(getGeometryOptions("organic")).toContain("rect");
+    expect(getGeometryOptions("3d")).not.toContain("interlock");
   });
 
   it("coerces interlock back to triangle when leaving grid", () => {
@@ -376,6 +412,7 @@ describe("App conditional sliders", () => {
     expect(coerceShapeModeForFamily("strips", "triangle")).toBe("triangle");
     expect(coerceShapeModeForFamily("organic", "rect")).toBe("rect");
     expect(coerceShapeModeForFamily("grid", "blob")).toBe("rect");
+    expect(coerceShapeModeForFamily("3d", "blob")).toBe("rect");
   });
 
   it("shows density for organic layouts while hiding unrelated family controls", () => {
@@ -419,6 +456,35 @@ describe("App conditional sliders", () => {
     expectSliderEnabled("Corner Radius");
     expectSliderEnabled("Density");
     expectSliderEnabled("Distribution");
+  });
+
+  it("shows 3d-only controls for 3d layouts", () => {
+    renderApp({
+      family: "3d",
+      shapeMode: "rect",
+      symmetryMode: "none",
+      strategy: "random",
+    });
+
+    expectSliderEnabled("Corner Radius");
+    expectSliderEnabled("Density");
+    expect(screen.getByLabelText("Structure")).toBeInTheDocument();
+    expectSliderEnabled("Distribution");
+    expectSliderEnabled("Depth");
+    expectSliderEnabled("Camera Distance");
+    expectSliderEnabled("Pan X");
+    expectSliderEnabled("Pan Y");
+    expectSliderEnabled("Yaw");
+    expectSliderEnabled("Pitch");
+    expectSliderEnabled("Perspective");
+    expectSliderEnabled("Billboard");
+    expectSliderEnabled("Z Jitter");
+    expectSliderHidden("Columns");
+    expectSliderHidden("Rows");
+    expectSliderHidden("Radial Segments");
+    expectSliderHidden("Radial Rings");
+    expectSliderHidden("Gutter");
+    expectSliderHidden("Block Depth");
   });
 
   it("stores the organic distribution slider as an integer variation seed", () => {

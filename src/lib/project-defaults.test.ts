@@ -27,6 +27,17 @@ describe("createProjectDocument", () => {
     expect(project.layout.radialInnerRadius).toBe(0);
     expect(project.layout.radialChildRotationMode).toBe("tangent");
     expect(project.layout.organicVariation).toBe(0);
+    expect(project.layout.threeDStructure).toBe("sphere");
+    expect(project.layout.threeDDistribution).toBe(0);
+    expect(project.layout.threeDDepth).toBe(0.6);
+    expect(project.layout.threeDCameraDistance).toBe(0.62);
+    expect(project.layout.threeDPanX).toBe(0);
+    expect(project.layout.threeDPanY).toBe(0);
+    expect(project.layout.threeDYaw).toBe(28);
+    expect(project.layout.threeDPitch).toBe(-18);
+    expect(project.layout.threeDPerspective).toBe(0.68);
+    expect(project.layout.threeDBillboard).toBe(0.78);
+    expect(project.layout.threeDZJitter).toBe(0.18);
     expect(project.effects.kaleidoscopeCenterX).toBe(0.5);
     expect(project.effects.kaleidoscopeCenterY).toBe(0.5);
     expect(project.effects.kaleidoscopeAngleOffset).toBe(0);
@@ -136,6 +147,55 @@ describe("createProjectDocument", () => {
     } as unknown as ProjectDocument;
 
     expect(normalizeProjectDocument(legacyProject).layout.organicVariation).toBe(0);
+  });
+
+  it("normalizes legacy projects without 3d controls to defaults", () => {
+    const project = createProjectDocument("Legacy 3D");
+    const legacyProject = {
+      ...project,
+      layout: {
+        family: project.layout.family,
+        shapeMode: project.layout.shapeMode,
+        rectCornerRadius: project.layout.rectCornerRadius,
+        density: project.layout.density,
+        stripAngle: project.layout.stripAngle,
+        columns: project.layout.columns,
+        rows: project.layout.rows,
+        gutter: project.layout.gutter,
+        blockDepth: project.layout.blockDepth,
+        blockSplitRandomness: project.layout.blockSplitRandomness,
+        blockMinSize: project.layout.blockMinSize,
+        blockSplitBias: project.layout.blockSplitBias,
+        stripOrientation: project.layout.stripOrientation,
+        radialSegments: project.layout.radialSegments,
+        radialRings: project.layout.radialRings,
+        radialAngleOffset: project.layout.radialAngleOffset,
+        radialRingPhaseStep: project.layout.radialRingPhaseStep,
+        radialInnerRadius: project.layout.radialInnerRadius,
+        radialChildRotationMode: project.layout.radialChildRotationMode,
+        symmetryMode: project.layout.symmetryMode,
+        symmetryCopies: project.layout.symmetryCopies,
+        hidePercentage: project.layout.hidePercentage,
+        letterbox: project.layout.letterbox,
+        wedgeAngle: project.layout.wedgeAngle,
+        wedgeJitter: project.layout.wedgeJitter,
+        randomness: project.layout.randomness,
+        organicVariation: project.layout.organicVariation,
+      },
+    } as unknown as ProjectDocument;
+
+    const normalized = normalizeProjectDocument(legacyProject).layout;
+    expect(normalized.threeDStructure).toBe("sphere");
+    expect(normalized.threeDDistribution).toBe(0);
+    expect(normalized.threeDDepth).toBe(0.6);
+    expect(normalized.threeDCameraDistance).toBe(0.62);
+    expect(normalized.threeDPanX).toBe(0);
+    expect(normalized.threeDPanY).toBe(0);
+    expect(normalized.threeDYaw).toBe(28);
+    expect(normalized.threeDPitch).toBe(-18);
+    expect(normalized.threeDPerspective).toBe(0.68);
+    expect(normalized.threeDBillboard).toBe(0.78);
+    expect(normalized.threeDZJitter).toBe(0.18);
   });
 
   it("normalizes legacy projects without grid gutter axes from the single gutter", () => {

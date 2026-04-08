@@ -81,6 +81,7 @@ import type {
   SourceAsset,
   SourceAssignmentStrategy,
   SourceKind,
+  ThreeDStructureMode,
 } from "@/types/project";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
@@ -146,6 +147,7 @@ const GRADIENT_DIRECTIONS: GradientDirection[] = [
   "diagonal-up",
 ];
 const ORGANIC_DISTRIBUTION_MAX = 4_096;
+const THREE_D_DISTRIBUTION_MAX = 4_096;
 
 function formatSourceModeLabel(mode: SourceKind) {
   if (mode === "solid") return "Solid";
@@ -274,9 +276,11 @@ function SliderField({
   formatter?: (value: number) => string;
 }) {
   const [draftValue, setDraftValue] = useState<number | null>(null);
+  const lastEmittedValueRef = useRef<number | null>(null);
 
   useEffect(() => {
     setDraftValue(null);
+    lastEmittedValueRef.current = value;
   }, [value]);
 
   const displayValue = draftValue ?? value;
@@ -290,14 +294,17 @@ function SliderField({
         max={max}
         step={step}
         value={[displayValue]}
-        onValueChange={(next) => setDraftValue(next[0] ?? value)}
-        onValueCommit={(next) => {
-          const committedValue = next[0] ?? draftValue ?? value;
-          if (committedValue === value) {
-            setDraftValue(null);
+        onValueChange={(next) => {
+          const nextValue = next[0] ?? value;
+          setDraftValue(nextValue);
+          if (lastEmittedValueRef.current === nextValue) {
             return;
           }
-          onChange(committedValue);
+          lastEmittedValueRef.current = nextValue;
+          onChange(nextValue);
+        }}
+        onValueCommit={() => {
+          setDraftValue(null);
         }}
       />
     </ControlBlock>
@@ -513,6 +520,7 @@ function App() {
   const isBlocksFamily = activeProject.layout.family === "blocks";
   const isRadialFamily = activeProject.layout.family === "radial";
   const isOrganicFamily = activeProject.layout.family === "organic";
+  const isThreeDFamily = activeProject.layout.family === "3d";
   const isRectShapeMode = activeProject.layout.shapeMode === "rect";
   const isWedgeShapeMode =
     activeProject.layout.shapeMode === "wedge" ||
@@ -994,7 +1002,7 @@ function App() {
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          {["blocks", "grid", "strips", "radial", "organic"].map(
+                          {["blocks", "grid", "strips", "radial", "organic", "3d"].map(
                             (option) => (
                               <SelectItem key={option} value={option}>
                                 {option}
@@ -1048,7 +1056,7 @@ function App() {
                         }
                       />
                     ) : null}
-                    {isStripsFamily || isOrganicFamily ? (
+                    {isStripsFamily || isOrganicFamily || isThreeDFamily ? (
                       <>
                         {isStripsFamily ? (
                           <SliderField
@@ -1089,6 +1097,33 @@ function App() {
                             }))
                           }
                         />
+                        {isThreeDFamily ? (
+                          <ControlBlock label="Structure">
+                            <Select
+                              value={activeProject.layout.threeDStructure}
+                              onValueChange={(value) =>
+                                patchProject((project) => ({
+                                  ...project,
+                                  layout: {
+                                    ...project.layout,
+                                    threeDStructure: value as ThreeDStructureMode,
+                                  },
+                                }))
+                              }
+                            >
+                              <SelectTrigger aria-label="Structure">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {["sphere", "torus", "attractor"].map((option) => (
+                                  <SelectItem key={option} value={option}>
+                                    {option}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </ControlBlock>
+                        ) : null}
                         {isOrganicFamily ? (
                           <SliderField
                             label="Distribution"
@@ -1107,6 +1142,180 @@ function App() {
                               }))
                             }
                           />
+                        ) : null}
+                        {isThreeDFamily ? (
+                          <>
+                            <SliderField
+                              label="Distribution"
+                              min={0}
+                              max={THREE_D_DISTRIBUTION_MAX}
+                              step={1}
+                              value={activeProject.layout.threeDDistribution}
+                              formatter={(value) => `${Math.round(value)}`}
+                              onChange={(value) =>
+                                patchProject((project) => ({
+                                  ...project,
+                                  layout: {
+                                    ...project.layout,
+                                    threeDDistribution: Math.round(value),
+                                  },
+                                }))
+                              }
+                            />
+                            <SliderField
+                              label="Depth"
+                              min={0}
+                              max={1}
+                              step={0.01}
+                              value={activeProject.layout.threeDDepth}
+                              formatter={(value) => `${Math.round(value * 100)}%`}
+                              onChange={(value) =>
+                                patchProject((project) => ({
+                                  ...project,
+                                  layout: {
+                                    ...project.layout,
+                                    threeDDepth: value,
+                                  },
+                                }))
+                              }
+                            />
+                            <SliderField
+                              label="Camera Distance"
+                              min={0}
+                              max={1}
+                              step={0.01}
+                              value={activeProject.layout.threeDCameraDistance}
+                              formatter={(value) => `${Math.round(value * 100)}%`}
+                              onChange={(value) =>
+                                patchProject((project) => ({
+                                  ...project,
+                                  layout: {
+                                    ...project.layout,
+                                    threeDCameraDistance: value,
+                                  },
+                                }))
+                              }
+                            />
+                            <SliderField
+                              label="Pan X"
+                              min={-1}
+                              max={1}
+                              step={0.01}
+                              value={activeProject.layout.threeDPanX}
+                              formatter={(value) => `${Math.round(value * 100)}%`}
+                              onChange={(value) =>
+                                patchProject((project) => ({
+                                  ...project,
+                                  layout: {
+                                    ...project.layout,
+                                    threeDPanX: value,
+                                  },
+                                }))
+                              }
+                            />
+                            <SliderField
+                              label="Pan Y"
+                              min={-1}
+                              max={1}
+                              step={0.01}
+                              value={activeProject.layout.threeDPanY}
+                              formatter={(value) => `${Math.round(value * 100)}%`}
+                              onChange={(value) =>
+                                patchProject((project) => ({
+                                  ...project,
+                                  layout: {
+                                    ...project.layout,
+                                    threeDPanY: value,
+                                  },
+                                }))
+                              }
+                            />
+                            <SliderField
+                              label="Yaw"
+                              min={-180}
+                              max={180}
+                              step={1}
+                              value={activeProject.layout.threeDYaw}
+                              formatter={(value) => `${Math.round(value)}°`}
+                              onChange={(value) =>
+                                patchProject((project) => ({
+                                  ...project,
+                                  layout: {
+                                    ...project.layout,
+                                    threeDYaw: value,
+                                  },
+                                }))
+                              }
+                            />
+                            <SliderField
+                              label="Pitch"
+                              min={-89}
+                              max={89}
+                              step={1}
+                              value={activeProject.layout.threeDPitch}
+                              formatter={(value) => `${Math.round(value)}°`}
+                              onChange={(value) =>
+                                patchProject((project) => ({
+                                  ...project,
+                                  layout: {
+                                    ...project.layout,
+                                    threeDPitch: value,
+                                  },
+                                }))
+                              }
+                            />
+                            <SliderField
+                              label="Perspective"
+                              min={0}
+                              max={1}
+                              step={0.01}
+                              value={activeProject.layout.threeDPerspective}
+                              formatter={(value) => `${Math.round(value * 100)}%`}
+                              onChange={(value) =>
+                                patchProject((project) => ({
+                                  ...project,
+                                  layout: {
+                                    ...project.layout,
+                                    threeDPerspective: value,
+                                  },
+                                }))
+                              }
+                            />
+                            <SliderField
+                              label="Billboard"
+                              min={0}
+                              max={1}
+                              step={0.01}
+                              value={activeProject.layout.threeDBillboard}
+                              formatter={(value) => `${Math.round(value * 100)}%`}
+                              onChange={(value) =>
+                                patchProject((project) => ({
+                                  ...project,
+                                  layout: {
+                                    ...project.layout,
+                                    threeDBillboard: value,
+                                  },
+                                }))
+                              }
+                            />
+                            <SliderField
+                              label="Z Jitter"
+                              min={0}
+                              max={1}
+                              step={0.01}
+                              value={activeProject.layout.threeDZJitter}
+                              formatter={(value) => `${Math.round(value * 100)}%`}
+                              onChange={(value) =>
+                                patchProject((project) => ({
+                                  ...project,
+                                  layout: {
+                                    ...project.layout,
+                                    threeDZJitter: value,
+                                  },
+                                }))
+                              }
+                            />
+                          </>
                         ) : null}
                       </>
                     ) : null}

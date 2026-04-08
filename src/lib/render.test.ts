@@ -39,6 +39,7 @@ function createMockContext() {
     translate: vi.fn(),
     rotate: vi.fn(),
     scale: vi.fn(),
+    transform: vi.fn(),
     setTransform: vi.fn(),
     fillStyle: "",
     strokeStyle: "",
@@ -222,6 +223,51 @@ describe("renderProjectToCanvas", () => {
     expect(context.arc).not.toHaveBeenCalled();
     expect(context.moveTo).toHaveBeenCalled();
     expect(context.lineTo.mock.calls.length).toBeGreaterThan(10);
+  });
+
+  it("warps 3d slices through projected card quads", async () => {
+    const project = createProjectDocument("3D Warp Render");
+    project.layout.family = "3d";
+    project.layout.shapeMode = "rect";
+    project.layout.symmetryMode = "none";
+    project.compositing.overlap = 0;
+    project.compositing.shadow = 0;
+    project.effects.rotationJitter = 0;
+    project.effects.scaleJitter = 0;
+    project.effects.displacement = 0;
+    project.effects.distortion = 0;
+    project.effects.sharpen = 0;
+    project.effects.kaleidoscopeSegments = 1;
+
+    const context = createMockContext();
+    const surfaceContext = createMockContext();
+    const canvas = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn(() => context),
+    } as unknown as HTMLCanvasElement;
+    const surfaceCanvas = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn(() => surfaceContext),
+    } as unknown as HTMLCanvasElement;
+    const createElementSpy = vi
+      .spyOn(document, "createElement")
+      .mockReturnValue(surfaceCanvas as never);
+
+    try {
+      await renderProjectToCanvas(
+        project,
+        [asset],
+        new Map([[asset.id, { asset, bitmap: {} as ImageBitmap }]]),
+        canvas,
+      );
+    } finally {
+      createElementSpy.mockRestore();
+    }
+
+    expect(context.transform).toHaveBeenCalled();
+    expect(context.drawImage).toHaveBeenCalled();
   });
 
   it("renders interlock slices as rotated triangle paths clipped to the inset area", async () => {

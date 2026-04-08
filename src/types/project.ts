@@ -6,8 +6,9 @@ export type GeometryShape =
   | "ring"
   | "wedge"
   | "mixed";
-export type LayoutFamily = "grid" | "strips" | "blocks" | "radial" | "organic";
+export type LayoutFamily = "grid" | "strips" | "blocks" | "radial" | "organic" | "3d";
 export type RadialChildRotationMode = "none" | "tangent" | "outward";
+export type ThreeDStructureMode = "sphere" | "torus" | "attractor";
 export type KaleidoscopeMirrorMode =
   | "rotate-only"
   | "alternate"
@@ -119,6 +120,17 @@ export interface LayoutSettings {
   wedgeJitter: number;
   randomness: number;
   organicVariation: number;
+  threeDStructure: ThreeDStructureMode;
+  threeDDistribution: number;
+  threeDDepth: number;
+  threeDCameraDistance: number;
+  threeDPanX: number;
+  threeDPanY: number;
+  threeDYaw: number;
+  threeDPitch: number;
+  threeDPerspective: number;
+  threeDBillboard: number;
+  threeDZJitter: number;
 }
 
 export interface SourceMappingSettings {
@@ -271,9 +283,12 @@ export interface RenderSlice {
   rect: RenderRect;
   clipRect: RenderRect | null;
   clipPathPoints: RenderPoint[] | null;
+  quadPoints: RenderPoint[] | null;
   clipRotation: number;
   imageRect: RenderRect | null;
   rotation: number;
+  rotationX: number;
+  rotationY: number;
   scale: number;
   opacity: number;
   blendMode: BlendMode;

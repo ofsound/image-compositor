@@ -508,8 +508,7 @@ function App() {
     activeProject.sourceMapping.strategy === "weighted";
   const isPaletteAssignment =
     activeProject.sourceMapping.strategy === "palette";
-  const isKaleidoscopeActive =
-    activeProject.effects.kaleidoscopeSegments > 1;
+  const isKaleidoscopeActive = activeProject.effects.kaleidoscopeSegments > 1;
   const geometryOptions = getGeometryOptions(activeProject.layout.family);
   const geometryValue = geometryOptions.includes(activeProject.layout.shapeMode)
     ? activeProject.layout.shapeMode
@@ -1949,7 +1948,9 @@ function App() {
                           min={-180}
                           max={180}
                           step={1}
-                          value={activeProject.effects.kaleidoscopeRotationDrift}
+                          value={
+                            activeProject.effects.kaleidoscopeRotationDrift
+                          }
                           formatter={(value) => `${Math.round(value)}°`}
                           onChange={(value) =>
                             patchProject((project) => ({

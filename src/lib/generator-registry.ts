@@ -1162,6 +1162,11 @@ const layoutRegistry: Record<LayoutFamily, (context: GeneratorContext) => Layout
   "3d": generateThreeD,
 };
 
+function normalizeRank(index: number, total: number) {
+  if (total <= 1) return 0;
+  return index / (total - 1);
+}
+
 function assetByStrategy(
   strategy: SourceAssignmentStrategy,
   assets: SourceAsset[],
@@ -1187,11 +1192,35 @@ function assetByStrategy(
   }
 
   if (strategy === "palette") {
-    const weighted = [...assets].sort(
-      (a, b) =>
-        b.palette.length * project.sourceMapping.paletteEmphasis - a.palette.length * project.sourceMapping.paletteEmphasis,
+    const baseIndexById = new Map(assets.map((asset, assetIndex) => [asset.id, assetIndex]));
+    const paletteRanked = [...assets].sort((a, b) => {
+      const paletteDifference = b.palette.length - a.palette.length;
+      if (paletteDifference !== 0) {
+        return paletteDifference;
+      }
+
+      return (baseIndexById.get(a.id) ?? 0) - (baseIndexById.get(b.id) ?? 0);
+    });
+    const paletteRankById = new Map(
+      paletteRanked.map((asset, assetIndex) => [asset.id, assetIndex]),
     );
-    return weighted[index % weighted.length]!;
+    const emphasis = project.sourceMapping.paletteEmphasis;
+    const ordered = [...assets].sort((a, b) => {
+      const baseRankA = normalizeRank(baseIndexById.get(a.id) ?? 0, assets.length);
+      const baseRankB = normalizeRank(baseIndexById.get(b.id) ?? 0, assets.length);
+      const paletteRankA = normalizeRank(paletteRankById.get(a.id) ?? 0, assets.length);
+      const paletteRankB = normalizeRank(paletteRankById.get(b.id) ?? 0, assets.length);
+      const blendedRankDifference =
+        lerp(baseRankA, paletteRankA, emphasis) -
+        lerp(baseRankB, paletteRankB, emphasis);
+
+      if (Math.abs(blendedRankDifference) > Number.EPSILON) {
+        return blendedRankDifference;
+      }
+
+      return (baseIndexById.get(a.id) ?? 0) - (baseIndexById.get(b.id) ?? 0);
+    });
+    return ordered[index % ordered.length]!;
   }
 
   if (strategy === "symmetry") {

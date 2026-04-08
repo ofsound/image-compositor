@@ -43,6 +43,48 @@ const assets: SourceAsset[] = [
   },
 ];
 
+const paletteBlendAssets: SourceAsset[] = [
+  {
+    ...assets[0]!,
+    id: "asset_palette_mid",
+    name: "Palette Mid",
+    palette: ["#112233", "#445566"],
+  },
+  {
+    ...assets[1]!,
+    id: "asset_palette_low",
+    name: "Palette Low",
+    palette: ["#ffeedd"],
+  },
+  {
+    ...assets[0]!,
+    id: "asset_palette_high",
+    name: "Palette High",
+    palette: ["#223344", "#556677", "#8899aa"],
+  },
+];
+
+const equalPaletteAssets: SourceAsset[] = [
+  {
+    ...assets[1]!,
+    id: "asset_equal_first",
+    name: "Equal First",
+    palette: ["#ffeedd", "#ccbbaa"],
+  },
+  {
+    ...assets[0]!,
+    id: "asset_equal_second",
+    name: "Equal Second",
+    palette: ["#112233", "#445566"],
+  },
+  {
+    ...assets[0]!,
+    id: "asset_equal_third",
+    name: "Equal Third",
+    palette: ["#112233"],
+  },
+];
+
 function projectPoint(x: number, y: number, angleDegrees: number) {
   const radians = (angleDegrees * Math.PI) / 180;
   return x * Math.cos(radians) + y * Math.sin(radians);
@@ -772,6 +814,86 @@ describe("buildRenderSlices", () => {
         assetSlices.length,
       );
     }
+  });
+
+  it("preserves source order when palette emphasis is zero", () => {
+    const project = createProjectDocument("Palette Emphasis Source Order");
+    project.sourceIds = paletteBlendAssets.map((asset) => asset.id);
+    project.layout.family = "grid";
+    project.layout.columns = 3;
+    project.layout.rows = 1;
+    project.layout.symmetryMode = "none";
+    project.sourceMapping.strategy = "palette";
+    project.sourceMapping.paletteEmphasis = 0;
+
+    const slices = buildRenderSlices(project, paletteBlendAssets);
+    const assetBySliceId = new Map(slices.map((slice) => [slice.id, slice.assetId]));
+
+    expect([
+      assetBySliceId.get("slice_0"),
+      assetBySliceId.get("slice_1"),
+      assetBySliceId.get("slice_2"),
+    ]).toEqual(["asset_palette_mid", "asset_palette_low", "asset_palette_high"]);
+  });
+
+  it("fully sorts by palette size when palette emphasis is one", () => {
+    const project = createProjectDocument("Palette Emphasis Palette Order");
+    project.sourceIds = paletteBlendAssets.map((asset) => asset.id);
+    project.layout.family = "grid";
+    project.layout.columns = 3;
+    project.layout.rows = 1;
+    project.layout.symmetryMode = "none";
+    project.sourceMapping.strategy = "palette";
+    project.sourceMapping.paletteEmphasis = 1;
+
+    const slices = buildRenderSlices(project, paletteBlendAssets);
+    const assetBySliceId = new Map(slices.map((slice) => [slice.id, slice.assetId]));
+
+    expect([
+      assetBySliceId.get("slice_0"),
+      assetBySliceId.get("slice_1"),
+      assetBySliceId.get("slice_2"),
+    ]).toEqual(["asset_palette_high", "asset_palette_mid", "asset_palette_low"]);
+  });
+
+  it("interpolates palette order between the source and palette-ranked endpoints", () => {
+    const project = createProjectDocument("Palette Emphasis Intermediate");
+    project.sourceIds = paletteBlendAssets.map((asset) => asset.id);
+    project.layout.family = "grid";
+    project.layout.columns = 3;
+    project.layout.rows = 1;
+    project.layout.symmetryMode = "none";
+    project.sourceMapping.strategy = "palette";
+    project.sourceMapping.paletteEmphasis = 0.5;
+
+    const slices = buildRenderSlices(project, paletteBlendAssets);
+    const assetBySliceId = new Map(slices.map((slice) => [slice.id, slice.assetId]));
+
+    expect([
+      assetBySliceId.get("slice_0"),
+      assetBySliceId.get("slice_1"),
+      assetBySliceId.get("slice_2"),
+    ]).toEqual(["asset_palette_mid", "asset_palette_high", "asset_palette_low"]);
+  });
+
+  it("keeps equal palette sizes in source order", () => {
+    const project = createProjectDocument("Palette Emphasis Stable Ties");
+    project.sourceIds = equalPaletteAssets.map((asset) => asset.id);
+    project.layout.family = "grid";
+    project.layout.columns = 3;
+    project.layout.rows = 1;
+    project.layout.symmetryMode = "none";
+    project.sourceMapping.strategy = "palette";
+    project.sourceMapping.paletteEmphasis = 1;
+
+    const slices = buildRenderSlices(project, equalPaletteAssets);
+    const assetBySliceId = new Map(slices.map((slice) => [slice.id, slice.assetId]));
+
+    expect([
+      assetBySliceId.get("slice_0"),
+      assetBySliceId.get("slice_1"),
+      assetBySliceId.get("slice_2"),
+    ]).toEqual(["asset_equal_first", "asset_equal_second", "asset_equal_third"]);
   });
 
   it("gives symmetry clones distinct crop windows", () => {

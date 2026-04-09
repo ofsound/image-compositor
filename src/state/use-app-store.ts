@@ -120,6 +120,7 @@ interface AppState {
   addLayer: () => Promise<void>;
   deleteLayer: (layerId: string) => Promise<void>;
   toggleLayerVisibility: (layerId: string) => Promise<void>;
+  reorderLayers: (layerIds: string[]) => Promise<void>;
   moveLayerUp: (layerId: string) => Promise<void>;
   moveLayerDown: (layerId: string) => Promise<void>;
   updateSelectedLayer: (
@@ -687,6 +688,25 @@ export const useAppStore = create<AppState>((set, get) => ({
         visible: !layer.visible,
       })),
     );
+  },
+
+  async reorderLayers(layerIds) {
+    await get().updateProject((project) => {
+      if (layerIds.length !== project.layers.length) {
+        return project;
+      }
+
+      const layerLookup = new Map(project.layers.map((layer) => [layer.id, layer]));
+      const layers = layerIds
+        .map((layerId) => layerLookup.get(layerId))
+        .filter((layer): layer is CompositorLayer => Boolean(layer));
+
+      if (layers.length !== project.layers.length) {
+        return project;
+      }
+
+      return { ...project, layers };
+    });
   },
 
   async moveLayerUp(layerId) {

@@ -73,7 +73,7 @@ vi.mock("@/lib/serializer", () => ({
   persistImportedProjectBundle: vi.fn(),
 }));
 
-import { createProjectDocument } from "@/lib/project-defaults";
+import { createCompositorLayer, createProjectDocument } from "@/lib/project-defaults";
 import { useAppStore } from "@/state/use-app-store";
 import type {
   CellularSourceAsset,
@@ -371,6 +371,40 @@ describe("useAppStore history", () => {
       initialProject.layout.gutter + 4,
     );
     expect(useAppStore.getState().canRedo).toBe(false);
+  });
+
+  it("reorders layers from an explicit id sequence", async () => {
+    const project = useAppStore.getState().projects[0]!;
+    const baseLayer = project.layers[0]!;
+    const middleLayer = createCompositorLayer({
+      name: "Layer 2",
+      visible: true,
+    });
+    const topLayer = createCompositorLayer({
+      name: "Layer 3",
+      visible: true,
+    });
+
+    useAppStore.setState((state) => ({
+      ...state,
+      projects: [
+        {
+          ...project,
+          layers: [baseLayer, middleLayer, topLayer],
+          selectedLayerId: middleLayer.id,
+        },
+      ],
+    }));
+
+    await useAppStore.getState().reorderLayers([topLayer.id, baseLayer.id, middleLayer.id]);
+
+    expect(useAppStore.getState().projects[0]?.layers.map((layer) => layer.id)).toEqual([
+      topLayer.id,
+      baseLayer.id,
+      middleLayer.id,
+    ]);
+    expect(useAppStore.getState().projects[0]?.selectedLayerId).toBe(middleLayer.id);
+    expect(useAppStore.getState().canUndo).toBe(true);
   });
 
   it("undoes and redoes added sources", async () => {

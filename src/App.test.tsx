@@ -139,6 +139,11 @@ function createStoreState(overrides?: {
     restoreProject: vi.fn(async () => undefined),
     purgeProject: vi.fn(async () => undefined),
     setActiveProject: vi.fn(async () => undefined),
+    selectLayer: vi.fn(async () => undefined),
+    addLayer: vi.fn(async () => undefined),
+    deleteLayer: vi.fn(async () => undefined),
+    toggleLayerVisibility: vi.fn(async () => undefined),
+    reorderLayers: vi.fn(async () => undefined),
     updateProject,
     importFiles: vi.fn(async () => undefined),
     addSolidSource: vi.fn(async () => undefined),
@@ -799,6 +804,14 @@ describe("App inspector grouping", () => {
     expect(within(projectSettings).getByText("Canvas Background")).toBeInTheDocument();
     expect(within(projectSettings).getByLabelText("Export W")).toBeInTheDocument();
     expect(within(projectSettings).queryByText("Layout")).not.toBeInTheDocument();
+  });
+
+  it("replaces layer move buttons with drag handles", () => {
+    renderApp();
+
+    expect(screen.getByLabelText("Reorder Layer 1")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Up" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Down" })).not.toBeInTheDocument();
   });
 
   it("keeps moved canvas controls wired to project updates", () => {

@@ -1,4 +1,21 @@
 import {
+  closestCenter,
+  DndContext,
+  type DragEndEvent,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
+import {
   startTransition,
   useDeferredValue,
   useEffect,
@@ -9,6 +26,7 @@ import {
   CopyPlus,
   Download,
   FolderOpen,
+  GripVertical,
   ImagePlus,
   Layers,
   Pencil,
@@ -156,6 +174,92 @@ function SourceThumbnail({
   ) : (
     <div className="flex h-20 items-center justify-center rounded-md bg-surface-muted font-mono text-[10px] uppercase tracking-[0.1em] text-text-faint">
       Loading
+    </div>
+  );
+}
+
+function SortableLayerRow({
+  layer,
+  isSelected,
+  canDelete,
+  onSelect,
+  onToggleVisibility,
+  onDelete,
+}: {
+  layer: ProjectDocument["layers"][number];
+  isSelected: boolean;
+  canDelete: boolean;
+  onSelect: () => void;
+  onToggleVisibility: () => void;
+  onDelete: () => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
+    useSortable({ id: layer.id });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={`flex items-center justify-between gap-3 rounded-md border px-3 py-2 ${
+        isSelected
+          ? "border-border-subtle bg-surface-sunken"
+          : "border-border bg-surface-muted/50"
+      } ${isDragging ? "z-10 shadow-lg ring-1 ring-border-strong" : ""}`}
+    >
+      <div className="flex min-w-0 flex-1 items-center gap-2">
+        <Button
+          size="sm"
+          variant="ghost"
+          className="touch-none px-2 text-text-faint hover:text-text active:cursor-grabbing"
+          aria-label={`Reorder ${layer.name}`}
+          {...attributes}
+          {...listeners}
+        >
+          <GripVertical className="h-4 w-4 cursor-grab" />
+        </Button>
+        <button
+          type="button"
+          className="min-w-0 flex-1 text-left"
+          onClick={onSelect}
+        >
+          <div className="flex items-center gap-2 text-xs font-medium text-text">
+            <Layers className="h-3.5 w-3.5 text-text-muted" />
+            <span className="truncate">{layer.name}</span>
+            {isSelected ? (
+              <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-text-faint">
+                Editing
+              </span>
+            ) : null}
+          </div>
+          <div className="mt-1 text-[11px] text-text-muted">
+            {layer.visible ? "Visible" : "Hidden"} · {layer.sourceIds.length} source
+            {layer.sourceIds.length === 1 ? "" : "s"}
+          </div>
+        </button>
+      </div>
+      <div className="flex shrink-0 items-center gap-1">
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={onToggleVisibility}
+          aria-label={layer.visible ? `Hide ${layer.name}` : `Show ${layer.name}`}
+        >
+          {layer.visible ? "Hide" : "Show"}
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          onClick={onDelete}
+          disabled={!canDelete}
+          aria-label={`Delete ${layer.name}`}
+        >
+          Delete
+        </Button>
+      </div>
     </div>
   );
 }
@@ -668,8 +772,7 @@ function App() {
     addLayer,
     deleteLayer,
     toggleLayerVisibility,
-    moveLayerUp,
-    moveLayerDown,
+    reorderLayers,
     updateProject,
     importFiles,
     addSolidSource,
@@ -690,6 +793,16 @@ function App() {
     undo,
     redo,
   } = useAppStore();
+  const layerSensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: {
+        distance: 6,
+      },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    }),
+  );
 
   useEffect(() => {
     void bootstrap();
@@ -772,6 +885,7 @@ function App() {
       activeProject.layers.at(-1) ??
       null
     : null;
+  const displayLayers = activeProject ? [...activeProject.layers].reverse() : [];
   const activeVersions = activeProject
     ? versions.filter((version) => version.projectId === activeProject.id)
     : [];
@@ -791,6 +905,30 @@ function App() {
       lastRenderedPreview: null,
     });
   }, [previewAssetSignature, activeProject?.id, activeProject?.updatedAt]);
+
+  const handleLayerDragEnd = ({ active, over }: DragEndEvent) => {
+    if (!over) {
+      return;
+    }
+
+    const activeId = String(active.id);
+    const overId = String(over.id);
+
+    if (activeId === overId) {
+      return;
+    }
+
+    const displayLayerIds = displayLayers.map((layer) => layer.id);
+    const activeIndex = displayLayerIds.indexOf(activeId);
+    const overIndex = displayLayerIds.indexOf(overId);
+
+    if (activeIndex < 0 || overIndex < 0) {
+      return;
+    }
+
+    const nextDisplayLayerIds = arrayMove(displayLayerIds, activeIndex, overIndex);
+    void reorderLayers([...nextDisplayLayerIds].reverse());
+  };
 
   if (!ready || !activeProject || !deferredProject) {
     return (
@@ -1500,80 +1638,31 @@ function App() {
                     Add Layer
                   </Button>
                 </CardHeader>
-                <CardContent className="flex flex-col gap-2">
-                  {activeProject.layers.map((layer, index) => {
-                    const isSelected = layer.id === selectedLayer?.id;
-                    const isTop = index === activeProject.layers.length - 1;
-                    const isBottom = index === 0;
-
-                    return (
-                      <div
-                        key={layer.id}
-                        className={`flex items-center justify-between gap-3 rounded-md border px-3 py-2 ${
-                          isSelected
-                            ? "border-border-subtle bg-surface-sunken"
-                            : "border-border bg-surface-muted/50"
-                        }`}
-                      >
-                        <button
-                          type="button"
-                          className="min-w-0 flex-1 text-left"
-                          onClick={() => void selectLayer(layer.id)}
-                        >
-                          <div className="flex items-center gap-2 text-xs font-medium text-text">
-                            <Layers className="h-3.5 w-3.5 text-text-muted" />
-                            <span className="truncate">{layer.name}</span>
-                            {isSelected ? (
-                              <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-text-faint">
-                                Editing
-                              </span>
-                            ) : null}
-                          </div>
-                          <div className="mt-1 text-[11px] text-text-muted">
-                            {layer.visible ? "Visible" : "Hidden"} · {layer.sourceIds.length} source
-                            {layer.sourceIds.length === 1 ? "" : "s"}
-                          </div>
-                        </button>
-                        <div className="flex shrink-0 items-center gap-1">
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => void toggleLayerVisibility(layer.id)}
-                            aria-label={layer.visible ? `Hide ${layer.name}` : `Show ${layer.name}`}
-                          >
-                            {layer.visible ? "Hide" : "Show"}
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => void moveLayerDown(layer.id)}
-                            disabled={isBottom}
-                            aria-label={`Move ${layer.name} down`}
-                          >
-                            Down
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => void moveLayerUp(layer.id)}
-                            disabled={isTop}
-                            aria-label={`Move ${layer.name} up`}
-                          >
-                            Up
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            onClick={() => void deleteLayer(layer.id)}
-                            disabled={activeProject.layers.length <= 1}
-                            aria-label={`Delete ${layer.name}`}
-                          >
-                            Delete
-                          </Button>
-                        </div>
+                <CardContent>
+                  <DndContext
+                    sensors={layerSensors}
+                    collisionDetection={closestCenter}
+                    onDragEnd={handleLayerDragEnd}
+                  >
+                    <SortableContext
+                      items={displayLayers.map((layer) => layer.id)}
+                      strategy={verticalListSortingStrategy}
+                    >
+                      <div className="flex flex-col gap-2">
+                        {displayLayers.map((layer) => (
+                          <SortableLayerRow
+                            key={layer.id}
+                            layer={layer}
+                            isSelected={layer.id === selectedLayer?.id}
+                            canDelete={activeProject.layers.length > 1}
+                            onSelect={() => void selectLayer(layer.id)}
+                            onToggleVisibility={() => void toggleLayerVisibility(layer.id)}
+                            onDelete={() => void deleteLayer(layer.id)}
+                          />
+                        ))}
                       </div>
-                    );
-                  })}
+                    </SortableContext>
+                  </DndContext>
                 </CardContent>
               </Card>
 

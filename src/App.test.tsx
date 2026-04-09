@@ -961,6 +961,52 @@ describe("App inspector grouping", () => {
     ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   });
 
+  it("toggles the preview into an expanded single-panel layout", async () => {
+    const user = userEvent.setup();
+    renderApp();
+
+    const expandButton = screen.getByRole("button", { name: "Expand preview" });
+    expect(expandButton).toHaveAttribute("aria-pressed", "false");
+
+    await user.click(expandButton);
+
+    expect(screen.queryByRole("region", { name: "Sources" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Layers" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Inspector" })).not.toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Preview" })).toBeInTheDocument();
+
+    const restoreButton = screen.getByRole("button", { name: "Restore layout" });
+    expect(restoreButton).toHaveAttribute("aria-pressed", "true");
+
+    await user.click(restoreButton);
+
+    expect(screen.getByRole("region", { name: "Sources" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Layers" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Inspector" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Expand preview" })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+  });
+
+  it("collapses the expanded preview when Escape is pressed", async () => {
+    const user = userEvent.setup();
+    renderApp();
+
+    await user.click(screen.getByRole("button", { name: "Expand preview" }));
+    expect(screen.queryByRole("region", { name: "Sources" })).not.toBeInTheDocument();
+
+    fireEvent.keyDown(window, { key: "Escape" });
+
+    expect(screen.getByRole("region", { name: "Sources" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Layers" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Inspector" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Expand preview" })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+  });
+
   it("keeps sources in a persistent rail layout", () => {
     renderApp({
       assets: [

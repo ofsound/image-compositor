@@ -31,6 +31,8 @@ import {
   GripVertical,
   ImagePlus,
   Layers,
+  Maximize2,
+  Minimize2,
   Pencil,
   Plus,
   Redo2,
@@ -546,6 +548,19 @@ function ControlBlock({
   );
 }
 
+function isEditableTarget(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+
+  return (
+    target.isContentEditable ||
+    target.tagName === "INPUT" ||
+    target.tagName === "TEXTAREA" ||
+    target.tagName === "SELECT"
+  );
+}
+
 function PanelShell({
   title,
   description,
@@ -794,6 +809,7 @@ function App() {
     ready: false,
     lastRenderedPreview: null,
   });
+  const [previewExpanded, setPreviewExpanded] = useState(false);
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
   const [duplicateDialogOpen, setDuplicateDialogOpen] = useState(false);
   const [manageProjectsOpen, setManageProjectsOpen] = useState(false);
@@ -926,6 +942,28 @@ function App() {
 
   useHistoryShortcuts({ busy, canUndo, canRedo, undo, redo });
 
+  useEffect(() => {
+    if (!previewExpanded) {
+      return;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (
+        event.defaultPrevented ||
+        event.key !== "Escape" ||
+        isEditableTarget(event.target)
+      ) {
+        return;
+      }
+
+      event.preventDefault();
+      setPreviewExpanded(false);
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [previewExpanded]);
+
   const activeProjects = projects.filter(
     (project) => project.deletedAt === null,
   );
@@ -958,6 +996,10 @@ function App() {
     setRenameValue(activeProject.title);
     setDuplicateValue(`${activeProject.title} Copy`);
   }, [activeProject]);
+
+  useEffect(() => {
+    setPreviewExpanded(false);
+  }, [activeProject?.id]);
 
   const activeProjectView = activeProject
     ? createProjectEditorView(activeProject)
@@ -1158,6 +1200,39 @@ function App() {
       seed: waveSourceSeed,
     }),
   };
+  const previewPanel = (
+    <PanelShell
+      title="Preview"
+      sectionLabel="Preview"
+      className={previewExpanded ? "min-w-0 flex-1" : undefined}
+      actions={
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          aria-label={previewExpanded ? "Restore layout" : "Expand preview"}
+          aria-pressed={previewExpanded}
+          title={previewExpanded ? "Restore layout" : "Expand preview"}
+          onClick={() => setPreviewExpanded((current) => !current)}
+        >
+          {previewExpanded ? (
+            <Minimize2 className="h-4 w-4" />
+          ) : (
+            <Maximize2 className="h-4 w-4" />
+          )}
+        </Button>
+      }
+      cardClassName="rounded-none border-0 bg-transparent shadow-none backdrop-blur-none"
+      contentClassName="flex min-h-0 items-center justify-center p-0"
+    >
+      <PreviewStage
+        canvasRef={canvasRef}
+        project={previewProject ?? activeProject}
+        assets={previewAssets}
+        onRenderState={setRenderState}
+      />
+    </PanelShell>
+  );
 
   const openSaveVersion = async () => {
     const label = window.prompt(
@@ -1713,7 +1788,15 @@ function App() {
         </div>
 
         <div className="mx-auto flex min-h-0 w-full flex-1 overflow-hidden p-3">
-          <div className="grid min-h-0 flex-1 grid-cols-[288px_minmax(280px,22vw)_minmax(640px,1fr)_560px] gap-3 overflow-hidden">
+          <div
+            className={cn(
+              "min-h-0 flex-1 gap-3 overflow-hidden",
+              previewExpanded
+                ? "flex"
+                : "grid grid-cols-[288px_minmax(280px,22vw)_minmax(640px,1fr)_560px]",
+            )}
+          >
+            {previewExpanded ? null : (
             <PanelShell
               title="Sources"
               actions={
@@ -1794,7 +1877,9 @@ function App() {
                 </div>
               )}
             </PanelShell>
+            )}
 
+            {previewExpanded ? null : (
             <PanelShell
               title="Layers"
               actions={
@@ -1836,21 +1921,11 @@ function App() {
                 </SortableContext>
               </DndContext>
             </PanelShell>
+            )}
 
-            <PanelShell
-              title="Preview"
-              sectionLabel="Preview"
-              cardClassName="rounded-none border-0 bg-transparent shadow-none backdrop-blur-none"
-              contentClassName="flex min-h-0 items-center justify-center p-0"
-            >
-              <PreviewStage
-                canvasRef={canvasRef}
-                project={previewProject ?? activeProject}
-                assets={previewAssets}
-                onRenderState={setRenderState}
-              />
-            </PanelShell>
+            {previewPanel}
 
+            {previewExpanded ? null : (
             <div className="flex min-h-0 flex-col gap-3">
               <section
                 aria-label="Inspector"
@@ -3655,6 +3730,7 @@ function App() {
                       </div>
               </PanelShell>
             </div>
+            )}
           </div>
         </div>
       </div>

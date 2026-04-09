@@ -121,6 +121,7 @@ function createStoreState(overrides?: {
     importFiles: vi.fn(async () => undefined),
     addSolidSource: vi.fn(async () => undefined),
     addGradientSource: vi.fn(async () => undefined),
+    addNoiseSource: vi.fn(async () => undefined),
     removeSource: vi.fn(async () => undefined),
     updateGeneratedSource: vi.fn(async () => undefined),
     randomizeSeed: vi.fn(async () => undefined),
@@ -192,6 +193,31 @@ function createGradientAsset(
       conicAngle: 120,
       conicSpan: 180,
       conicRepeat: true,
+    },
+  };
+}
+
+function createNoiseAsset(
+  projectId: string,
+  overrides?: {
+    id?: string;
+    name?: string;
+  },
+): SourceAsset {
+  return {
+    ...createImageAsset(projectId),
+    id: overrides?.id ?? "asset_noise",
+    kind: "noise",
+    name: overrides?.name ?? "Noise Source",
+    originalFileName: `${overrides?.id ?? "asset_noise"}.png`,
+    mimeType: "image/png",
+    recipe: {
+      color: "#0f766e",
+      scale: 0.55,
+      detail: 0.62,
+      contrast: 0.47,
+      distortion: 0.28,
+      seed: 12345,
     },
   };
 }
@@ -699,6 +725,66 @@ describe("App gradient sources", () => {
         conicRepeat: true,
       }),
     );
+  });
+
+  it("shows a noise tab and submits normalized noise recipes", async () => {
+    const user = userEvent.setup();
+    const state = createStoreState();
+    mockedUseAppStore.mockReturnValue(state);
+
+    render(<App />);
+
+    await user.click(screen.getAllByText("Add Source")[0]!);
+    await user.click(screen.getByRole("tab", { name: "Noise" }));
+    const dialog = screen.getByRole("dialog");
+
+    fireEvent.change(within(dialog).getByLabelText("Base color"), {
+      target: { value: "#224466" },
+    });
+    fireEvent.keyDown(within(dialog).getByLabelText("Scale"), { key: "End" });
+    fireEvent.keyDown(within(dialog).getByLabelText("Detail"), { key: "Home" });
+    fireEvent.keyDown(within(dialog).getByLabelText("Contrast"), { key: "ArrowRight" });
+    fireEvent.keyDown(within(dialog).getByLabelText("Distortion"), { key: "ArrowRight" });
+    await user.click(within(dialog).getByRole("button", { name: "Add source" }));
+
+    expect(state.addNoiseSource).toHaveBeenCalledTimes(1);
+    expect(state.addNoiseSource).toHaveBeenCalledWith(
+      expect.objectContaining({
+        color: "#224466",
+        scale: 1,
+        detail: 0,
+        contrast: expect.any(Number),
+        distortion: expect.any(Number),
+        seed: expect.any(Number),
+      }),
+    );
+  });
+
+  it("repopulates the noise editor for existing noise assets", async () => {
+    const user = userEvent.setup();
+    const state = createStoreState({
+      assets: [createNoiseAsset("project_unused", { name: "Sea Foam" })],
+    });
+    mockedUseAppStore.mockReturnValue(state);
+
+    render(<App />);
+
+    await user.click(screen.getByLabelText("Edit Sea Foam"));
+    const dialog = screen.getByRole("dialog");
+
+    expect(within(dialog).getByRole("tab", { name: "Noise" })).toHaveAttribute(
+      "data-state",
+      "active",
+    );
+    expect(within(dialog).getByDisplayValue("Sea Foam")).toBeInTheDocument();
+    expect(within(dialog).getAllByDisplayValue("#0f766e")).toHaveLength(2);
+    expect(within(dialog).getByLabelText("Scale")).toBeInTheDocument();
+    expect(within(dialog).getByLabelText("Detail")).toBeInTheDocument();
+    expect(within(dialog).getByLabelText("Contrast")).toBeInTheDocument();
+    expect(within(dialog).getByLabelText("Distortion")).toBeInTheDocument();
+    expect(
+      within(dialog).getByRole("button", { name: /Regenerate/i }),
+    ).toBeInTheDocument();
   });
 });
 

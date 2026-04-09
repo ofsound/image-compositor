@@ -353,6 +353,69 @@ describe("createImportCopy", () => {
     });
     expect(copy.projectDoc.sourceIds).toEqual([copy.assetDocs[0]?.id]);
   });
+
+  it("preserves noise source metadata when copying imported bundles", () => {
+    const generatedBundle: ImportedProjectBundle = {
+      ...bundle,
+      assetDocs: [
+        {
+          ...bundle.assetDocs[0]!,
+          id: "asset_noise",
+          kind: "noise",
+          name: "Noise One",
+          recipe: {
+            color: "#225577",
+            scale: 0.9,
+            detail: 0.4,
+            contrast: 0.7,
+            distortion: 0.2,
+            seed: 42,
+          },
+        },
+      ],
+      manifest: {
+        ...bundle.manifest,
+        assetIds: ["asset_noise"],
+      },
+      projectDoc: {
+        ...bundle.projectDoc,
+        sourceIds: ["asset_noise"],
+      },
+      versionDocs: [
+        {
+          ...bundle.versionDocs[0]!,
+          snapshot: {
+            ...bundle.versionDocs[0]!.snapshot,
+            sourceIds: ["asset_noise"],
+          },
+        },
+      ],
+      assetBlobs: {},
+    };
+
+    generatedBundle.assetBlobs = {
+      [generatedBundle.assetDocs[0]!.originalPath]: new Blob(["original"]),
+      [generatedBundle.assetDocs[0]!.normalizedPath]: new Blob(["normalized"]),
+      [generatedBundle.assetDocs[0]!.previewPath]: new Blob(["preview"]),
+    };
+
+    const copy = createImportCopy(generatedBundle);
+
+    expect(copy.assetDocs[0]?.kind).toBe("noise");
+    const copiedAsset = copy.assetDocs[0];
+    if (!copiedAsset || copiedAsset.kind !== "noise") {
+      throw new Error("Expected copied noise source metadata.");
+    }
+    expect(copiedAsset.recipe).toEqual({
+      color: "#225577",
+      scale: 0.9,
+      detail: 0.4,
+      contrast: 0.7,
+      distortion: 0.2,
+      seed: 42,
+    });
+    expect(copy.projectDoc.sourceIds).toEqual([copy.assetDocs[0]?.id]);
+  });
 });
 
 describe("loadProjectBundle", () => {

@@ -1,11 +1,12 @@
 import { luminanceFromRgb, normalizeHexColor, rgbToHex } from "@/lib/color";
 import { makeId } from "@/lib/id";
 import { readBlob, writeBlob } from "@/lib/opfs";
-import { clamp } from "@/lib/utils";
+import { clamp, lerp } from "@/lib/utils";
 import type {
   GradientDirection,
   GradientMode,
   GradientSourceRecipe,
+  NoiseSourceRecipe,
   ProcessedAssetPayload,
   SourceAsset,
   SourceKind,
@@ -35,6 +36,11 @@ const DEFAULT_RADIAL_INNER_RADIUS = 0;
 const DEFAULT_CONIC_ANGLE = 0;
 const DEFAULT_CONIC_SPAN = 360;
 const DEFAULT_CONIC_REPEAT = false;
+const DEFAULT_NOISE_SCALE = 0.55;
+const DEFAULT_NOISE_DETAIL = 0.55;
+const DEFAULT_NOISE_CONTRAST = 0.45;
+const DEFAULT_NOISE_DISTORTION = 0.25;
+const DEFAULT_NOISE_SEED = 1;
 
 export const ACCEPTED_IMAGE_TYPES = COMMON_EXTENSIONS.join(",");
 
@@ -60,9 +66,20 @@ export interface GradientSourceInput {
   conicRepeat: boolean;
 }
 
+export interface NoiseSourceInput {
+  name?: string;
+  color: string;
+  scale: number;
+  detail: number;
+  contrast: number;
+  distortion: number;
+  seed: number;
+}
+
 type GeneratedSourceInput =
   | { kind: "solid"; name?: string; recipe: SolidSourceInput }
-  | { kind: "gradient"; name?: string; recipe: GradientSourceInput };
+  | { kind: "gradient"; name?: string; recipe: GradientSourceInput }
+  | { kind: "noise"; name?: string; recipe: NoiseSourceInput };
 
 type LegacySourceAsset = Omit<SourceAsset, "kind"> & {
   kind?: SourceKind;
@@ -103,10 +120,28 @@ function getDefaultGradientRecipe(): GradientSourceRecipe {
   };
 }
 
+function getDefaultNoiseRecipe(): NoiseSourceRecipe {
+  return {
+    color: "#0f766e",
+    scale: DEFAULT_NOISE_SCALE,
+    detail: DEFAULT_NOISE_DETAIL,
+    contrast: DEFAULT_NOISE_CONTRAST,
+    distortion: DEFAULT_NOISE_DISTORTION,
+    seed: DEFAULT_NOISE_SEED,
+  };
+}
+
 export function getDefaultGradientInput(): GradientSourceInput {
   return {
     name: "",
     ...getDefaultGradientRecipe(),
+  };
+}
+
+export function getDefaultNoiseInput(): NoiseSourceInput {
+  return {
+    name: "",
+    ...getDefaultNoiseRecipe(),
   };
 }
 
@@ -154,6 +189,21 @@ function normalizeGradientRecipe(
       typeof input.conicRepeat === "boolean"
         ? input.conicRepeat
         : defaults.conicRepeat,
+  };
+}
+
+function normalizeNoiseRecipe(input: Omit<NoiseSourceInput, "name">): NoiseSourceRecipe {
+  const defaults = getDefaultNoiseRecipe();
+
+  return {
+    color: normalizeHexColor(input.color, defaults.color),
+    scale: clampRange(input.scale, 0, 1, defaults.scale),
+    detail: clampRange(input.detail, 0, 1, defaults.detail),
+    contrast: clampRange(input.contrast, 0, 1, defaults.contrast),
+    distortion: clampRange(input.distortion, 0, 1, defaults.distortion),
+    seed: Number.isFinite(input.seed)
+      ? Math.abs(Math.trunc(input.seed)) >>> 0
+      : defaults.seed,
   };
 }
 
@@ -321,6 +371,181 @@ function applyConicColorStops(
   }
 }
 
+function hash2D(x: number, y: number, seed: number) {
+  let hash = seed ^ Math.imul(x, 374761393) ^ Math.imul(y, 668265263);
+  hash = Math.imul(hash ^ (hash >>> 13), 1274126177);
+  return ((hash ^ (hash >>> 16)) >>> 0) / 4294967296;
+}
+
+function fade(t: number) {
+  return t * t * t * (t * (t * 6 - 15) + 10);
+}
+
+function dotGradient(ix: number, iy: number, x: number, y: number, seed: number) {
+  const angle = hash2D(ix, iy, seed) * Math.PI * 2;
+  const dx = x - ix;
+  const dy = y - iy;
+  return dx * Math.cos(angle) + dy * Math.sin(angle);
+}
+
+function samplePerlin2D(x: number, y: number, seed: number) {
+  const x0 = Math.floor(x);
+  const x1 = x0 + 1;
+  const y0 = Math.floor(y);
+  const y1 = y0 + 1;
+  const sx = fade(x - x0);
+  const sy = fade(y - y0);
+  const n0 = dotGradient(x0, y0, x, y, seed);
+  const n1 = dotGradient(x1, y0, x, y, seed);
+  const ix0 = lerp(n0, n1, sx);
+  const n2 = dotGradient(x0, y1, x, y, seed);
+  const n3 = dotGradient(x1, y1, x, y, seed);
+  const ix1 = lerp(n2, n3, sx);
+
+  return lerp(ix0, ix1, sy);
+}
+
+function sampleFbm(
+  x: number,
+  y: number,
+  seed: number,
+  octaves: number,
+  persistence: number,
+  lacunarity: number,
+) {
+  let amplitude = 1;
+  let frequency = 1;
+  let total = 0;
+  let amplitudeSum = 0;
+
+  for (let octave = 0; octave < octaves; octave += 1) {
+    total += samplePerlin2D(x * frequency, y * frequency, seed + octave * 1013) * amplitude;
+    amplitudeSum += amplitude;
+    amplitude *= persistence;
+    frequency *= lacunarity;
+  }
+
+  return amplitudeSum > 0 ? total / amplitudeSum : 0;
+}
+
+function hexToRgbTriplet(hex: string) {
+  const normalized = normalizeHexColor(hex).slice(1);
+  return {
+    r: Number.parseInt(normalized.slice(0, 2), 16),
+    g: Number.parseInt(normalized.slice(2, 4), 16),
+    b: Number.parseInt(normalized.slice(4, 6), 16),
+  };
+}
+
+function rgbToHsl(r: number, g: number, b: number) {
+  const nr = r / 255;
+  const ng = g / 255;
+  const nb = b / 255;
+  const max = Math.max(nr, ng, nb);
+  const min = Math.min(nr, ng, nb);
+  const lightness = (max + min) / 2;
+  const delta = max - min;
+
+  if (delta === 0) {
+    return { h: 0, s: 0, l: lightness };
+  }
+
+  const saturation =
+    lightness > 0.5 ? delta / (2 - max - min) : delta / (max + min);
+  const hue =
+    max === nr
+      ? ((ng - nb) / delta + (ng < nb ? 6 : 0)) / 6
+      : max === ng
+        ? ((nb - nr) / delta + 2) / 6
+        : ((nr - ng) / delta + 4) / 6;
+
+  return { h: hue, s: saturation, l: lightness };
+}
+
+function hueToRgb(p: number, q: number, t: number) {
+  let next = t;
+  if (next < 0) next += 1;
+  if (next > 1) next -= 1;
+  if (next < 1 / 6) return p + (q - p) * 6 * next;
+  if (next < 1 / 2) return q;
+  if (next < 2 / 3) return p + (q - p) * (2 / 3 - next) * 6;
+  return p;
+}
+
+function hslToRgb(h: number, s: number, l: number) {
+  if (s === 0) {
+    const value = Math.round(l * 255);
+    return { r: value, g: value, b: value };
+  }
+
+  const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+  const p = 2 * l - q;
+
+  return {
+    r: Math.round(hueToRgb(p, q, h + 1 / 3) * 255),
+    g: Math.round(hueToRgb(p, q, h) * 255),
+    b: Math.round(hueToRgb(p, q, h - 1 / 3) * 255),
+  };
+}
+
+function shapeNoiseValue(value: number, contrast: number) {
+  const centered = value * 2 - 1;
+  const exponent = lerp(1.15, 0.42, contrast);
+  const shaped = Math.sign(centered) * Math.pow(Math.abs(centered), exponent);
+  return clamp(shaped * 0.5 + 0.5, 0, 1);
+}
+
+function drawNoiseSource(
+  context: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  recipe: NoiseSourceRecipe,
+) {
+  const { r, g, b } = hexToRgbTriplet(recipe.color);
+  const base = rgbToHsl(r, g, b);
+  const image = context.createImageData(width, height);
+  const data = image.data;
+  const shortestSide = Math.max(1, Math.min(width, height));
+  const featureFrequency = lerp(10, 1.2, recipe.scale);
+  const warpFrequency = lerp(1.8, 0.45, recipe.scale);
+  const warpAmount = recipe.distortion * 1.2;
+  const octaves = 2 + Math.round(recipe.detail * 4);
+  const persistence = lerp(0.6, 0.48, recipe.detail);
+  const lacunarity = lerp(1.85, 2.5, recipe.detail);
+
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const nx = x / shortestSide;
+      const ny = y / shortestSide;
+      const warpX =
+        sampleFbm(nx * warpFrequency + 17.1, ny * warpFrequency + 3.7, recipe.seed + 211, 3, 0.55, 2) *
+        warpAmount;
+      const warpY =
+        sampleFbm(nx * warpFrequency + 91.2, ny * warpFrequency + 47.9, recipe.seed + 577, 3, 0.55, 2) *
+        warpAmount;
+      const sample = sampleFbm(
+        (nx + warpX) * featureFrequency,
+        (ny + warpY) * featureFrequency,
+        recipe.seed,
+        octaves,
+        persistence,
+        lacunarity,
+      );
+      const shapedValue = shapeNoiseValue(sample * 0.5 + 0.5, recipe.contrast);
+      const lightness = clamp(base.l + lerp(-0.26, 0.18, shapedValue), 0.08, 0.9);
+      const saturation = clamp(base.s + lerp(0.08, -0.05, shapedValue), 0.12, 0.96);
+      const rgb = hslToRgb(base.h, saturation, lightness);
+      const index = (y * width + x) * 4;
+      data[index] = rgb.r;
+      data[index + 1] = rgb.g;
+      data[index + 2] = rgb.b;
+      data[index + 3] = 255;
+    }
+  }
+
+  context.putImageData(image, 0, 0);
+}
+
 function drawGeneratedSource(
   context: CanvasRenderingContext2D,
   width: number,
@@ -330,6 +555,11 @@ function drawGeneratedSource(
   if (source.kind === "solid") {
     context.fillStyle = normalizeHexColor(source.recipe.color);
     context.fillRect(0, 0, width, height);
+    return;
+  }
+
+  if (source.kind === "noise") {
+    drawNoiseSource(context, width, height, normalizeNoiseRecipe(source.recipe));
     return;
   }
 
@@ -425,6 +655,10 @@ function buildGeneratedSourceName(source: GeneratedSourceInput) {
     return `Solid ${normalizeHexColor(source.recipe.color).toUpperCase()}`;
   }
 
+  if (source.kind === "noise") {
+    return `Noise ${normalizeHexColor(source.recipe.color).toUpperCase()}`;
+  }
+
   const modeLabel =
     source.recipe.mode[0]!.toUpperCase() + source.recipe.mode.slice(1);
   return `${modeLabel} Gradient ${normalizeHexColor(
@@ -442,6 +676,7 @@ function buildGeneratedOriginalFileName(
 export function getSourceKindLabel(kind: SourceKind) {
   if (kind === "solid") return "Solid";
   if (kind === "gradient") return "Gradient";
+  if (kind === "noise") return "Noise";
   return "Image";
 }
 
@@ -481,6 +716,18 @@ export function getSourceContentSignature(asset: SourceAsset) {
     ].join("|");
   }
 
+  if (asset.kind === "noise") {
+    return [
+      base,
+      asset.recipe.color,
+      asset.recipe.scale,
+      asset.recipe.detail,
+      asset.recipe.contrast,
+      asset.recipe.distortion,
+      asset.recipe.seed,
+    ].join("|");
+  }
+
   return base;
 }
 
@@ -503,6 +750,13 @@ export function normalizeGradientInput(input: GradientSourceInput): GradientSour
   return {
     name: input.name?.trim() ?? "",
     ...normalizeGradientRecipe(input),
+  };
+}
+
+export function normalizeNoiseInput(input: NoiseSourceInput): NoiseSourceInput {
+  return {
+    name: input.name?.trim() ?? "",
+    ...normalizeNoiseRecipe(input),
   };
 }
 
@@ -570,6 +824,27 @@ export function normalizeSourceAsset(asset: LegacySourceAsset): SourceAsset {
           typeof recipe?.conicRepeat === "boolean"
             ? recipe.conicRepeat
             : DEFAULT_CONIC_REPEAT,
+      }),
+    };
+  }
+
+  if (asset.kind === "noise") {
+    const recipe = asset.recipe as Partial<NoiseSourceInput> | undefined;
+    const defaults = getDefaultNoiseRecipe();
+    return {
+      ...asset,
+      kind: "noise",
+      recipe: normalizeNoiseRecipe({
+        color: recipe?.color ?? asset.averageColor ?? defaults.color,
+        scale: typeof recipe?.scale === "number" ? recipe.scale : defaults.scale,
+        detail: typeof recipe?.detail === "number" ? recipe.detail : defaults.detail,
+        contrast:
+          typeof recipe?.contrast === "number" ? recipe.contrast : defaults.contrast,
+        distortion:
+          typeof recipe?.distortion === "number"
+            ? recipe.distortion
+            : defaults.distortion,
+        seed: typeof recipe?.seed === "number" ? recipe.seed : defaults.seed,
       }),
     };
   }
@@ -659,6 +934,12 @@ export async function createGeneratedSourceAsset(
           name: source.name,
           recipe: normalizeSolidInput(source.recipe),
         } satisfies GeneratedSourceInput)
+      : source.kind === "noise"
+        ? ({
+            kind: "noise" as const,
+            name: source.name,
+            recipe: normalizeNoiseInput(source.recipe),
+          } satisfies GeneratedSourceInput)
       : ({
           kind: "gradient" as const,
           name: source.name,
@@ -699,7 +980,7 @@ export async function createGeneratedSourceAsset(
 
 export async function updateGeneratedSourceAsset(
   asset: SourceAsset,
-  source: SolidSourceInput | GradientSourceInput,
+  source: SolidSourceInput | GradientSourceInput | NoiseSourceInput,
 ) {
   if (asset.kind === "image") {
     throw new Error("Image sources cannot be edited.");
@@ -712,6 +993,12 @@ export async function updateGeneratedSourceAsset(
           name: source.name,
           recipe: normalizeSolidInput(source as SolidSourceInput),
         } satisfies GeneratedSourceInput
+      : asset.kind === "noise"
+        ? {
+            kind: "noise" as const,
+            name: source.name,
+            recipe: normalizeNoiseInput(source as NoiseSourceInput),
+          } satisfies GeneratedSourceInput
       : {
           kind: "gradient" as const,
           name: source.name,

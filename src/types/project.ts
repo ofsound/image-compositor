@@ -22,7 +22,7 @@ export type KaleidoscopeMirrorMode =
   | "alternate"
   | "mirror-all";
 export type CropDistribution = "center" | "distributed";
-export type SourceKind = "image" | "solid" | "gradient";
+export type SourceKind = "image" | "solid" | "gradient" | "noise";
 export type GradientMode = "linear" | "radial" | "conic";
 export type GradientDirection =
   | "horizontal"
@@ -98,10 +98,25 @@ export interface GradientSourceAsset extends BaseSourceAsset {
   recipe: GradientSourceRecipe;
 }
 
+export interface NoiseSourceRecipe {
+  color: string;
+  scale: number;
+  detail: number;
+  contrast: number;
+  distortion: number;
+  seed: number;
+}
+
+export interface NoiseSourceAsset extends BaseSourceAsset {
+  kind: "noise";
+  recipe: NoiseSourceRecipe;
+}
+
 export type SourceAsset =
   | ImageSourceAsset
   | SolidSourceAsset
-  | GradientSourceAsset;
+  | GradientSourceAsset
+  | NoiseSourceAsset;
 
 export interface CanvasSettings {
   width: number;

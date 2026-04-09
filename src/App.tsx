@@ -58,8 +58,10 @@ import {
   ACCEPTED_IMAGE_TYPES,
   getDefaultGradientInput,
   getDefaultGradientDirection,
+  getDefaultNoiseInput,
   getSourceContentSignature,
   normalizeGradientInput,
+  normalizeNoiseInput,
   normalizeSolidInput,
 } from "@/lib/assets";
 import { normalizeHexColor } from "@/lib/color";
@@ -77,6 +79,7 @@ import type {
   GeometryShape,
   KaleidoscopeMirrorMode,
   LayoutFamily,
+  NoiseSourceAsset,
   ProjectDocument,
   RadialChildRotationMode,
   SolidSourceAsset,
@@ -141,7 +144,7 @@ function SourceThumbnail({
   );
 }
 
-const SOURCE_DIALOG_MODES: SourceKind[] = ["image", "solid", "gradient"];
+const SOURCE_DIALOG_MODES: SourceKind[] = ["image", "solid", "gradient", "noise"];
 const GRADIENT_MODES: GradientMode[] = ["linear", "radial", "conic"];
 const GRADIENT_DIRECTIONS: GradientDirection[] = [
   "horizontal",
@@ -155,6 +158,7 @@ const THREE_D_DISTRIBUTION_MAX = 4_096;
 function formatSourceModeLabel(mode: SourceKind) {
   if (mode === "solid") return "Solid";
   if (mode === "gradient") return "Gradient";
+  if (mode === "noise") return "Noise";
   return "Image";
 }
 
@@ -174,6 +178,10 @@ function formatPercentValue(value: number) {
 
 function formatDegreeValue(value: number) {
   return `${Math.round(value)}°`;
+}
+
+function createNoiseSeed() {
+  return Math.floor(Math.random() * 0xffffffff);
 }
 
 export function getGeometryOptions(family: LayoutFamily): GeometryShape[] {
@@ -407,6 +415,13 @@ function App() {
   const [gradientSourceConicSpan, setGradientSourceConicSpan] = useState(360);
   const [gradientSourceConicRepeat, setGradientSourceConicRepeat] =
     useState(false);
+  const [noiseSourceName, setNoiseSourceName] = useState("");
+  const [noiseSourceColor, setNoiseSourceColor] = useState("#0f766e");
+  const [noiseSourceScale, setNoiseSourceScale] = useState(0.55);
+  const [noiseSourceDetail, setNoiseSourceDetail] = useState(0.55);
+  const [noiseSourceContrast, setNoiseSourceContrast] = useState(0.45);
+  const [noiseSourceDistortion, setNoiseSourceDistortion] = useState(0.25);
+  const [noiseSourceSeed, setNoiseSourceSeed] = useState(() => createNoiseSeed());
   const [pendingImportInspection, setPendingImportInspection] =
     useState<BundleImportInspection | null>(null);
 
@@ -433,6 +448,7 @@ function App() {
     importFiles,
     addSolidSource,
     addGradientSource,
+    addNoiseSource,
     removeSource,
     updateGeneratedSource,
     randomizeSeed,
@@ -662,6 +678,7 @@ function App() {
 
   const resetGeneratedSourceForms = () => {
     const defaultGradient = getDefaultGradientInput();
+    const defaultNoise = getDefaultNoiseInput();
     setSolidSourceName("");
     setSolidSourceColor("#0f172a");
     setGradientSourceName(defaultGradient.name ?? "");
@@ -679,6 +696,13 @@ function App() {
     setGradientSourceConicAngle(defaultGradient.conicAngle);
     setGradientSourceConicSpan(defaultGradient.conicSpan);
     setGradientSourceConicRepeat(defaultGradient.conicRepeat);
+    setNoiseSourceName(defaultNoise.name ?? "");
+    setNoiseSourceColor(defaultNoise.color);
+    setNoiseSourceScale(defaultNoise.scale);
+    setNoiseSourceDetail(defaultNoise.detail);
+    setNoiseSourceContrast(defaultNoise.contrast);
+    setNoiseSourceDistortion(defaultNoise.distortion);
+    setNoiseSourceSeed(createNoiseSeed());
   };
 
   const openAddSourceDialog = (mode: SourceKind = "image") => {
@@ -690,7 +714,7 @@ function App() {
 
   const openEditSourceDialog = (assetId: string) => {
     const asset = projectAssets.find(
-      (entry): entry is SolidSourceAsset | GradientSourceAsset =>
+      (entry): entry is SolidSourceAsset | GradientSourceAsset | NoiseSourceAsset =>
         entry.id === assetId && entry.kind !== "image",
     );
     if (!asset) return;
@@ -700,7 +724,7 @@ function App() {
     if (asset.kind === "solid") {
       setSolidSourceName(asset.name);
       setSolidSourceColor(asset.recipe.color);
-    } else {
+    } else if (asset.kind === "gradient") {
       setGradientSourceName(asset.name);
       setGradientSourceFrom(asset.recipe.from);
       setGradientSourceTo(asset.recipe.to);
@@ -716,6 +740,14 @@ function App() {
       setGradientSourceConicAngle(asset.recipe.conicAngle);
       setGradientSourceConicSpan(asset.recipe.conicSpan);
       setGradientSourceConicRepeat(asset.recipe.conicRepeat);
+    } else {
+      setNoiseSourceName(asset.name);
+      setNoiseSourceColor(asset.recipe.color);
+      setNoiseSourceScale(asset.recipe.scale);
+      setNoiseSourceDetail(asset.recipe.detail);
+      setNoiseSourceContrast(asset.recipe.contrast);
+      setNoiseSourceDistortion(asset.recipe.distortion);
+      setNoiseSourceSeed(asset.recipe.seed);
     }
     setSourceDialogOpen(true);
   };
@@ -745,26 +777,45 @@ function App() {
       return;
     }
 
-    const input = normalizeGradientInput({
-      name: gradientSourceName,
-      mode: gradientSourceMode,
-      from: gradientSourceFrom,
-      to: gradientSourceTo,
-      direction: gradientSourceDirection,
-      viaColor: gradientSourceViaEnabled ? gradientSourceViaColor : null,
-      viaPosition: gradientSourceViaPosition,
-      centerX: gradientSourceCenterX,
-      centerY: gradientSourceCenterY,
-      radialRadius: gradientSourceRadialRadius,
-      radialInnerRadius: gradientSourceRadialInnerRadius,
-      conicAngle: gradientSourceConicAngle,
-      conicSpan: gradientSourceConicSpan,
-      conicRepeat: gradientSourceConicRepeat,
+    if (sourceDialogMode === "gradient") {
+      const input = normalizeGradientInput({
+        name: gradientSourceName,
+        mode: gradientSourceMode,
+        from: gradientSourceFrom,
+        to: gradientSourceTo,
+        direction: gradientSourceDirection,
+        viaColor: gradientSourceViaEnabled ? gradientSourceViaColor : null,
+        viaPosition: gradientSourceViaPosition,
+        centerX: gradientSourceCenterX,
+        centerY: gradientSourceCenterY,
+        radialRadius: gradientSourceRadialRadius,
+        radialInnerRadius: gradientSourceRadialInnerRadius,
+        conicAngle: gradientSourceConicAngle,
+        conicSpan: gradientSourceConicSpan,
+        conicRepeat: gradientSourceConicRepeat,
+      });
+      if (editingSource?.kind === "gradient") {
+        await updateGeneratedSource(editingSource.id, input);
+      } else {
+        await addGradientSource(input);
+      }
+      setSourceDialogOpen(false);
+      return;
+    }
+
+    const input = normalizeNoiseInput({
+      name: noiseSourceName,
+      color: noiseSourceColor,
+      scale: noiseSourceScale,
+      detail: noiseSourceDetail,
+      contrast: noiseSourceContrast,
+      distortion: noiseSourceDistortion,
+      seed: noiseSourceSeed,
     });
-    if (editingSource?.kind === "gradient") {
+    if (editingSource?.kind === "noise") {
       await updateGeneratedSource(editingSource.id, input);
     } else {
-      await addGradientSource(input);
+      await addNoiseSource(input);
     }
     setSourceDialogOpen(false);
   };
@@ -2550,14 +2601,14 @@ function App() {
             </DialogTitle>
             <DialogDescription>
               Build the source pool from imported images, solid fills, and
-              shaped gradients.
+              generated gradients and noise textures.
             </DialogDescription>
           </DialogHeader>
           <Tabs
             value={sourceDialogMode}
             onValueChange={(value) => setSourceDialogMode(value as SourceKind)}
           >
-            <TabsList className="grid w-full grid-cols-3">
+            <TabsList className="grid w-full grid-cols-4">
               {SOURCE_DIALOG_MODES.map((mode) => (
                 <TabsTrigger
                   key={mode}
@@ -2803,6 +2854,89 @@ function App() {
                   </div>
                 </>
               ) : null}
+              <div className="flex justify-end gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => setSourceDialogOpen(false)}
+                >
+                  Cancel
+                </Button>
+                <Button onClick={() => void submitGeneratedSource()}>
+                  {editingSource ? "Save source" : "Add source"}
+                </Button>
+              </div>
+            </TabsContent>
+            <TabsContent value="noise" className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="noise-source-name">Name</Label>
+                <Input
+                  id="noise-source-name"
+                  placeholder="Noise #RRGGBB"
+                  value={noiseSourceName}
+                  onChange={(event) => setNoiseSourceName(event.target.value)}
+                />
+              </div>
+              <SourceColorField
+                id="noise-source-color"
+                label="Base color"
+                value={noiseSourceColor}
+                onChange={setNoiseSourceColor}
+              />
+              <div className="rounded-md border border-border-subtle bg-surface-sunken/60 p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <Label>Variation</Label>
+                    <div className="text-xs text-text-muted">
+                      Regenerate the hidden seed while keeping the sliders unchanged.
+                    </div>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setNoiseSourceSeed(createNoiseSeed())}
+                  >
+                    <RefreshCw className="h-3.5 w-3.5" />
+                    Regenerate
+                  </Button>
+                </div>
+              </div>
+              <SliderField
+                label="Scale"
+                min={0}
+                max={1}
+                step={0.01}
+                value={noiseSourceScale}
+                formatter={formatPercentValue}
+                onChange={setNoiseSourceScale}
+              />
+              <SliderField
+                label="Detail"
+                min={0}
+                max={1}
+                step={0.01}
+                value={noiseSourceDetail}
+                formatter={formatPercentValue}
+                onChange={setNoiseSourceDetail}
+              />
+              <SliderField
+                label="Contrast"
+                min={0}
+                max={1}
+                step={0.01}
+                value={noiseSourceContrast}
+                formatter={formatPercentValue}
+                onChange={setNoiseSourceContrast}
+              />
+              <SliderField
+                label="Distortion"
+                min={0}
+                max={1}
+                step={0.01}
+                value={noiseSourceDistortion}
+                formatter={formatPercentValue}
+                onChange={setNoiseSourceDistortion}
+              />
               <div className="flex justify-end gap-2">
                 <Button
                   variant="outline"

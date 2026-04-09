@@ -75,7 +75,11 @@ vi.mock("@/lib/serializer", () => ({
 
 import { createProjectDocument } from "@/lib/project-defaults";
 import { useAppStore } from "@/state/use-app-store";
-import type { GradientSourceAsset, SourceAsset } from "@/types/project";
+import type {
+  GradientSourceAsset,
+  NoiseSourceAsset,
+  SourceAsset,
+} from "@/types/project";
 
 function resetStore() {
   const project = createProjectDocument("History Test");
@@ -173,6 +177,36 @@ function createGradientAsset(projectId: string): GradientSourceAsset {
       conicAngle: 30,
       conicSpan: 180,
       conicRepeat: true,
+    },
+  };
+}
+
+function createNoiseAsset(projectId: string): NoiseSourceAsset {
+  const base = createImageAsset(projectId, "asset_noise");
+  return {
+    id: base.id,
+    kind: "noise",
+    projectId: base.projectId,
+    name: "Noise",
+    originalFileName: "asset_noise.png",
+    mimeType: "image/png",
+    width: base.width,
+    height: base.height,
+    orientation: base.orientation,
+    originalPath: "assets/original/asset_noise.png",
+    normalizedPath: base.normalizedPath,
+    previewPath: base.previewPath,
+    averageColor: base.averageColor,
+    palette: base.palette,
+    luminance: base.luminance,
+    createdAt: base.createdAt,
+    recipe: {
+      color: "#0f766e",
+      scale: 0.55,
+      detail: 0.62,
+      contrast: 0.47,
+      distortion: 0.28,
+      seed: 12345,
     },
   };
 }
@@ -398,6 +432,34 @@ describe("useAppStore import progress", () => {
     expect(useAppStore.getState().sourceImportProgress).toBeNull();
   });
 
+  it("adds noise sources through the generated source pipeline", async () => {
+    const project = useAppStore.getState().projects[0]!;
+    const asset = createNoiseAsset(project.id);
+    createGeneratedSourceAsset.mockResolvedValue(asset);
+
+    await useAppStore.getState().addNoiseSource({
+      name: "",
+      color: "#0f766e",
+      scale: 0.55,
+      detail: 0.62,
+      contrast: 0.47,
+      distortion: 0.28,
+      seed: 12345,
+    });
+
+    expect(createGeneratedSourceAsset).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "noise",
+        recipe: expect.objectContaining({ seed: 12345 }),
+      }),
+      project.id,
+      project.canvas,
+    );
+    expect(useAppStore.getState().assets.map((entry) => entry.id)).toEqual([asset.id]);
+    expect(useAppStore.getState().projects[0]?.sourceIds).toEqual([asset.id]);
+    expect(useAppStore.getState().status).toBe("Noise source added.");
+  });
+
   it("updates generated gradients with the expanded recipe while keeping the asset id", async () => {
     const project = useAppStore.getState().projects[0]!;
     const asset = createGradientAsset(project.id);
@@ -449,5 +511,52 @@ describe("useAppStore import progress", () => {
     expect(useAppStore.getState().assets[0]?.id).toBe(asset.id);
     expect(useAppStore.getState().assets[0]).toEqual(updatedAsset);
     expect(db.assets.put).toHaveBeenCalledWith(updatedAsset);
+  });
+
+  it("updates generated noise sources while keeping the asset id", async () => {
+    const project = useAppStore.getState().projects[0]!;
+    const asset = createNoiseAsset(project.id);
+    const updatedAsset: NoiseSourceAsset = {
+      ...asset,
+      name: "Updated Noise",
+      recipe: {
+        ...asset.recipe,
+        scale: 0.9,
+        detail: 0.2,
+        contrast: 0.7,
+        distortion: 0.1,
+        seed: 987654,
+      },
+    };
+    useAppStore.setState((state) => ({
+      ...state,
+      assets: [asset],
+      projects: [{ ...project, sourceIds: [asset.id] }],
+    }));
+    vi.mocked(updateGeneratedSourceAsset).mockResolvedValueOnce(updatedAsset);
+
+    await useAppStore.getState().updateGeneratedSource(asset.id, {
+      name: "Updated Noise",
+      color: "#0f766e",
+      scale: 0.9,
+      detail: 0.2,
+      contrast: 0.7,
+      distortion: 0.1,
+      seed: 987654,
+    });
+
+    expect(updateGeneratedSourceAsset).toHaveBeenCalledWith(
+      asset,
+      expect.objectContaining({
+        scale: 0.9,
+        detail: 0.2,
+        contrast: 0.7,
+        distortion: 0.1,
+        seed: 987654,
+      }),
+    );
+    expect(useAppStore.getState().assets[0]?.id).toBe(asset.id);
+    expect(useAppStore.getState().assets[0]).toEqual(updatedAsset);
+    expect(useAppStore.getState().status).toBe("Noise source updated.");
   });
 });

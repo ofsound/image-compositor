@@ -18,18 +18,25 @@ function createCanvasMocks() {
   const linearGradient = { addColorStop: vi.fn() };
   const radialGradient = { addColorStop: vi.fn() };
   const conicGradient = { addColorStop: vi.fn() };
+  const imageData = {
+    width: 1800,
+    height: 1200,
+    data: new Uint8ClampedArray([
+      17, 34, 51, 255,
+      17, 34, 51, 255,
+      17, 34, 51, 255,
+      17, 34, 51, 255,
+    ]),
+  };
   const primaryContext = {
     fillRect: vi.fn(),
-    getImageData: vi.fn(() => ({
-      width: 1800,
-      height: 1200,
-      data: new Uint8ClampedArray([
-        17, 34, 51, 255,
-        17, 34, 51, 255,
-        17, 34, 51, 255,
-        17, 34, 51, 255,
-      ]),
+    createImageData: vi.fn((width: number, height: number) => ({
+      width,
+      height,
+      data: new Uint8ClampedArray(width * height * 4),
     })),
+    putImageData: vi.fn(),
+    getImageData: vi.fn(() => imageData),
     createLinearGradient: vi.fn(() => linearGradient),
     createRadialGradient: vi.fn(() => radialGradient),
     createConicGradient: vi.fn(() => conicGradient),
@@ -58,6 +65,7 @@ function createCanvasMocks() {
     linearGradient,
     radialGradient,
     conicGradient,
+    imageData,
     primaryContext,
     previewContext,
     primaryCanvas,
@@ -131,6 +139,47 @@ describe("normalizeSourceAsset", () => {
       conicAngle: 0,
       conicSpan: 360,
       conicRepeat: false,
+    });
+  });
+
+  it("normalizes legacy noise assets with bounded defaults", () => {
+    const asset = normalizeSourceAsset({
+      id: "asset_noise",
+      kind: "noise",
+      projectId: "project_test",
+      name: "Legacy Noise",
+      originalFileName: "legacy-noise.png",
+      mimeType: "image/png",
+      width: 320,
+      height: 240,
+      orientation: 1,
+      originalPath: "assets/original/asset_noise.png",
+      normalizedPath: "assets/normalized/asset_noise.png",
+      previewPath: "assets/previews/asset_noise.webp",
+      averageColor: "#225577",
+      palette: ["#225577", "#88aacc"],
+      luminance: 0.2,
+      createdAt: "2026-04-01T00:00:00.000Z",
+      recipe: {
+        scale: 2,
+        detail: -1,
+        contrast: 0.75,
+        distortion: 0.25,
+        seed: 99.8,
+      },
+    });
+
+    expect(asset.kind).toBe("noise");
+    if (asset.kind !== "noise") {
+      throw new Error("Expected a noise source asset.");
+    }
+    expect(asset.recipe).toEqual({
+      color: "#225577",
+      scale: 1,
+      detail: 0,
+      contrast: 0.75,
+      distortion: 0.25,
+      seed: 99,
     });
   });
 });
@@ -315,6 +364,117 @@ describe("generated sources", () => {
     }
   });
 
+  it("creates a noise source with a persisted normalized recipe", async () => {
+    const { primaryCanvas, previewCanvas, primaryContext } = createCanvasMocks();
+    const createElementSpy = vi
+      .spyOn(document, "createElement")
+      .mockReturnValueOnce(primaryCanvas as never)
+      .mockReturnValueOnce(previewCanvas as never);
+
+    try {
+      const asset = await createGeneratedSourceAsset(
+        {
+          kind: "noise",
+          name: "",
+          recipe: {
+            color: "#225577",
+            scale: 0.9,
+            detail: 0.4,
+            contrast: 0.7,
+            distortion: 0.2,
+            seed: 42,
+          },
+        },
+        "project_test",
+        { width: 64, height: 48 },
+      );
+
+      expect(asset.kind).toBe("noise");
+      if (asset.kind !== "noise") {
+        throw new Error("Expected a noise source asset.");
+      }
+      expect(asset.recipe).toEqual({
+        color: "#225577",
+        scale: 0.9,
+        detail: 0.4,
+        contrast: 0.7,
+        distortion: 0.2,
+        seed: 42,
+      });
+      expect(asset.name).toBe("Noise #225577");
+      expect(primaryContext.createImageData).toHaveBeenCalledWith(64, 48);
+      expect(primaryContext.putImageData).toHaveBeenCalledTimes(1);
+      expect(writeBlob).toHaveBeenCalledTimes(3);
+    } finally {
+      createElementSpy.mockRestore();
+    }
+  });
+
+  it("updates an existing noise source without changing its id", async () => {
+    const { primaryCanvas, previewCanvas, primaryContext } = createCanvasMocks();
+    const createElementSpy = vi
+      .spyOn(document, "createElement")
+      .mockReturnValueOnce(primaryCanvas as never)
+      .mockReturnValueOnce(previewCanvas as never);
+    const asset: SourceAsset = {
+      id: "asset_noise",
+      kind: "noise",
+      projectId: "project_test",
+      name: "Noise Old",
+      originalFileName: "noise-asset_noise.png",
+      mimeType: "image/png",
+      width: 64,
+      height: 48,
+      orientation: 1,
+      originalPath: "assets/original/asset_noise.png",
+      normalizedPath: "assets/normalized/asset_noise.png",
+      previewPath: "assets/previews/asset_noise.webp",
+      averageColor: "#225577",
+      palette: ["#225577", "#88aacc"],
+      luminance: 0.2,
+      createdAt: "2026-04-01T00:00:00.000Z",
+      recipe: {
+        color: "#225577",
+        scale: 0.5,
+        detail: 0.5,
+        contrast: 0.5,
+        distortion: 0.5,
+        seed: 42,
+        },
+      };
+
+    try {
+      const updated = await updateGeneratedSourceAsset(asset, {
+        name: "Lagoon",
+        color: "#1188aa",
+        scale: 0.8,
+        detail: 0.25,
+        contrast: 0.6,
+        distortion: 0.15,
+        seed: 314159,
+      });
+
+      expect(updated.id).toBe(asset.id);
+      expect(updated.kind).toBe("noise");
+      if (updated.kind !== "noise") {
+        throw new Error("Expected a noise source asset.");
+      }
+      expect(updated.name).toBe("Lagoon");
+      expect(updated.recipe).toEqual({
+        color: "#1188aa",
+        scale: 0.8,
+        detail: 0.25,
+        contrast: 0.6,
+        distortion: 0.15,
+        seed: 314159,
+      });
+      expect(primaryContext.putImageData).toHaveBeenCalledTimes(1);
+      expect(writeBlob).toHaveBeenCalledTimes(3);
+    } finally {
+      createElementSpy.mockRestore();
+    }
+  });
+
   it("creates repeating conic gradients with the requested span", async () => {
     const { primaryCanvas, previewCanvas, primaryContext, conicGradient } =
       createCanvasMocks();
@@ -409,5 +569,38 @@ describe("generated sources", () => {
 
     expect(signature).toContain("|conic|");
     expect(signature).toContain("|#778899|0.25|0.4|0.6|0.8|0.2|45|180|1");
+  });
+
+  it("includes the noise recipe in source signatures", () => {
+    const asset = normalizeSourceAsset({
+      id: "asset_noise",
+      kind: "noise",
+      projectId: "project_test",
+      name: "Noise",
+      originalFileName: "noise.png",
+      mimeType: "image/png",
+      width: 320,
+      height: 240,
+      orientation: 1,
+      originalPath: "assets/original/asset_noise.png",
+      normalizedPath: "assets/normalized/asset_noise.png",
+      previewPath: "assets/previews/asset_noise.webp",
+      averageColor: "#225577",
+      palette: ["#225577", "#88aacc"],
+      luminance: 0.2,
+      createdAt: "2026-04-01T00:00:00.000Z",
+      recipe: {
+        color: "#225577",
+        scale: 0.9,
+        detail: 0.4,
+        contrast: 0.7,
+        distortion: 0.2,
+        seed: 42,
+      },
+    });
+
+    const signature = getSourceContentSignature(asset);
+
+    expect(signature).toContain("|#225577|0.9|0.4|0.7|0.2|42");
   });
 });

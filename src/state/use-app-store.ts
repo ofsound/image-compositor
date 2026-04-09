@@ -7,6 +7,7 @@ import {
   persistProcessedAsset,
   updateGeneratedSourceAsset,
   type GradientSourceInput,
+  type NoiseSourceInput,
   type SolidSourceInput,
 } from "@/lib/assets";
 import { db } from "@/lib/db";
@@ -29,6 +30,7 @@ import {
 import type {
   BundleImportInspection,
   GradientSourceAsset,
+  NoiseSourceAsset,
   ProjectDocument,
   ProjectSnapshot,
   ProjectVersion,
@@ -111,10 +113,11 @@ interface AppState {
   importFiles: (files: FileList | File[]) => Promise<void>;
   addSolidSource: (input: SolidSourceInput) => Promise<void>;
   addGradientSource: (input: GradientSourceInput) => Promise<void>;
+  addNoiseSource: (input: NoiseSourceInput) => Promise<void>;
   removeSource: (assetId: string) => Promise<void>;
   updateGeneratedSource: (
     assetId: string,
-    input: SolidSourceInput | GradientSourceInput,
+    input: SolidSourceInput | GradientSourceInput | NoiseSourceInput,
   ) => Promise<void>;
   randomizeSeed: () => Promise<void>;
   saveVersion: (label: string, thumbnailBlob?: Blob | null) => Promise<void>;
@@ -751,6 +754,61 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
+  async addNoiseSource(input) {
+    const activeProject = getActiveProject(get());
+    if (!activeProject) return;
+
+    set({ busy: true, status: "Creating noise source…" });
+
+    try {
+      const asset = await createGeneratedSourceAsset(
+        { kind: "noise", recipe: input, name: input.name },
+        activeProject.id,
+        activeProject.canvas,
+      );
+      await db.assets.put(asset);
+
+      const nextProject = {
+        ...activeProject,
+        sourceIds: [...new Set([...activeProject.sourceIds, asset.id])],
+        updatedAt: new Date().toISOString(),
+      };
+
+      await db.projects.put(nextProject);
+
+      set((state) => {
+        const historyByProject = patchHistory(state.historyByProject, nextProject.id, (history) => ({
+          past: [
+            ...history.past,
+            {
+              kind: "add-assets",
+              projectId: nextProject.id,
+              assets: [structuredClone(asset)],
+              sourceIdsBefore: structuredClone(activeProject.sourceIds),
+              sourceIdsAfter: structuredClone(nextProject.sourceIds),
+            } satisfies AddAssetsHistoryEntry,
+          ],
+          future: [],
+        }));
+
+        return {
+          assets: sortAssetsByCreated([...state.assets, asset]),
+          projects: upsertProject(state.projects, nextProject),
+          historyByProject,
+          busy: false,
+          status: "Noise source added.",
+          ...getHistoryFlags(historyByProject, state.activeProjectId),
+        };
+      });
+    } catch (error) {
+      set({
+        busy: false,
+        status:
+          error instanceof Error ? `Could not add source: ${error.message}` : "Could not add source.",
+      });
+    }
+  },
+
   async removeSource(assetId) {
     const activeProject = getActiveProject(get());
     if (!activeProject) return;
@@ -822,7 +880,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (!activeProject) return;
 
     const asset = get().assets.find(
-      (entry): entry is SolidSourceAsset | GradientSourceAsset =>
+      (entry): entry is SolidSourceAsset | GradientSourceAsset | NoiseSourceAsset =>
         entry.id === assetId &&
         entry.projectId === activeProject.id &&
         entry.kind !== "image",
@@ -852,7 +910,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           ),
           historyByProject,
           busy: false,
-          status: `${asset.kind === "solid" ? "Solid" : "Gradient"} source updated.`,
+          status: `${asset.kind[0]!.toUpperCase() + asset.kind.slice(1)} source updated.`,
           ...getHistoryFlags(historyByProject, state.activeProjectId),
         };
       });

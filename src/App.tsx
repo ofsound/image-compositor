@@ -1688,63 +1688,7 @@ function App() {
         </div>
 
         <div className="mx-auto flex min-h-0 w-full flex-1 overflow-hidden p-3">
-          <div className="grid min-h-0 flex-1 grid-cols-[228px_minmax(720px,1fr)_288px_560px] gap-3 overflow-hidden">
-            <PanelShell
-              title="Layers"
-              actions={
-                <Button
-                  className="w-fit shrink-0"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => void addLayer()}
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                  Add Layer
-                </Button>
-              }
-              contentClassName="min-h-0 overflow-y-auto pr-1"
-            >
-              <DndContext
-                sensors={layerSensors}
-                collisionDetection={closestCenter}
-                onDragEnd={handleLayerDragEnd}
-              >
-                <SortableContext
-                  items={displayLayers.map((layer) => layer.id)}
-                  strategy={verticalListSortingStrategy}
-                >
-                  <div className="flex flex-col gap-2">
-                    {displayLayers.map((layer) => (
-                      <SortableLayerRow
-                        key={layer.id}
-                        layer={layer}
-                        isSelected={layer.id === selectedLayer?.id}
-                        thumbnailUrl={layerThumbnailUrls[layer.id] ?? null}
-                        canDelete={activeProject.layers.length > 1}
-                        onSelect={() => void selectLayer(layer.id)}
-                        onToggleVisibility={() => void toggleLayerVisibility(layer.id)}
-                        onDelete={() => void deleteLayer(layer.id)}
-                      />
-                    ))}
-                  </div>
-                </SortableContext>
-              </DndContext>
-            </PanelShell>
-
-            <PanelShell
-              title="Preview"
-              sectionLabel="Preview"
-              cardClassName="rounded-none border-0 bg-transparent shadow-none backdrop-blur-none"
-              contentClassName="flex min-h-0 items-center justify-center p-0"
-            >
-              <PreviewStage
-                canvasRef={canvasRef}
-                project={previewProject ?? activeProject}
-                assets={previewAssets}
-                onRenderState={setRenderState}
-              />
-            </PanelShell>
-
+          <div className="grid min-h-0 flex-1 grid-cols-[288px_minmax(720px,1fr)_228px_560px] gap-3 overflow-hidden">
             <PanelShell
               title="Sources"
               actions={
@@ -1824,6 +1768,62 @@ function App() {
                   })}
                 </div>
               )}
+            </PanelShell>
+
+            <PanelShell
+              title="Preview"
+              sectionLabel="Preview"
+              cardClassName="rounded-none border-0 bg-transparent shadow-none backdrop-blur-none"
+              contentClassName="flex min-h-0 items-center justify-center p-0"
+            >
+              <PreviewStage
+                canvasRef={canvasRef}
+                project={previewProject ?? activeProject}
+                assets={previewAssets}
+                onRenderState={setRenderState}
+              />
+            </PanelShell>
+
+            <PanelShell
+              title="Layers"
+              actions={
+                <Button
+                  className="w-fit shrink-0"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void addLayer()}
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Add Layer
+                </Button>
+              }
+              contentClassName="min-h-0 overflow-y-auto pr-1"
+            >
+              <DndContext
+                sensors={layerSensors}
+                collisionDetection={closestCenter}
+                onDragEnd={handleLayerDragEnd}
+              >
+                <SortableContext
+                  items={displayLayers.map((layer) => layer.id)}
+                  strategy={verticalListSortingStrategy}
+                >
+                  <div className="flex flex-col gap-2">
+                    {displayLayers.map((layer) => (
+                      <SortableLayerRow
+                        key={layer.id}
+                        layer={layer}
+                        isSelected={layer.id === selectedLayer?.id}
+                        thumbnailUrl={layerThumbnailUrls[layer.id] ?? null}
+                        canDelete={activeProject.layers.length > 1}
+                        onSelect={() => void selectLayer(layer.id)}
+                        onToggleVisibility={() => void toggleLayerVisibility(layer.id)}
+                        onDelete={() => void deleteLayer(layer.id)}
+                      />
+                    ))}
+                  </div>
+                </SortableContext>
+              </DndContext>
             </PanelShell>
 
             <div className="flex min-h-0 flex-col gap-3">

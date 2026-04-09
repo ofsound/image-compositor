@@ -945,6 +945,17 @@ describe("App inspector grouping", () => {
     expect(within(projectSettings).queryByText("Layout")).not.toBeInTheDocument();
   });
 
+  it("renders sources before layers in the main grid", () => {
+    renderApp();
+
+    const sources = screen.getByRole("region", { name: "Sources" });
+    const layers = screen.getByRole("region", { name: "Layers" });
+
+    expect(
+      sources.compareDocumentPosition(layers) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+
   it("keeps sources in a persistent rail layout", () => {
     renderApp({
       assets: [

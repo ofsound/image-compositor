@@ -94,6 +94,10 @@ import {
 import { normalizeHexColor } from "@/lib/color";
 import { lockExportDimensionsToCanvas } from "@/lib/export-sizing";
 import { readBlob } from "@/lib/opfs";
+import {
+  buildBitmapMap,
+  renderProjectLayerToCanvas,
+} from "@/lib/render";
 import { toggleSourceId } from "@/lib/source-selection";
 import {
   getSourceWeight,
@@ -181,6 +185,7 @@ function SourceThumbnail({
 function SortableLayerRow({
   layer,
   isSelected,
+  thumbnailUrl,
   canDelete,
   onSelect,
   onToggleVisibility,
@@ -188,6 +193,7 @@ function SortableLayerRow({
 }: {
   layer: ProjectDocument["layers"][number];
   isSelected: boolean;
+  thumbnailUrl: string | null;
   canDelete: boolean;
   onSelect: () => void;
   onToggleVisibility: () => void;
@@ -223,21 +229,28 @@ function SortableLayerRow({
         </Button>
         <button
           type="button"
-          className="min-w-0 flex-1 text-left"
+          className="flex min-w-0 flex-1 items-center gap-3 text-left"
           onClick={onSelect}
         >
-          <div className="flex items-center gap-2 text-xs font-medium text-text">
-            <Layers className="h-3.5 w-3.5 text-text-muted" />
-            <span className="truncate">{layer.name}</span>
-            {isSelected ? (
-              <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-text-faint">
-                Editing
-              </span>
-            ) : null}
-          </div>
-          <div className="mt-1 text-[11px] text-text-muted">
-            {layer.visible ? "Visible" : "Hidden"} · {layer.sourceIds.length} source
-            {layer.sourceIds.length === 1 ? "" : "s"}
+          <LayerRowThumbnail
+            layerId={layer.id}
+            layerName={layer.name}
+            thumbnailUrl={thumbnailUrl}
+          />
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 text-xs font-medium text-text">
+              <Layers className="h-3.5 w-3.5 text-text-muted" />
+              <span className="truncate">{layer.name}</span>
+              {isSelected ? (
+                <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-text-faint">
+                  Editing
+                </span>
+              ) : null}
+            </div>
+            <div className="mt-1 text-[11px] text-text-muted">
+              {layer.visible ? "Visible" : "Hidden"} · {layer.sourceIds.length} source
+              {layer.sourceIds.length === 1 ? "" : "s"}
+            </div>
           </div>
         </button>
       </div>
@@ -264,6 +277,48 @@ function SortableLayerRow({
   );
 }
 
+function revokeObjectUrls(urls: Record<string, string>) {
+  for (const url of Object.values(urls)) {
+    URL.revokeObjectURL(url);
+  }
+}
+
+function canvasToBlob(
+  canvas: HTMLCanvasElement,
+  type: string,
+  quality?: number,
+) {
+  return new Promise<Blob | null>((resolve) => {
+    canvas.toBlob((blob) => resolve(blob), type, quality);
+  });
+}
+
+function LayerRowThumbnail({
+  layerId,
+  layerName,
+  thumbnailUrl,
+}: {
+  layerId: string;
+  layerName: string;
+  thumbnailUrl: string | null;
+}) {
+  return thumbnailUrl ? (
+    <img
+      src={thumbnailUrl}
+      alt={`${layerName} preview`}
+      data-testid={`layer-thumbnail-${layerId}`}
+      className="h-12 w-16 shrink-0 rounded-md bg-preview-canvas object-contain"
+    />
+  ) : (
+    <div
+      data-testid={`layer-thumbnail-placeholder-${layerId}`}
+      className="flex h-12 w-16 shrink-0 items-center justify-center rounded-md bg-preview-canvas font-mono text-[9px] uppercase tracking-[0.08em] text-text-faint"
+    >
+      Loading
+    </div>
+  );
+}
+
 const SOURCE_DIALOG_MODES: SourceKind[] = [
   "image",
   "solid",
@@ -279,6 +334,8 @@ const PROCEDURAL_SOURCE_KINDS: SourceKind[] = [
   "reaction",
   "waves",
 ];
+const LAYER_ROW_THUMBNAIL_WIDTH = 64;
+const LAYER_ROW_THUMBNAIL_HEIGHT = 48;
 const GRADIENT_MODES: GradientMode[] = ["linear", "radial", "conic"];
 const GRADIENT_DIRECTIONS: GradientDirection[] = [
   "horizontal",
@@ -676,10 +733,14 @@ function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const uploadInputRef = useRef<HTMLInputElement>(null);
   const bundleInputRef = useRef<HTMLInputElement>(null);
+  const layerThumbnailUrlsRef = useRef<Record<string, string>>({});
   const [renderState, setRenderState] = useState<PreviewRenderState>({
     ready: false,
     lastRenderedPreview: null,
   });
+  const [layerThumbnailUrls, setLayerThumbnailUrls] = useState<
+    Record<string, string>
+  >({});
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
   const [duplicateDialogOpen, setDuplicateDialogOpen] = useState(false);
   const [manageProjectsOpen, setManageProjectsOpen] = useState(false);
@@ -889,6 +950,9 @@ function App() {
   const activeVersions = activeProject
     ? versions.filter((version) => version.projectId === activeProject.id)
     : [];
+  const deferredProjectAssetSignature = deferredProjectAssets
+    .map(getSourceContentSignature)
+    .join("|");
   const previewAssetSignature = previewAssets.map((asset) => asset.id).join("|");
   const purgeDialogProject =
     projects.find((project) => project.id === purgeDialogProjectId) ?? null;
@@ -905,6 +969,78 @@ function App() {
       lastRenderedPreview: null,
     });
   }, [previewAssetSignature, activeProject?.id, activeProject?.updatedAt]);
+
+  useEffect(() => {
+    if (!deferredProject) {
+      revokeObjectUrls(layerThumbnailUrlsRef.current);
+      layerThumbnailUrlsRef.current = {};
+      setLayerThumbnailUrls({});
+      return;
+    }
+
+    const project = deferredProject;
+    const projectAssets = deferredProjectAssets;
+    let cancelled = false;
+
+    async function renderLayerThumbnails() {
+      const bitmaps = await buildBitmapMap(
+        projectAssets,
+        (asset) => readBlob(asset.normalizedPath),
+      );
+      const nextEntries = await Promise.all(
+        project.layers.map(async (layer) => {
+          const canvas = document.createElement("canvas");
+          canvas.width = LAYER_ROW_THUMBNAIL_WIDTH;
+          canvas.height = LAYER_ROW_THUMBNAIL_HEIGHT;
+
+          await renderProjectLayerToCanvas(
+            project,
+            layer,
+            projectAssets,
+            bitmaps,
+            canvas,
+            { includeBackground: false },
+          );
+
+          const blob = await canvasToBlob(canvas, "image/webp", 0.82);
+          if (!blob) {
+            return [layer.id, null] as const;
+          }
+
+          return [layer.id, URL.createObjectURL(blob)] as const;
+        }),
+      );
+
+      const nextUrls = Object.fromEntries(
+        nextEntries.filter(
+          (entry): entry is readonly [string, string] => Boolean(entry[1]),
+        ),
+      );
+
+      if (cancelled) {
+        revokeObjectUrls(nextUrls);
+        return;
+      }
+
+      const previousUrls = layerThumbnailUrlsRef.current;
+      layerThumbnailUrlsRef.current = nextUrls;
+      setLayerThumbnailUrls(nextUrls);
+      revokeObjectUrls(previousUrls);
+    }
+
+    void renderLayerThumbnails();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [deferredProject?.id, deferredProject?.updatedAt, deferredProjectAssetSignature]);
+
+  useEffect(() => {
+    return () => {
+      revokeObjectUrls(layerThumbnailUrlsRef.current);
+      layerThumbnailUrlsRef.current = {};
+    };
+  }, []);
 
   const handleLayerDragEnd = ({ active, over }: DragEndEvent) => {
     if (!over) {
@@ -1654,6 +1790,7 @@ function App() {
                             key={layer.id}
                             layer={layer}
                             isSelected={layer.id === selectedLayer?.id}
+                            thumbnailUrl={layerThumbnailUrls[layer.id] ?? null}
                             canDelete={activeProject.layers.length > 1}
                             onSelect={() => void selectLayer(layer.id)}
                             onToggleVisibility={() => void toggleLayerVisibility(layer.id)}

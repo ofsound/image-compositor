@@ -3,6 +3,10 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as assetLib from "@/lib/assets";
 import { createProjectDocument } from "@/lib/project-defaults";
+import {
+  buildBitmapMap,
+  renderProjectLayerToCanvas,
+} from "@/lib/render";
 import App, {
   coerceShapeModeForFamily,
   getGeometryOptions,
@@ -29,6 +33,11 @@ vi.mock("@/lib/assets", async () => {
   };
 });
 
+vi.mock("@/lib/render", () => ({
+  buildBitmapMap: vi.fn(async () => new Map()),
+  renderProjectLayerToCanvas: vi.fn(async () => undefined),
+}));
+
 vi.mock("@/components/app/preview-stage", () => ({
   PreviewStage: () => <div data-testid="preview-stage" />,
 }));
@@ -42,6 +51,8 @@ vi.mock("@/state/use-app-store", () => ({
 }));
 
 const mockedUseAppStore = vi.mocked(useAppStore);
+const mockedBuildBitmapMap = vi.mocked(buildBitmapMap);
+const mockedRenderProjectLayerToCanvas = vi.mocked(renderProjectLayerToCanvas);
 const renderGeneratedSourceToCanvasSpy = vi.mocked(
   assetLib.renderGeneratedSourceToCanvas,
 );
@@ -325,6 +336,123 @@ function expectSliderEnabled(label: string) {
 function expectSliderHidden(label: string) {
   expect(screen.queryByLabelText(label)).not.toBeInTheDocument();
 }
+
+describe("App layer thumbnails", () => {
+  let createObjectUrlIndex = 0;
+  const revokeObjectUrlSpy = vi.fn();
+
+  beforeEach(() => {
+    mockedUseAppStore.mockReset();
+    mockedBuildBitmapMap.mockClear();
+    mockedRenderProjectLayerToCanvas.mockClear();
+    createObjectUrlIndex = 0;
+    revokeObjectUrlSpy.mockClear();
+    Object.defineProperty(globalThis.URL, "createObjectURL", {
+      configurable: true,
+      value: vi.fn(() => `blob:layer-thumb-${createObjectUrlIndex += 1}`),
+    });
+    Object.defineProperty(globalThis.URL, "revokeObjectURL", {
+      configurable: true,
+      value: revokeObjectUrlSpy,
+    });
+    Object.defineProperty(HTMLCanvasElement.prototype, "toBlob", {
+      configurable: true,
+      value: vi.fn(function toBlob(callback: BlobCallback) {
+        callback(new Blob(["thumb"], { type: "image/webp" }));
+      }),
+    });
+  });
+
+  it("renders layer thumbnail placeholders before thumbnails resolve", () => {
+    const state = createStoreState({
+      assets: [createImageAsset("project_placeholder")],
+    });
+    state.projects[0]!.layers[0]!.sourceIds = [state.assets[0]!.id];
+
+    mockedUseAppStore.mockReturnValue(state);
+    render(<App />);
+
+    expect(
+      screen.getByTestId(`layer-thumbnail-placeholder-${state.projects[0]!.layers[0]!.id}`),
+    ).toBeInTheDocument();
+  });
+
+  it("renders live layer thumbnail images inside the layer rows", async () => {
+    const state = createStoreState({
+      assets: [createImageAsset("project_thumbs")],
+    });
+    const firstLayer = state.projects[0]!.layers[0]!;
+    firstLayer.sourceIds = [state.assets[0]!.id];
+    state.projects[0]!.layers.push({
+      ...structuredClone(firstLayer),
+      id: "layer_two",
+      name: "Layer 2",
+    });
+
+    mockedUseAppStore.mockReturnValue(state);
+    render(<App />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId(`layer-thumbnail-${firstLayer.id}`)).toBeInTheDocument();
+      expect(screen.getByTestId("layer-thumbnail-layer_two")).toBeInTheDocument();
+    });
+
+    expect(mockedBuildBitmapMap).toHaveBeenCalledTimes(1);
+    expect(mockedRenderProjectLayerToCanvas).toHaveBeenCalledTimes(2);
+  });
+
+  it("refreshes thumbnails and revokes replaced object urls when the project changes", async () => {
+    const initialState = createStoreState({
+      assets: [createImageAsset("project_refresh")],
+    });
+    initialState.projects[0]!.layers[0]!.sourceIds = [initialState.assets[0]!.id];
+
+    mockedUseAppStore.mockReturnValue(initialState);
+    const { rerender } = render(<App />);
+
+    await waitFor(() =>
+      expect(
+        screen.getByTestId(`layer-thumbnail-${initialState.projects[0]!.layers[0]!.id}`),
+      ).toBeInTheDocument(),
+    );
+
+    const refreshedState = createStoreState({
+      assets: [createImageAsset("project_refresh")],
+    });
+    refreshedState.projects[0]!.id = initialState.projects[0]!.id;
+    refreshedState.activeProjectId = initialState.activeProjectId;
+    refreshedState.projects[0]!.updatedAt = "2026-04-09T12:00:00.000Z";
+    refreshedState.projects[0]!.layers[0]!.id = initialState.projects[0]!.layers[0]!.id;
+    refreshedState.projects[0]!.layers[0]!.name = "Updated Layer";
+    refreshedState.projects[0]!.layers[0]!.sourceIds = [refreshedState.assets[0]!.id];
+
+    mockedUseAppStore.mockReturnValue(refreshedState);
+    rerender(<App />);
+
+    await waitFor(() =>
+      expect(revokeObjectUrlSpy).toHaveBeenCalledWith("blob:layer-thumb-1"),
+    );
+    expect(vi.mocked(globalThis.URL.createObjectURL).mock.calls.length).toBeGreaterThan(1);
+  });
+
+  it("revokes layer thumbnail object urls on unmount", async () => {
+    const state = createStoreState({
+      assets: [createImageAsset("project_unmount")],
+    });
+    state.projects[0]!.layers[0]!.sourceIds = [state.assets[0]!.id];
+
+    mockedUseAppStore.mockReturnValue(state);
+    const { unmount } = render(<App />);
+
+    await waitFor(() =>
+      expect(globalThis.URL.createObjectURL).toHaveBeenCalledTimes(1),
+    );
+
+    unmount();
+
+    expect(revokeObjectUrlSpy).toHaveBeenCalledWith("blob:layer-thumb-1");
+  });
+});
 
 describe("App conditional sliders", () => {
   beforeEach(() => {

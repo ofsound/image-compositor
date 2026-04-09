@@ -6,7 +6,11 @@ import {
   normalizeProjectDocument,
   normalizeProjectSnapshot,
 } from "@/lib/project-defaults";
-import { exportProjectImage, renderProjectToCanvas } from "@/lib/render";
+import {
+  exportProjectImage,
+  renderProjectLayerToCanvas,
+  renderProjectToCanvas,
+} from "@/lib/render";
 import { buildBitmapMap } from "@/lib/render";
 import type { SourceAsset } from "@/types/project";
 
@@ -38,6 +42,7 @@ function createMockContext() {
     save: vi.fn(),
     restore: vi.fn(),
     fillRect: vi.fn(),
+    clearRect: vi.fn(),
     rect: vi.fn(),
     createLinearGradient: vi.fn(() => ({
       addColorStop: vi.fn(),
@@ -208,6 +213,120 @@ describe("renderProjectToCanvas", () => {
     const project = createProjectDocument("Square Default");
 
     expect(project.layout.rectCornerRadius).toBe(0);
+  });
+
+  it("renders a single layer without compositing the full stack", async () => {
+    const project = createProjectDocument("Single Layer");
+    project.layout.family = "grid";
+    project.layout.columns = 1;
+    project.layout.rows = 1;
+    project.layout.shapeMode = "rect";
+    project.layers[0]!.sourceIds = [asset.id];
+    project.layers.push({
+      ...structuredClone(project.layers[0]!),
+      id: "layer_above",
+      name: "Above",
+      compositing: {
+        ...project.layers[0]!.compositing,
+        blendMode: "multiply",
+      },
+    });
+
+    const context = createMockContext();
+    const canvas = document.createElement("canvas");
+    canvas.width = project.canvas.width;
+    canvas.height = project.canvas.height;
+    vi.spyOn(canvas, "getContext").mockReturnValue(context as never);
+
+    await renderProjectLayerToCanvas(
+      project,
+      project.layers[0]!,
+      [asset],
+      new Map([[asset.id, { asset, bitmap: {} as ImageBitmap }]]),
+      canvas,
+    );
+
+    expect(context.drawImage).toHaveBeenCalled();
+    expect(context.globalCompositeOperationAssignments).not.toContain("multiply");
+  });
+
+  it("clears the target canvas when rendering a transparent layer preview", async () => {
+    const project = createProjectDocument("Transparent Layer");
+    project.layout.family = "grid";
+    project.layout.columns = 1;
+    project.layout.rows = 1;
+    project.layout.shapeMode = "rect";
+    project.layers[0]!.sourceIds = [asset.id];
+
+    const context = createMockContext();
+    const canvas = document.createElement("canvas");
+    canvas.width = project.canvas.width;
+    canvas.height = project.canvas.height;
+    vi.spyOn(canvas, "getContext").mockReturnValue(context as never);
+
+    await renderProjectLayerToCanvas(
+      project,
+      project.layers[0]!,
+      [asset],
+      new Map([[asset.id, { asset, bitmap: {} as ImageBitmap }]]),
+      canvas,
+      { includeBackground: false },
+    );
+
+    expect(context.clearRect).toHaveBeenCalledWith(
+      0,
+      0,
+      project.canvas.width,
+      project.canvas.height,
+    );
+    expect(context.fillRect).not.toHaveBeenCalled();
+  });
+
+  it("preserves layer compositing and finish settings in isolated layer previews", async () => {
+    const project = createProjectDocument("Layer Finish");
+    project.layout.family = "grid";
+    project.layout.columns = 1;
+    project.layout.rows = 1;
+    project.layout.shapeMode = "rect";
+    project.layers[0]!.sourceIds = [asset.id];
+    project.layers[0]!.compositing.blendMode = "multiply";
+    project.layers[0]!.compositing.opacity = 0.45;
+    project.layers[0]!.finish.shadowOpacity = 0.6;
+    project.layers[0]!.finish.shadowBlur = 12;
+    project.layers[0]!.finish.shadowOffsetX = 4;
+    project.layers[0]!.finish.shadowOffsetY = -3;
+    project.compositing = structuredClone(project.layers[0]!.compositing);
+    project.finish = structuredClone(project.layers[0]!.finish);
+
+    const targetContext = createMockContext();
+    const layerContext = createMockContext();
+    const queuedContexts = [targetContext, layerContext];
+    const getContextSpy = vi
+      .spyOn(HTMLCanvasElement.prototype, "getContext")
+      .mockImplementation(() => (queuedContexts.shift() ?? layerContext) as never);
+
+    try {
+      const canvas = document.createElement("canvas");
+      canvas.width = project.canvas.width;
+      canvas.height = project.canvas.height;
+
+      await renderProjectLayerToCanvas(
+        project,
+        project.layers[0]!,
+        [asset],
+        new Map([[asset.id, { asset, bitmap: {} as ImageBitmap }]]),
+        canvas,
+        { includeBackground: false },
+      );
+    } finally {
+      getContextSpy.mockRestore();
+    }
+
+    expect(targetContext.globalCompositeOperationAssignments).toContain("multiply");
+    expect(targetContext.globalAlphaAssignments).toContain(0.45);
+    expect(targetContext.shadowBlurAssignments).toContain(12);
+    expect(targetContext.shadowOffsetXAssignments).toContain(4);
+    expect(targetContext.shadowOffsetYAssignments).toContain(-3);
   });
 
   it("uses the configured rect corner radius scale", async () => {

@@ -1,4 +1,5 @@
 import type {
+  CompositorLayer,
   KaleidoscopeMirrorMode,
   LayerRenderProject,
   ProjectDocument,
@@ -586,6 +587,67 @@ function drawBackground(
   context.fillRect(0, 0, project.canvas.width, project.canvas.height);
 }
 
+function clearCanvas(
+  context: RenderContext,
+  width: number,
+  height: number,
+) {
+  if (typeof context.clearRect === "function") {
+    context.clearRect(0, 0, width, height);
+  }
+}
+
+function resolveLayerAssets(
+  layer: CompositorLayer,
+  assets: SourceAsset[],
+) {
+  if (layer.sourceIds.length === 0) {
+    return assets;
+  }
+
+  return layer.sourceIds
+    .map((sourceId) => assets.find((asset) => asset.id === sourceId))
+    .filter((asset): asset is SourceAsset => Boolean(asset));
+}
+
+async function renderCompositorLayer(
+  project: ProjectDocument,
+  layer: CompositorLayer,
+  assets: SourceAsset[],
+  bitmaps: Map<string, AssetBitmapEntry>,
+  context: RenderContext,
+  canvas: RenderCanvas,
+) {
+  const layerProject = createLayerRenderProject(project, layer);
+  const layerAssets = resolveLayerAssets(layer, assets);
+
+  const usesDirectComposite =
+    layer.compositing.blendMode === "source-over" &&
+    clamp(layer.compositing.opacity, 0, 1) === 1 &&
+    !hasActiveFinish(layerProject);
+
+  if (usesDirectComposite) {
+    await renderLayer(layerProject, layerAssets, bitmaps, context, canvas);
+    return;
+  }
+
+  const neutralLayerProject = createLayerRenderProject(project, {
+    ...layer,
+    compositing: {
+      ...layer.compositing,
+      blendMode: "source-over",
+      opacity: 1,
+    },
+  });
+  const layerCanvas = createRenderCanvas(
+    project.canvas.width,
+    project.canvas.height,
+  );
+  await renderLayerToCanvas(neutralLayerProject, layerAssets, bitmaps, layerCanvas);
+  const finishedLayerCanvas = applyLayerColorAdjustments(layerCanvas, layerProject);
+  compositeFinishedLayer(context, finishedLayerCanvas, layerProject);
+}
+
 export async function buildBitmapMap(
   assets: SourceAsset[],
   blobLookup: (asset: SourceAsset) => Promise<Blob | null>,
@@ -619,6 +681,23 @@ function getRenderContext(canvas: RenderCanvas) {
   context.imageSmoothingEnabled = true;
   context.imageSmoothingQuality = "high";
   return context;
+}
+
+function drawCanvasContained(
+  context: RenderContext,
+  sourceCanvas: RenderCanvas,
+  targetWidth: number,
+  targetHeight: number,
+) {
+  const sourceWidth = sourceCanvas.width;
+  const sourceHeight = sourceCanvas.height;
+  const scale = Math.min(targetWidth / sourceWidth, targetHeight / sourceHeight);
+  const drawWidth = sourceWidth * scale;
+  const drawHeight = sourceHeight * scale;
+  const offsetX = (targetWidth - drawWidth) / 2;
+  const offsetY = (targetHeight - drawHeight) / 2;
+
+  context.drawImage(sourceCanvas, offsetX, offsetY, drawWidth, drawHeight);
 }
 
 function getKaleidoscopeScaleX(
@@ -708,10 +787,9 @@ export async function renderProjectToCanvas(
 
   if (options.includeBackground ?? true) {
     drawBackground(context, normalizedProject);
-  } else if (typeof context.clearRect === "function") {
-    context.clearRect(
-      0,
-      0,
+  } else {
+    clearCanvas(
+      context,
       normalizedProject.canvas.width,
       normalizedProject.canvas.height,
     );
@@ -720,40 +798,72 @@ export async function renderProjectToCanvas(
   const visibleLayers = normalizedProject.layers.filter((layer) => layer.visible);
 
   for (const layer of visibleLayers) {
-    const layerProject = createLayerRenderProject(normalizedProject, layer);
-    const layerAssets =
-      layer.sourceIds.length > 0
-        ? layer.sourceIds
-            .map((sourceId) => assets.find((asset) => asset.id === sourceId))
-            .filter((asset): asset is SourceAsset => Boolean(asset))
-        : assets;
+    await renderCompositorLayer(
+      normalizedProject,
+      layer,
+      assets,
+      bitmaps,
+      context,
+      canvas,
+    );
+  }
+}
 
-    const usesDirectComposite =
-      layer.compositing.blendMode === "source-over" &&
-      clamp(layer.compositing.opacity, 0, 1) === 1 &&
-      !hasActiveFinish(layerProject);
+export async function renderProjectLayerToCanvas(
+  project: ProjectDocument,
+  layer: CompositorLayer,
+  assets: SourceAsset[],
+  bitmaps: Map<string, AssetBitmapEntry>,
+  canvas: RenderCanvas,
+  options: RenderOptions = {},
+) {
+  const normalizedProject = normalizeProjectDocument(
+    syncLegacyProjectFieldsToSelectedLayer(project),
+  );
+  const normalizedLayer =
+    normalizedProject.layers.find((entry) => entry.id === layer.id) ?? layer;
+  const targetWidth = Math.max(1, canvas.width || normalizedProject.canvas.width);
+  const targetHeight = Math.max(1, canvas.height || normalizedProject.canvas.height);
+  const renderCanvas =
+    targetWidth === normalizedProject.canvas.width &&
+    targetHeight === normalizedProject.canvas.height
+      ? canvas
+      : createRenderCanvas(
+          normalizedProject.canvas.width,
+          normalizedProject.canvas.height,
+        );
+  renderCanvas.width = normalizedProject.canvas.width;
+  renderCanvas.height = normalizedProject.canvas.height;
+  const renderContext = getRenderContext(renderCanvas);
 
-    if (usesDirectComposite) {
-      await renderLayer(layerProject, layerAssets, bitmaps, context, canvas);
-      continue;
-    }
-
-    const neutralLayerProject = createLayerRenderProject(normalizedProject, {
-      ...layer,
-      compositing: {
-        ...layer.compositing,
-        blendMode: "source-over",
-        opacity: 1,
-      },
-    });
-    const layerCanvas = createRenderCanvas(
+  if (options.includeBackground ?? true) {
+    drawBackground(renderContext, normalizedProject);
+  } else {
+    clearCanvas(
+      renderContext,
       normalizedProject.canvas.width,
       normalizedProject.canvas.height,
     );
-    await renderLayerToCanvas(neutralLayerProject, layerAssets, bitmaps, layerCanvas);
-    const finishedLayerCanvas = applyLayerColorAdjustments(layerCanvas, layerProject);
-    compositeFinishedLayer(context, finishedLayerCanvas, layerProject);
   }
+
+  await renderCompositorLayer(
+    normalizedProject,
+    normalizedLayer,
+    assets,
+    bitmaps,
+    renderContext,
+    renderCanvas,
+  );
+
+  if (renderCanvas === canvas) {
+    return;
+  }
+
+  canvas.width = targetWidth;
+  canvas.height = targetHeight;
+  const targetContext = getRenderContext(canvas);
+  clearCanvas(targetContext, targetWidth, targetHeight);
+  drawCanvasContained(targetContext, renderCanvas, targetWidth, targetHeight);
 }
 
 async function renderLayer(

@@ -352,6 +352,83 @@ describe("renderProjectToCanvas", () => {
     expect(endAngle).toBe(Math.PI / 2);
   });
 
+  it("uses the hollow ratio for ring geometry", async () => {
+    const project = createProjectDocument("Ring Hollow Ratio");
+    project.layout.family = "grid";
+    project.layout.columns = 1;
+    project.layout.rows = 1;
+    project.layout.shapeMode = "ring";
+    project.layout.hollowRatio = 0.8;
+    project.layout.symmetryMode = "none";
+    project.compositing.overlap = 0;
+    project.effects.rotationJitter = 0;
+    project.effects.scaleJitter = 0;
+    project.effects.displacement = 0;
+    project.effects.distortion = 0;
+    project.effects.sharpen = 0;
+    project.effects.kaleidoscopeSegments = 1;
+
+    const context = createMockContext();
+    const canvas = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn(() => context),
+    } as unknown as HTMLCanvasElement;
+
+    await renderProjectToCanvas(
+      project,
+      [asset],
+      new Map([[asset.id, { asset, bitmap: {} as ImageBitmap }]]),
+      canvas,
+    );
+
+    expect(context.arc).toHaveBeenCalledTimes(4);
+    const [outerCall, innerCall] = context.arc.mock.calls;
+    expect(innerCall?.[2]).toBeCloseTo((outerCall?.[2] as number) * 0.8, 6);
+  });
+
+  it("renders arc geometry as a hollow open sweep", async () => {
+    const project = createProjectDocument("Arc Render");
+    project.layout.family = "grid";
+    project.layout.columns = 1;
+    project.layout.rows = 1;
+    project.layout.shapeMode = "arc";
+    project.layout.wedgeAngle = 210;
+    project.layout.wedgeJitter = 0;
+    project.layout.hollowRatio = 0.7;
+    project.layout.symmetryMode = "none";
+    project.compositing.overlap = 0;
+    project.effects.rotationJitter = 0;
+    project.effects.scaleJitter = 0;
+    project.effects.displacement = 0;
+    project.effects.distortion = 0;
+    project.effects.sharpen = 0;
+    project.effects.kaleidoscopeSegments = 1;
+
+    const context = createMockContext();
+    const canvas = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn(() => context),
+    } as unknown as HTMLCanvasElement;
+
+    await renderProjectToCanvas(
+      project,
+      [asset],
+      new Map([[asset.id, { asset, bitmap: {} as ImageBitmap }]]),
+      canvas,
+    );
+
+    expect(context.arc).toHaveBeenCalledTimes(4);
+    expect(context.lineTo).toHaveBeenCalled();
+    const [outerCall, innerCall] = context.arc.mock.calls;
+    expect((outerCall?.[4] as number) - (outerCall?.[3] as number)).toBeCloseTo(
+      (210 * Math.PI) / 180,
+      6,
+    );
+    expect(innerCall?.[5]).toBe(true);
+  });
+
   it("renders a full-circle wedge cleanly at 360 degrees", async () => {
     const project = createProjectDocument("Wedge Full Circle Render");
     project.layout.family = "grid";

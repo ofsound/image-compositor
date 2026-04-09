@@ -4,9 +4,17 @@ export type GeometryShape =
   | "interlock"
   | "blob"
   | "ring"
+  | "arc"
   | "wedge"
   | "mixed";
-export type LayoutFamily = "grid" | "strips" | "blocks" | "radial" | "organic" | "3d";
+export type LayoutFamily =
+  | "grid"
+  | "strips"
+  | "blocks"
+  | "radial"
+  | "organic"
+  | "flow"
+  | "3d";
 export type RadialChildRotationMode = "none" | "tangent" | "outward";
 export type ThreeDStructureMode = "sphere" | "torus" | "attractor";
 export type KaleidoscopeMirrorMode =
@@ -118,8 +126,13 @@ export interface LayoutSettings {
   letterbox: number;
   wedgeAngle: number;
   wedgeJitter: number;
+  hollowRatio: number;
   randomness: number;
   organicVariation: number;
+  flowCurvature: number;
+  flowCoherence: number;
+  flowBranchRate: number;
+  flowTaper: number;
   threeDStructure: ThreeDStructureMode;
   threeDDistribution: number;
   threeDDepth: number;

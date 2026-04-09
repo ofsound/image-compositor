@@ -32,6 +32,10 @@ const RENDER_CONTEXT_OPTIONS = {
   colorSpace: "srgb",
 } as CanvasRenderingContext2DSettings & { colorSpace?: "srgb" };
 
+function getHollowRatio(project: ProjectDocument) {
+  return clamp(project.layout.hollowRatio, 0, 0.95);
+}
+
 async function loadBitmap(blob: Blob) {
   if (!bitmapCache.has(blob)) {
     bitmapCache.set(blob, createImageBitmap(blob));
@@ -71,31 +75,53 @@ function drawShapePath(
 
   if (slice.shape === "ring") {
     const outerRadius = Math.min(width, height) / 2;
-    const innerRadius = outerRadius * 0.48;
+    const innerRadius = outerRadius * getHollowRatio(project);
     context.arc(centerX, centerY, outerRadius, 0, Math.PI * 2);
-    context.moveTo(centerX + innerRadius, centerY);
-    context.arc(centerX, centerY, innerRadius, 0, Math.PI * 2, true);
+    if (innerRadius > 0.0001) {
+      context.moveTo(centerX + innerRadius, centerY);
+      context.arc(centerX, centerY, innerRadius, 0, Math.PI * 2, true);
+    }
     return;
   }
 
-  if (slice.shape === "wedge") {
+  if (slice.shape === "wedge" || slice.shape === "arc") {
     const radius = Math.min(width, height) / 2;
     const sweepRadians = slice.wedgeSweepRadians ?? Math.PI / 3;
+    const startAngle = -Math.PI / 2;
+    const endAngle = startAngle + sweepRadians;
 
     if (sweepRadians >= FULL_CIRCLE_RADIANS - 0.0001) {
       context.arc(centerX, centerY, radius, 0, FULL_CIRCLE_RADIANS);
+      if (slice.shape === "arc") {
+        const innerRadius = radius * getHollowRatio(project);
+        if (innerRadius > 0.0001) {
+          context.moveTo(centerX + innerRadius, centerY);
+          context.arc(centerX, centerY, innerRadius, 0, FULL_CIRCLE_RADIANS, true);
+        }
+      } else {
+        context.closePath();
+      }
+      if (slice.shape === "arc") return;
       context.closePath();
       return;
     }
 
-    context.moveTo(centerX, centerY);
-    context.arc(
-      centerX,
-      centerY,
-      radius,
-      -Math.PI / 2,
-      -Math.PI / 2 + sweepRadians,
-    );
+    if (slice.shape === "arc") {
+      const innerRadius = radius * getHollowRatio(project);
+      context.arc(centerX, centerY, radius, startAngle, endAngle);
+      if (innerRadius > 0.0001) {
+        context.lineTo(
+          centerX + Math.cos(endAngle) * innerRadius,
+          centerY + Math.sin(endAngle) * innerRadius,
+        );
+        context.arc(centerX, centerY, innerRadius, endAngle, startAngle, true);
+      } else {
+        context.lineTo(centerX, centerY);
+      }
+    } else {
+      context.moveTo(centerX, centerY);
+      context.arc(centerX, centerY, radius, startAngle, endAngle);
+    }
     context.closePath();
     return;
   }

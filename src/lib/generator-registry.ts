@@ -68,8 +68,8 @@ function assignShape(
   if (shapeMode !== "mixed") return shapeMode;
   const cycle: ConcreteGeometryShape[] =
     family === "organic"
-      ? ["blob", "ring", "wedge"]
-      : (["rect", "triangle", "ring", "wedge"] as MixedCycleShape[]);
+      ? ["blob", "ring", "arc", "wedge"]
+      : (["rect", "triangle", "ring", "arc", "wedge"] as MixedCycleShape[]);
   return cycle[index % cycle.length]!;
 }
 
@@ -201,6 +201,15 @@ function getPoint3DLength(point: Point3D) {
   return Math.hypot(point.x, point.y, point.z);
 }
 
+function wrapAngle(angle: number) {
+  const fullTurn = Math.PI * 2;
+  return ((angle + Math.PI) % fullTurn + fullTurn) % fullTurn - Math.PI;
+}
+
+function lerpAngle(from: number, to: number, t: number) {
+  return from + wrapAngle(to - from) * clamp(t, 0, 1);
+}
+
 function normalizePoint3D(point: Point3D): Point3D {
   const length = getPoint3DLength(point);
   if (length < 0.0001) {
@@ -216,6 +225,78 @@ function crossPoint3D(a: Point3D, b: Point3D): Point3D {
     y: a.z * b.x - a.x * b.z,
     z: a.x * b.y - a.y * b.x,
   };
+}
+
+function buildThreeDCardBasis(
+  rightHint: Point3D,
+  upHint: Point3D,
+  forwardHint: Point3D,
+) {
+  const right = normalizePoint3D(rightHint);
+  let forward = crossPoint3D(right, upHint);
+  if (getPoint3DLength(forward) < 0.0001) {
+    forward = forwardHint;
+  }
+  forward = normalizePoint3D(forward);
+
+  let up = crossPoint3D(forward, right);
+  if (getPoint3DLength(up) < 0.0001) {
+    up = upHint;
+  }
+  up = normalizePoint3D(up);
+
+  return {
+    right: normalizePoint3D(crossPoint3D(up, forward)),
+    up,
+    forward,
+  };
+}
+
+function rotateThreeDCardBasis(
+  right: Point3D,
+  up: Point3D,
+  angleRadians: number,
+) {
+  const cos = Math.cos(angleRadians);
+  const sin = Math.sin(angleRadians);
+
+  return {
+    right: normalizePoint3D(
+      addPoint3D(scalePoint3D(right, cos), scalePoint3D(up, sin)),
+    ),
+    up: normalizePoint3D(
+      addPoint3D(scalePoint3D(up, cos), scalePoint3D(right, -sin)),
+    ),
+  };
+}
+
+function buildThreeDCardCorner(
+  center: Point3D,
+  right: Point3D,
+  up: Point3D,
+  forward: Point3D,
+  localX: number,
+  localY: number,
+  halfWidthWorld: number,
+  halfHeightWorld: number,
+  distortionAxis: Point,
+  distortionDepth: number,
+) {
+  const normalizedX =
+    halfWidthWorld > 0.0001 ? localX / halfWidthWorld : 0;
+  const normalizedY =
+    halfHeightWorld > 0.0001 ? localY / halfHeightWorld : 0;
+  const forwardOffset =
+    distortionDepth *
+    (normalizedX * distortionAxis.x + normalizedY * distortionAxis.y);
+
+  return addPoint3D(
+    addPoint3D(
+      addPoint3D(center, scalePoint3D(right, localX)),
+      scalePoint3D(up, localY),
+    ),
+    scalePoint3D(forward, forwardOffset),
+  );
 }
 
 function rotatePoint3D(point: Point3D, yawRadians: number, pitchRadians: number) {
@@ -850,6 +931,238 @@ function generateOrganic(context: GeneratorContext) {
   });
 }
 
+interface FlowVortex {
+  x: number;
+  y: number;
+  radius: number;
+  strength: number;
+  spin: number;
+}
+
+interface FlowPathState {
+  point: Point;
+  heading: number;
+  progress: number;
+  branchDepth: number;
+  phase: number;
+}
+
+function evaluateFlowVector(
+  point: Point,
+  innerRect: RenderRect,
+  sharedHeading: number,
+  vortices: FlowVortex[],
+  coherence: number,
+  curvature: number,
+  phase: number,
+) {
+  const normalizedX =
+    clamp((point.x - innerRect.x) / Math.max(innerRect.width, 1), 0, 1) - 0.5;
+  const normalizedY =
+    clamp((point.y - innerRect.y) / Math.max(innerRect.height, 1), 0, 1) - 0.5;
+  const sharedWeight = lerp(0.38, 1.4, coherence);
+  const noiseWeight = lerp(1.3, 0.12, coherence);
+  let vectorX = Math.cos(sharedHeading) * sharedWeight;
+  let vectorY = Math.sin(sharedHeading) * sharedWeight;
+
+  for (const vortex of vortices) {
+    const dx = point.x - vortex.x;
+    const dy = point.y - vortex.y;
+    const distance = Math.hypot(dx, dy) + 1;
+    const influence = Math.exp(-((distance / vortex.radius) ** 2));
+    const tangentScale =
+      vortex.spin * vortex.strength * lerp(0.06, 1.25, curvature) * influence;
+    vectorX += (-dy / distance) * tangentScale;
+    vectorY += (dx / distance) * tangentScale;
+  }
+
+  const noiseA =
+    Math.sin((normalizedX * lerp(1.8, 8.2, 1 - coherence) + phase) * Math.PI) *
+      0.9 +
+    Math.cos((normalizedY * lerp(1.6, 7.4, 1 - coherence) - phase * 0.7) * Math.PI) *
+      0.75;
+  const noiseB =
+    Math.sin(
+      (normalizedX * 2.4 - normalizedY * lerp(1.4, 6.8, 1 - coherence) + phase * 0.35) *
+        Math.PI,
+    ) * 0.65;
+  const noiseHeading = sharedHeading + noiseA * 0.7 + noiseB * 0.45;
+
+  vectorX += Math.cos(noiseHeading) * noiseWeight;
+  vectorY += Math.sin(noiseHeading) * noiseWeight;
+
+  return {
+    angle: Math.atan2(vectorY, vectorX || 0.0001),
+    magnitude: Math.hypot(vectorX, vectorY),
+  };
+}
+
+function buildFlowVortices(
+  innerRect: RenderRect,
+  rng: ReturnType<typeof mulberry32>,
+  curvature: number,
+) {
+  const vortexCount = 2 + Math.round(curvature * 2);
+  const minDimension = Math.min(innerRect.width, innerRect.height);
+
+  return Array.from({ length: vortexCount }, (_, index) => ({
+    x: innerRect.x + innerRect.width * (0.16 + rng.next() * 0.68),
+    y: innerRect.y + innerRect.height * (0.16 + rng.next() * 0.68),
+    radius: minDimension * (0.18 + rng.next() * 0.22),
+    strength: 0.7 + rng.next() * 0.9,
+    spin: index % 2 === 0 ? 1 : -1,
+  }));
+}
+
+function generateFlow(context: GeneratorContext) {
+  const {
+    project: { canvas, layout, activeSeed },
+  } = context;
+  const rng = mulberry32(activeSeed + 907);
+  const innerRect = {
+    x: canvas.inset,
+    y: canvas.inset,
+    width: canvas.width - canvas.inset * 2,
+    height: canvas.height - canvas.inset * 2,
+  };
+  const count = Math.max(10, Math.round(10 + layout.density * 26));
+  const baseSize = clamp(
+    Math.min(innerRect.width, innerRect.height) / Math.sqrt(count) * 0.42,
+    42,
+    Math.min(innerRect.width, innerRect.height) * 0.16,
+  );
+  const coherence = clamp(layout.flowCoherence, 0, 1);
+  const curvature = clamp(layout.flowCurvature, 0, 1);
+  const branchRate = clamp(layout.flowBranchRate, 0, 1);
+  const taper = clamp(layout.flowTaper, 0, 1);
+  const sharedHeading = rng.next() * Math.PI * 2;
+  const flowDirection = {
+    x: Math.cos(sharedHeading),
+    y: Math.sin(sharedHeading),
+  };
+  const lateralDirection = {
+    x: -flowDirection.y,
+    y: flowDirection.x,
+  };
+  const vortices = buildFlowVortices(innerRect, rng, curvature);
+  const seedCount = Math.max(3, Math.round(3 + layout.density * 4));
+  const startOffset = Math.max(innerRect.width, innerRect.height) * 0.18;
+  const lateralSpan = Math.min(innerRect.width, innerRect.height) * 0.72;
+  const maxBranches = Math.round(branchRate * 3);
+  const maxSteps = Math.max(6, Math.round(6 + layout.density * 10));
+  const queue: FlowPathState[] = [];
+  const cells: LayoutCell[] = [];
+
+  for (let seedIndex = 0; seedIndex < seedCount; seedIndex += 1) {
+    const t = seedCount === 1 ? 0.5 : seedIndex / (seedCount - 1);
+    const lateralOffset = lerp(-lateralSpan / 2, lateralSpan / 2, t);
+    queue.push({
+      point: {
+        x:
+          innerRect.x +
+          innerRect.width / 2 -
+          flowDirection.x * startOffset +
+          lateralDirection.x * lateralOffset,
+        y:
+          innerRect.y +
+          innerRect.height / 2 -
+          flowDirection.y * startOffset +
+          lateralDirection.y * lateralOffset,
+      },
+      heading: sharedHeading,
+      progress: 0,
+      branchDepth: 0,
+      phase: rng.next() * Math.PI * 2,
+    });
+  }
+
+  while (queue.length > 0 && cells.length < 420) {
+    const path = queue.shift()!;
+
+    for (let step = 0; step < maxSteps; step += 1) {
+      const progress =
+        maxSteps <= 1 ? path.progress : (step + path.progress) / maxSteps;
+      const field = evaluateFlowVector(
+        path.point,
+        innerRect,
+        sharedHeading,
+        vortices,
+        coherence,
+        curvature,
+        path.phase,
+      );
+      const followAmount = lerp(0.2, 0.7, 0.3 + coherence * 0.45 + curvature * 0.15);
+      path.heading = lerpAngle(path.heading, field.angle, followAmount);
+
+      const stepLength =
+        baseSize * lerp(0.95, 1.45, Math.min(1, field.magnitude / 2.2));
+      const nextPoint = {
+        x: path.point.x + Math.cos(path.heading) * stepLength,
+        y: path.point.y + Math.sin(path.heading) * stepLength,
+      };
+      const center = {
+        x: (path.point.x + nextPoint.x) / 2,
+        y: (path.point.y + nextPoint.y) / 2,
+      };
+      const branchScale = 1 - path.branchDepth * 0.12;
+      const taperScale = lerp(1, 0.22, progress * taper);
+      const thickness = Math.max(18, baseSize * (0.76 + branchScale * 0.28) * taperScale);
+      const shape = assignShape(cells.length, layout.shapeMode, layout.family);
+      const isAngularShape =
+        shape === "ring" || shape === "arc" || shape === "wedge";
+      const width = isAngularShape
+        ? Math.max(thickness * 1.2, stepLength * 0.92)
+        : stepLength * lerp(1.15, 0.72, progress * taper * 0.7);
+      const height = isAngularShape ? width : thickness;
+      const clipRect = {
+        x: center.x - width / 2,
+        y: center.y - height / 2,
+        width,
+        height,
+      };
+
+      cells.push({
+        ...getRotatedBounds(clipRect, path.heading),
+        clipRect,
+        clipRotation: path.heading,
+        shape,
+        rotation: 0,
+      });
+
+      path.point = nextPoint;
+
+      if (
+        nextPoint.x < innerRect.x - width ||
+        nextPoint.x > innerRect.x + innerRect.width + width ||
+        nextPoint.y < innerRect.y - height ||
+        nextPoint.y > innerRect.y + innerRect.height + height
+      ) {
+        break;
+      }
+
+      if (
+        branchRate > 0 &&
+        path.branchDepth < maxBranches &&
+        step > 1 &&
+        step < maxSteps - 2 &&
+        rng.next() < branchRate * 0.11 * (1 - progress * 0.6)
+      ) {
+        const branchOffset =
+          lerp(0.2, 1.05, curvature) * (rng.next() > 0.5 ? 1 : -1);
+        queue.push({
+          point: center,
+          heading: path.heading + branchOffset,
+          progress,
+          branchDepth: path.branchDepth + 1,
+          phase: path.phase + rng.next() * Math.PI,
+        });
+      }
+    }
+  }
+
+  return cells;
+}
+
 function createSphereAnchors(
   count: number,
   distributionCurve: number,
@@ -1030,9 +1343,10 @@ function projectThreeDPoint(
 
 function generateThreeD(context: GeneratorContext) {
   const {
-    project: { canvas, layout, activeSeed },
+    project: { canvas, layout, activeSeed, effects },
   } = context;
-  const rng = mulberry32(activeSeed + 2_173 + Math.round(layout.threeDDistribution) * 379);
+  const distributionSeed =
+    activeSeed + 2_173 + Math.round(layout.threeDDistribution) * 379;
   const innerRect = {
     x: canvas.inset,
     y: canvas.inset,
@@ -1061,10 +1375,11 @@ function generateThreeD(context: GeneratorContext) {
 
   for (let index = 0; index < anchors.length; index += 1) {
     const anchor = anchors[index]!;
+    const cellRng = mulberry32(distributionSeed + index * 9_973 + 6_931);
     const jitteredPosition = {
       x: anchor.position.x * worldRadius,
       y: anchor.position.y * worldRadius,
-      z: anchor.position.z * worldRadius + (rng.next() - 0.5) * jitterAmount,
+      z: anchor.position.z * worldRadius + (cellRng.next() - 0.5) * jitterAmount,
     };
     const rotatedPosition = rotatePoint3D(jitteredPosition, yawRadians, pitchRadians);
     const rotatedTangent = normalizePoint3D(
@@ -1080,55 +1395,100 @@ function generateThreeD(context: GeneratorContext) {
       cameraDistance,
       pan,
     );
-    const tangentSample = projectThreeDPoint(
-      addPoint3D(rotatedPosition, scalePoint3D(rotatedTangent, baseCardSize * 0.55)),
-      innerRect,
-      focalLength,
-      cameraDistance,
-      pan,
-    );
     const depthValue = clamp(
       1 - (projected.depth - (cameraDistance - worldRadius)) / (worldRadius * 2.35),
       0,
       1,
     );
-    const tangentAngle = Math.atan2(
-      tangentSample.point.y - projected.point.y,
-      tangentSample.point.x - projected.point.x,
-    );
-    const normalX = clamp(rotatedNormal.x, -1, 1);
-    const normalY = clamp(rotatedNormal.y, -1, 1);
-    const cardWidth = baseCardSize * projected.scale * (0.9 + rng.next() * 0.32);
-    const cardHeight = baseCardSize * projected.scale * (0.78 + rng.next() * 0.24);
     const orientedUp = normalizePoint3D(crossPoint3D(rotatedNormal, rotatedTangent));
-    const cardRight = normalizePoint3D({
-      x: lerp(rotatedTangent.x, billboardRight.x, billboard),
-      y: lerp(rotatedTangent.y, billboardRight.y, billboard),
-      z: lerp(rotatedTangent.z, billboardRight.z, billboard),
-    });
-    const cardUp = normalizePoint3D({
-      x: lerp(orientedUp.x, billboardUp.x, billboard),
-      y: lerp(orientedUp.y, billboardUp.y, billboard),
-      z: lerp(orientedUp.z, billboardUp.z, billboard),
-    });
-    const halfWidthWorld = baseCardSize * (0.9 + rng.next() * 0.32) / 2;
-    const halfHeightWorld = baseCardSize * (0.78 + rng.next() * 0.24) / 2;
+    const cardBasis = buildThreeDCardBasis(
+      {
+        x: lerp(rotatedTangent.x, billboardRight.x, billboard),
+        y: lerp(rotatedTangent.y, billboardRight.y, billboard),
+        z: lerp(rotatedTangent.z, billboardRight.z, billboard),
+      },
+      {
+        x: lerp(orientedUp.x, billboardUp.x, billboard),
+        y: lerp(orientedUp.y, billboardUp.y, billboard),
+        z: lerp(orientedUp.z, billboardUp.z, billboard),
+      },
+      rotatedNormal,
+    );
+    const rotationNoiseRadians = degToRad(
+      (cellRng.next() - 0.5) * effects.rotationJitter,
+    );
+    const rotatedBasis = rotateThreeDCardBasis(
+      cardBasis.right,
+      cardBasis.up,
+      rotationNoiseRadians,
+    );
+    const widthFactor = 0.9 + cellRng.next() * 0.32;
+    const heightFactor = 0.78 + cellRng.next() * 0.24;
+    const scaleNoise = clamp(
+      1 + (cellRng.next() - 0.5) * effects.scaleJitter,
+      0.2,
+      2,
+    );
+    const halfWidthWorld = (baseCardSize * widthFactor * scaleNoise) / 2;
+    const halfHeightWorld = (baseCardSize * heightFactor * scaleNoise) / 2;
+    const distortionDirection = cellRng.next() * Math.PI * 2;
+    const distortionAxis = {
+      x: Math.cos(distortionDirection),
+      y: Math.sin(distortionDirection),
+    };
+    const distortionDepth =
+      baseCardSize *
+      scaleNoise *
+      effects.distortion *
+      (0.08 + cellRng.next() * 0.18);
     const projectedCorners = [
-      addPoint3D(
-        addPoint3D(rotatedPosition, scalePoint3D(cardRight, -halfWidthWorld)),
-        scalePoint3D(cardUp, -halfHeightWorld),
+      buildThreeDCardCorner(
+        rotatedPosition,
+        rotatedBasis.right,
+        rotatedBasis.up,
+        cardBasis.forward,
+        -halfWidthWorld,
+        -halfHeightWorld,
+        halfWidthWorld,
+        halfHeightWorld,
+        distortionAxis,
+        distortionDepth,
       ),
-      addPoint3D(
-        addPoint3D(rotatedPosition, scalePoint3D(cardRight, halfWidthWorld)),
-        scalePoint3D(cardUp, -halfHeightWorld),
+      buildThreeDCardCorner(
+        rotatedPosition,
+        rotatedBasis.right,
+        rotatedBasis.up,
+        cardBasis.forward,
+        halfWidthWorld,
+        -halfHeightWorld,
+        halfWidthWorld,
+        halfHeightWorld,
+        distortionAxis,
+        distortionDepth,
       ),
-      addPoint3D(
-        addPoint3D(rotatedPosition, scalePoint3D(cardRight, halfWidthWorld)),
-        scalePoint3D(cardUp, halfHeightWorld),
+      buildThreeDCardCorner(
+        rotatedPosition,
+        rotatedBasis.right,
+        rotatedBasis.up,
+        cardBasis.forward,
+        halfWidthWorld,
+        halfHeightWorld,
+        halfWidthWorld,
+        halfHeightWorld,
+        distortionAxis,
+        distortionDepth,
       ),
-      addPoint3D(
-        addPoint3D(rotatedPosition, scalePoint3D(cardRight, -halfWidthWorld)),
-        scalePoint3D(cardUp, halfHeightWorld),
+      buildThreeDCardCorner(
+        rotatedPosition,
+        rotatedBasis.right,
+        rotatedBasis.up,
+        cardBasis.forward,
+        -halfWidthWorld,
+        halfHeightWorld,
+        halfWidthWorld,
+        halfHeightWorld,
+        distortionAxis,
+        distortionDepth,
       ),
     ].map((corner) =>
       projectThreeDPoint(corner, innerRect, focalLength, cameraDistance, pan).point,
@@ -1159,6 +1519,7 @@ const layoutRegistry: Record<LayoutFamily, (context: GeneratorContext) => Layout
   blocks: generateBlocks,
   radial: generateRadial,
   organic: generateOrganic,
+  flow: generateFlow,
   "3d": generateThreeD,
 };
 
@@ -1664,7 +2025,7 @@ function getWedgeSweepRadians(
   project: ProjectDocument,
   rng: ReturnType<typeof mulberry32>,
 ) {
-  if (shape !== "wedge") return null;
+  if (shape !== "wedge" && shape !== "arc") return null;
 
   const sweepDegrees = clamp(
     project.layout.wedgeAngle + rng.next() * project.layout.wedgeJitter,
@@ -1724,7 +2085,7 @@ export function buildRenderSlices(project: ProjectDocument, assets: SourceAsset[
         ? getBoundsForPoints(quadPoints)
         : clipPathPoints
         ? getBoundsForPoints(clipPathPoints)
-        : clipRect && project.layout.family === "strips"
+        : clipRect
         ? getRotatedBounds(clipRect, cell.clipRotation ?? 0)
         : {
             x: cell.x - overlapSize * rng.next(),

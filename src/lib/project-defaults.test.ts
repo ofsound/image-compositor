@@ -27,6 +27,11 @@ describe("createProjectDocument", () => {
     expect(project.layout.radialInnerRadius).toBe(0);
     expect(project.layout.radialChildRotationMode).toBe("tangent");
     expect(project.layout.organicVariation).toBe(0);
+    expect(project.layout.hollowRatio).toBe(0.48);
+    expect(project.layout.flowCurvature).toBe(0.44);
+    expect(project.layout.flowCoherence).toBe(0.72);
+    expect(project.layout.flowBranchRate).toBe(0.2);
+    expect(project.layout.flowTaper).toBe(0.34);
     expect(project.layout.threeDStructure).toBe("sphere");
     expect(project.layout.threeDDistribution).toBe(0);
     expect(project.layout.threeDDepth).toBe(0.6);
@@ -147,6 +152,62 @@ describe("createProjectDocument", () => {
     } as unknown as ProjectDocument;
 
     expect(normalizeProjectDocument(legacyProject).layout.organicVariation).toBe(0);
+  });
+
+  it("normalizes legacy projects without flow and hollow controls to defaults", () => {
+    const project = createProjectDocument("Legacy Flow");
+    const legacyProject = {
+      ...project,
+      layout: {
+        family: project.layout.family,
+        shapeMode: project.layout.shapeMode,
+        rectCornerRadius: project.layout.rectCornerRadius,
+        density: project.layout.density,
+        stripAngle: project.layout.stripAngle,
+        columns: project.layout.columns,
+        rows: project.layout.rows,
+        gutter: project.layout.gutter,
+        gutterHorizontal: project.layout.gutterHorizontal,
+        gutterVertical: project.layout.gutterVertical,
+        blockDepth: project.layout.blockDepth,
+        blockSplitRandomness: project.layout.blockSplitRandomness,
+        blockMinSize: project.layout.blockMinSize,
+        blockSplitBias: project.layout.blockSplitBias,
+        stripOrientation: project.layout.stripOrientation,
+        radialSegments: project.layout.radialSegments,
+        radialRings: project.layout.radialRings,
+        radialAngleOffset: project.layout.radialAngleOffset,
+        radialRingPhaseStep: project.layout.radialRingPhaseStep,
+        radialInnerRadius: project.layout.radialInnerRadius,
+        radialChildRotationMode: project.layout.radialChildRotationMode,
+        symmetryMode: project.layout.symmetryMode,
+        symmetryCopies: project.layout.symmetryCopies,
+        hidePercentage: project.layout.hidePercentage,
+        letterbox: project.layout.letterbox,
+        wedgeAngle: project.layout.wedgeAngle,
+        wedgeJitter: project.layout.wedgeJitter,
+        randomness: project.layout.randomness,
+        organicVariation: project.layout.organicVariation,
+        threeDStructure: project.layout.threeDStructure,
+        threeDDistribution: project.layout.threeDDistribution,
+        threeDDepth: project.layout.threeDDepth,
+        threeDCameraDistance: project.layout.threeDCameraDistance,
+        threeDPanX: project.layout.threeDPanX,
+        threeDPanY: project.layout.threeDPanY,
+        threeDYaw: project.layout.threeDYaw,
+        threeDPitch: project.layout.threeDPitch,
+        threeDPerspective: project.layout.threeDPerspective,
+        threeDBillboard: project.layout.threeDBillboard,
+        threeDZJitter: project.layout.threeDZJitter,
+      },
+    } as unknown as ProjectDocument;
+
+    const normalized = normalizeProjectDocument(legacyProject).layout;
+    expect(normalized.hollowRatio).toBe(0.48);
+    expect(normalized.flowCurvature).toBe(0.44);
+    expect(normalized.flowCoherence).toBe(0.72);
+    expect(normalized.flowBranchRate).toBe(0.2);
+    expect(normalized.flowTaper).toBe(0.34);
   });
 
   it("normalizes legacy projects without 3d controls to defaults", () => {

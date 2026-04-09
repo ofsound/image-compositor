@@ -163,10 +163,10 @@ function formatGradientDirectionLabel(direction: GradientDirection) {
 
 export function getGeometryOptions(family: LayoutFamily): GeometryShape[] {
   return family === "grid"
-    ? ["mixed", "rect", "triangle", "interlock", "ring", "wedge"]
+    ? ["mixed", "rect", "triangle", "interlock", "ring", "arc", "wedge"]
     : family === "organic"
-      ? ["blob", "rect", "mixed", "ring", "wedge"]
-      : ["mixed", "rect", "triangle", "ring", "wedge"];
+      ? ["blob", "rect", "mixed", "ring", "arc", "wedge"]
+      : ["mixed", "rect", "triangle", "ring", "arc", "wedge"];
 }
 
 export function coerceShapeModeForFamily(
@@ -520,10 +520,16 @@ function App() {
   const isBlocksFamily = activeProject.layout.family === "blocks";
   const isRadialFamily = activeProject.layout.family === "radial";
   const isOrganicFamily = activeProject.layout.family === "organic";
+  const isFlowFamily = activeProject.layout.family === "flow";
   const isThreeDFamily = activeProject.layout.family === "3d";
   const isRectShapeMode = activeProject.layout.shapeMode === "rect";
   const isWedgeShapeMode =
+    activeProject.layout.shapeMode === "arc" ||
     activeProject.layout.shapeMode === "wedge" ||
+    activeProject.layout.shapeMode === "mixed";
+  const isHollowShapeMode =
+    activeProject.layout.shapeMode === "ring" ||
+    activeProject.layout.shapeMode === "arc" ||
     activeProject.layout.shapeMode === "mixed";
   const isRadialSymmetry = activeProject.layout.symmetryMode === "radial";
   const isWeightedAssignment =
@@ -1002,7 +1008,7 @@ function App() {
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          {["blocks", "grid", "strips", "radial", "organic", "3d"].map(
+                          {["blocks", "grid", "strips", "radial", "organic", "flow", "3d"].map(
                             (option) => (
                               <SelectItem key={option} value={option}>
                                 {option}
@@ -1056,7 +1062,10 @@ function App() {
                         }
                       />
                     ) : null}
-                    {isStripsFamily || isOrganicFamily || isThreeDFamily ? (
+                    {isStripsFamily ||
+                    isOrganicFamily ||
+                    isFlowFamily ||
+                    isThreeDFamily ? (
                       <>
                         {isStripsFamily ? (
                           <SliderField
@@ -1142,6 +1151,78 @@ function App() {
                               }))
                             }
                           />
+                        ) : null}
+                        {isFlowFamily ? (
+                          <>
+                            <SliderField
+                              label="Flow Curvature"
+                              min={0}
+                              max={1}
+                              step={0.01}
+                              value={activeProject.layout.flowCurvature}
+                              formatter={(value) => `${Math.round(value * 100)}%`}
+                              onChange={(value) =>
+                                patchProject((project) => ({
+                                  ...project,
+                                  layout: {
+                                    ...project.layout,
+                                    flowCurvature: value,
+                                  },
+                                }))
+                              }
+                            />
+                            <SliderField
+                              label="Flow Coherence"
+                              min={0}
+                              max={1}
+                              step={0.01}
+                              value={activeProject.layout.flowCoherence}
+                              formatter={(value) => `${Math.round(value * 100)}%`}
+                              onChange={(value) =>
+                                patchProject((project) => ({
+                                  ...project,
+                                  layout: {
+                                    ...project.layout,
+                                    flowCoherence: value,
+                                  },
+                                }))
+                              }
+                            />
+                            <SliderField
+                              label="Flow Branch Rate"
+                              min={0}
+                              max={1}
+                              step={0.01}
+                              value={activeProject.layout.flowBranchRate}
+                              formatter={(value) => `${Math.round(value * 100)}%`}
+                              onChange={(value) =>
+                                patchProject((project) => ({
+                                  ...project,
+                                  layout: {
+                                    ...project.layout,
+                                    flowBranchRate: value,
+                                  },
+                                }))
+                              }
+                            />
+                            <SliderField
+                              label="Flow Taper"
+                              min={0}
+                              max={1}
+                              step={0.01}
+                              value={activeProject.layout.flowTaper}
+                              formatter={(value) => `${Math.round(value * 100)}%`}
+                              onChange={(value) =>
+                                patchProject((project) => ({
+                                  ...project,
+                                  layout: {
+                                    ...project.layout,
+                                    flowTaper: value,
+                                  },
+                                }))
+                              }
+                            />
+                          </>
                         ) : null}
                         {isThreeDFamily ? (
                           <>
@@ -1356,6 +1437,25 @@ function App() {
                           }
                         />
                       </>
+                    ) : null}
+                    {isHollowShapeMode ? (
+                      <SliderField
+                        label="Hollow Ratio"
+                        min={0}
+                        max={0.95}
+                        step={0.01}
+                        value={activeProject.layout.hollowRatio}
+                        formatter={(value) => `${Math.round(value * 100)}%`}
+                        onChange={(value) =>
+                          patchProject((project) => ({
+                            ...project,
+                            layout: {
+                              ...project.layout,
+                              hollowRatio: value,
+                            },
+                          }))
+                        }
+                      />
                     ) : null}
                     {isGridFamily ? (
                       <>

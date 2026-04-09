@@ -141,6 +141,80 @@ function normalizeAngleDifference(angle: number) {
   return ((angle + Math.PI) % fullTurn + fullTurn) % fullTurn - Math.PI;
 }
 
+function getSliceHeading(slice: {
+  rotation: number;
+  clipRotation: number;
+}) {
+  return normalizeAngleDifference(slice.rotation + slice.clipRotation);
+}
+
+function getSliceCenter(slice: {
+  rect: { x: number; y: number; width: number; height: number };
+}) {
+  return {
+    x: slice.rect.x + slice.rect.width / 2,
+    y: slice.rect.y + slice.rect.height / 2,
+  };
+}
+
+function countHeadingBuckets(
+  slices: Array<{ rotation: number; clipRotation: number }>,
+  bucketCount = 18,
+) {
+  return new Set(
+    slices.map((slice) =>
+      Math.round(
+        ((getSliceHeading(slice) + Math.PI) / (Math.PI * 2)) * bucketCount,
+      ),
+    ),
+  ).size;
+}
+
+function getQuadPoints(slice: { quadPoints: { x: number; y: number }[] | null }) {
+  expect(slice.quadPoints).not.toBeNull();
+  expect(slice.quadPoints).toHaveLength(4);
+  return slice.quadPoints as [
+    { x: number; y: number },
+    { x: number; y: number },
+    { x: number; y: number },
+    { x: number; y: number },
+  ];
+}
+
+function getDistance(a: { x: number; y: number }, b: { x: number; y: number }) {
+  return Math.hypot(b.x - a.x, b.y - a.y);
+}
+
+function getQuadArea(slice: { quadPoints: { x: number; y: number }[] | null }) {
+  const points = getQuadPoints(slice);
+  let area = 0;
+
+  for (let index = 0; index < points.length; index += 1) {
+    const current = points[index]!;
+    const next = points[(index + 1) % points.length]!;
+    area += current.x * next.y - next.x * current.y;
+  }
+
+  return Math.abs(area) / 2;
+}
+
+function getTopEdgeAngle(slice: { quadPoints: { x: number; y: number }[] | null }) {
+  const [topLeft, topRight] = getQuadPoints(slice);
+  return Math.atan2(topRight.y - topLeft.y, topRight.x - topLeft.x);
+}
+
+function getQuadEdgeSymmetryDelta(
+  slice: { quadPoints: { x: number; y: number }[] | null },
+) {
+  const [topLeft, topRight, bottomRight, bottomLeft] = getQuadPoints(slice);
+  const topWidth = getDistance(topLeft, topRight);
+  const bottomWidth = getDistance(bottomLeft, bottomRight);
+  const leftHeight = getDistance(topLeft, bottomLeft);
+  const rightHeight = getDistance(topRight, bottomRight);
+
+  return Math.abs(topWidth - bottomWidth) + Math.abs(leftHeight - rightHeight);
+}
+
 describe("buildRenderSlices", () => {
   it("builds deterministic slices for a seeded project", () => {
     const project = createProjectDocument("Determinism");
@@ -498,6 +572,100 @@ describe("buildRenderSlices", () => {
     expect(Math.max(...fogValues)).toBeGreaterThan(0);
     expect(Math.min(...fogValues)).toBeGreaterThanOrEqual(0);
     expect(Math.max(...fogValues)).toBeGreaterThan(Math.min(...fogValues));
+  });
+
+  it("applies scale jitter to 3d card size in projected quads", () => {
+    const project = createProjectDocument("3D Scale Jitter");
+    project.sourceIds = [assets[0]!.id];
+    project.layout.family = "3d";
+    project.layout.shapeMode = "rect";
+    project.layout.symmetryMode = "none";
+    project.layout.threeDStructure = "sphere";
+    project.layout.threeDBillboard = 1;
+    project.layout.threeDYaw = 0;
+    project.layout.threeDPitch = 0;
+    project.layout.threeDZJitter = 0;
+    project.effects.rotationJitter = 0;
+    project.effects.distortion = 0;
+    project.effects.scaleJitter = 0;
+
+    const baseline = buildRenderSlices(project, [assets[0]!]);
+
+    project.effects.scaleJitter = 0.8;
+    const jittered = buildRenderSlices(project, [assets[0]!]);
+    const repeated = buildRenderSlices(project, [assets[0]!]);
+
+    expect(jittered).toEqual(repeated);
+    expect(jittered).toHaveLength(baseline.length);
+    expect(
+      jittered.some((slice, index) =>
+        Math.abs(getQuadArea(slice) - getQuadArea(baseline[index]!)) > 1e-3,
+      ),
+    ).toBe(true);
+  });
+
+  it("applies rotation jitter as in-plane 3d card twist", () => {
+    const project = createProjectDocument("3D Rotation Jitter");
+    project.sourceIds = [assets[0]!.id];
+    project.layout.family = "3d";
+    project.layout.shapeMode = "rect";
+    project.layout.symmetryMode = "none";
+    project.layout.threeDStructure = "sphere";
+    project.layout.threeDBillboard = 1;
+    project.layout.threeDYaw = 0;
+    project.layout.threeDPitch = 0;
+    project.layout.threeDZJitter = 0;
+    project.effects.scaleJitter = 0;
+    project.effects.distortion = 0;
+    project.effects.rotationJitter = 0;
+
+    const baseline = buildRenderSlices(project, [assets[0]!]);
+
+    project.effects.rotationJitter = 90;
+    const jittered = buildRenderSlices(project, [assets[0]!]);
+    const repeated = buildRenderSlices(project, [assets[0]!]);
+
+    expect(jittered).toEqual(repeated);
+    expect(jittered).toHaveLength(baseline.length);
+    expect(
+      jittered.some((slice, index) =>
+        Math.abs(
+          normalizeAngleDifference(
+            getTopEdgeAngle(slice) - getTopEdgeAngle(baseline[index]!),
+          ),
+        ) > 1e-3,
+      ),
+    ).toBe(true);
+  });
+
+  it("applies distortion as perspective skew in 3d quads", () => {
+    const project = createProjectDocument("3D Distortion");
+    project.sourceIds = [assets[0]!.id];
+    project.layout.family = "3d";
+    project.layout.shapeMode = "rect";
+    project.layout.symmetryMode = "none";
+    project.layout.threeDStructure = "sphere";
+    project.layout.threeDBillboard = 1;
+    project.layout.threeDYaw = 0;
+    project.layout.threeDPitch = 0;
+    project.layout.threeDZJitter = 0;
+    project.effects.rotationJitter = 0;
+    project.effects.scaleJitter = 0;
+    project.effects.distortion = 0;
+
+    const baseline = buildRenderSlices(project, [assets[0]!]);
+
+    project.effects.distortion = 0.8;
+    const distorted = buildRenderSlices(project, [assets[0]!]);
+    const repeated = buildRenderSlices(project, [assets[0]!]);
+
+    expect(distorted).toEqual(repeated);
+    expect(
+      baseline.every((slice) => getQuadEdgeSymmetryDelta(slice) < 1e-6),
+    ).toBe(true);
+    expect(
+      distorted.some((slice) => getQuadEdgeSymmetryDelta(slice) > 1e-3),
+    ).toBe(true);
   });
 
   it("increases strip count as density rises while staying deterministic", () => {
@@ -1123,7 +1291,7 @@ describe("buildRenderSlices", () => {
     const slices = buildRenderSlices(project, [assets[0]!]);
 
     for (const slice of slices) {
-      if (slice.shape === "wedge") {
+      if (slice.shape === "wedge" || slice.shape === "arc") {
         expect(slice.wedgeSweepRadians).toBe(Math.PI / 2);
       } else {
         expect(slice.wedgeSweepRadians).toBeNull();
@@ -1144,7 +1312,7 @@ describe("buildRenderSlices", () => {
     const shapes = new Set(slices.map((slice) => slice.shape));
 
     expect(shapes.size).toBeGreaterThan(1);
-    expect(shapes).toEqual(new Set(["rect", "triangle", "ring", "wedge"]));
+    expect(shapes).toEqual(new Set(["rect", "triangle", "ring", "arc", "wedge"]));
   });
 
   it("applies wedge controls only to wedge slices in radial mixed mode", () => {
@@ -1161,7 +1329,7 @@ describe("buildRenderSlices", () => {
     const slices = buildRenderSlices(project, [assets[0]!]);
 
     for (const slice of slices) {
-      if (slice.shape === "wedge") {
+      if (slice.shape === "wedge" || slice.shape === "arc") {
         expect(slice.wedgeSweepRadians).toBe(Math.PI / 2);
       } else {
         expect(slice.wedgeSweepRadians).toBeNull();
@@ -1278,5 +1446,136 @@ describe("buildRenderSlices", () => {
         Math.abs(jittered[index]!.rotation - baseline[index]!.rotation),
       ).toBeLessThanOrEqual((5 * Math.PI) / 180 + 1e-8);
     }
+  });
+
+  it("keeps non-3d rotation, scale, and distortion on the 2d transform path", () => {
+    const project = createProjectDocument("2D Effect Regression");
+    project.sourceIds = [assets[0]!.id];
+    project.layout.family = "grid";
+    project.layout.shapeMode = "rect";
+    project.layout.symmetryMode = "none";
+    project.layout.columns = 1;
+    project.layout.rows = 1;
+    project.effects.rotationJitter = 18;
+    project.effects.scaleJitter = 0.8;
+    project.effects.distortion = 0.8;
+
+    const [slice] = buildRenderSlices(project, [assets[0]!]);
+
+    expect(slice).toBeDefined();
+    expect(Math.abs(slice!.rotation)).toBeGreaterThan(0);
+    expect(slice!.scale).not.toBe(1);
+    expect(slice!.distortion).toBeGreaterThan(0);
+    expect(slice!.quadPoints).toBeNull();
+  });
+
+  it("builds deterministic flow slices for a seeded project", () => {
+    const project = createProjectDocument("Flow Determinism");
+    project.sourceIds = [assets[0]!.id];
+    project.layout.family = "flow";
+    project.layout.shapeMode = "rect";
+    project.layout.symmetryMode = "none";
+    project.effects.rotationJitter = 0;
+
+    const first = buildRenderSlices(project, [assets[0]!]);
+    const second = buildRenderSlices(project, [assets[0]!]);
+
+    expect(first).toEqual(second);
+    expect(first.length).toBeGreaterThan(0);
+    expect(first.every((slice) => slice.clipRect)).toBe(true);
+  });
+
+  it("increases flow heading diversity as curvature rises", () => {
+    const project = createProjectDocument("Flow Curvature");
+    project.sourceIds = [assets[0]!.id];
+    project.layout.family = "flow";
+    project.layout.shapeMode = "rect";
+    project.layout.symmetryMode = "none";
+    project.layout.flowCoherence = 1;
+    project.effects.rotationJitter = 0;
+
+    project.layout.flowCurvature = 0;
+    const straight = buildRenderSlices(project, [assets[0]!]);
+
+    project.layout.flowCurvature = 1;
+    const curved = buildRenderSlices(project, [assets[0]!]);
+
+    expect(countHeadingBuckets(curved)).toBeGreaterThan(countHeadingBuckets(straight));
+  });
+
+  it("increases flow heading divergence as coherence falls", () => {
+    const project = createProjectDocument("Flow Coherence");
+    project.sourceIds = [assets[0]!.id];
+    project.layout.family = "flow";
+    project.layout.shapeMode = "rect";
+    project.layout.symmetryMode = "none";
+    project.layout.flowCurvature = 0.8;
+    project.effects.rotationJitter = 0;
+
+    project.layout.flowCoherence = 1;
+    const cohesive = buildRenderSlices(project, [assets[0]!]);
+
+    project.layout.flowCoherence = 0;
+    const divergent = buildRenderSlices(project, [assets[0]!]);
+
+    expect(countHeadingBuckets(divergent)).toBeGreaterThan(countHeadingBuckets(cohesive));
+  });
+
+  it("adds branching slices as flow branch rate rises", () => {
+    const project = createProjectDocument("Flow Branching");
+    project.sourceIds = [assets[0]!.id];
+    project.layout.family = "flow";
+    project.layout.shapeMode = "rect";
+    project.layout.symmetryMode = "none";
+    project.layout.flowCurvature = 0.75;
+    project.layout.flowCoherence = 0.7;
+    project.effects.rotationJitter = 0;
+
+    project.layout.flowBranchRate = 0;
+    const unbranched = buildRenderSlices(project, [assets[0]!]);
+
+    project.layout.flowBranchRate = 1;
+    const branched = buildRenderSlices(project, [assets[0]!]);
+
+    expect(branched.length).toBeGreaterThan(unbranched.length);
+  });
+
+  it("changes flow slice widths with taper while preserving placement", () => {
+    const project = createProjectDocument("Flow Taper");
+    project.sourceIds = [assets[0]!.id];
+    project.layout.family = "flow";
+    project.layout.shapeMode = "rect";
+    project.layout.symmetryMode = "none";
+    project.layout.flowCurvature = 0.65;
+    project.layout.flowCoherence = 0.82;
+    project.layout.flowBranchRate = 0;
+    project.effects.rotationJitter = 0;
+
+    project.layout.flowTaper = 0;
+    const untapered = buildRenderSlices(project, [assets[0]!]);
+
+    project.layout.flowTaper = 1;
+    const tapered = buildRenderSlices(project, [assets[0]!]);
+
+    expect(tapered).toHaveLength(untapered.length);
+    expect(
+      tapered.every((slice, index) => {
+        const taperedCenter = getSliceCenter(slice);
+        const untaperedCenter = getSliceCenter(untapered[index]!);
+        return (
+          Math.abs(taperedCenter.x - untaperedCenter.x) < 1e-6 &&
+          Math.abs(taperedCenter.y - untaperedCenter.y) < 1e-6 &&
+          Math.abs(getSliceHeading(slice) - getSliceHeading(untapered[index]!)) <
+            1e-6
+        );
+      }),
+    ).toBe(true);
+    expect(
+      tapered.some(
+        (slice, index) =>
+          Math.abs(slice.rect.width * slice.rect.height - untapered[index]!.rect.width * untapered[index]!.rect.height) >
+          1e-3,
+      ),
+    ).toBe(true);
   });
 });

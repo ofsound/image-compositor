@@ -66,8 +66,13 @@ export const DEFAULT_LAYOUT: LayoutSettings = {
   letterbox: 0,
   wedgeAngle: 120,
   wedgeJitter: 0,
+  hollowRatio: 0.48,
   randomness: 0.52,
   organicVariation: 0,
+  flowCurvature: 0.44,
+  flowCoherence: 0.72,
+  flowBranchRate: 0.2,
+  flowTaper: 0.34,
   threeDStructure: "sphere",
   threeDDistribution: 0,
   threeDDepth: 0.6,
@@ -245,9 +250,14 @@ export function normalizeLayoutSettings(
     letterbox: layout?.letterbox ?? DEFAULT_LAYOUT.letterbox,
     wedgeAngle: layout?.wedgeAngle ?? DEFAULT_LAYOUT.wedgeAngle,
     wedgeJitter: layout?.wedgeJitter ?? DEFAULT_LAYOUT.wedgeJitter,
+    hollowRatio: layout?.hollowRatio ?? DEFAULT_LAYOUT.hollowRatio,
     randomness: layout?.randomness ?? DEFAULT_LAYOUT.randomness,
     organicVariation:
       layout?.organicVariation ?? DEFAULT_LAYOUT.organicVariation,
+    flowCurvature: layout?.flowCurvature ?? DEFAULT_LAYOUT.flowCurvature,
+    flowCoherence: layout?.flowCoherence ?? DEFAULT_LAYOUT.flowCoherence,
+    flowBranchRate: layout?.flowBranchRate ?? DEFAULT_LAYOUT.flowBranchRate,
+    flowTaper: layout?.flowTaper ?? DEFAULT_LAYOUT.flowTaper,
     threeDStructure:
       layout?.threeDStructure ?? DEFAULT_LAYOUT.threeDStructure,
     threeDDistribution:

@@ -33,13 +33,14 @@ type AppStoreState = ReturnType<typeof useAppStore.getState>;
 type UpdateProject = AppStoreState["updateProject"];
 
 function createStoreState(overrides?: {
-  family?: "grid" | "strips" | "blocks" | "radial" | "organic" | "3d";
+  family?: "grid" | "strips" | "blocks" | "radial" | "organic" | "flow" | "3d";
   shapeMode?:
     | "rect"
     | "triangle"
     | "interlock"
     | "blob"
     | "ring"
+    | "arc"
     | "wedge"
     | "mixed";
   symmetryMode?: "none" | "mirror-x" | "mirror-y" | "quad" | "radial";
@@ -398,11 +399,14 @@ describe("App conditional sliders", () => {
 
   it("includes interlock in geometry options only for grid layouts", () => {
     expect(getGeometryOptions("grid")).toContain("interlock");
+    expect(getGeometryOptions("grid")).toContain("arc");
     expect(getGeometryOptions("strips")).not.toContain("interlock");
     expect(getGeometryOptions("blocks")).not.toContain("interlock");
     expect(getGeometryOptions("radial")).not.toContain("interlock");
     expect(getGeometryOptions("organic")).toContain("blob");
+    expect(getGeometryOptions("organic")).toContain("arc");
     expect(getGeometryOptions("organic")).toContain("rect");
+    expect(getGeometryOptions("flow")).toContain("arc");
     expect(getGeometryOptions("3d")).not.toContain("interlock");
   });
 
@@ -413,6 +417,41 @@ describe("App conditional sliders", () => {
     expect(coerceShapeModeForFamily("organic", "rect")).toBe("rect");
     expect(coerceShapeModeForFamily("grid", "blob")).toBe("rect");
     expect(coerceShapeModeForFamily("3d", "blob")).toBe("rect");
+    expect(coerceShapeModeForFamily("flow", "arc")).toBe("arc");
+  });
+
+  it("shows the flow controls only for the flow family", () => {
+    mockedUseAppStore.mockReturnValue(createStoreState({ family: "flow" }));
+    const { rerender } = render(<App />);
+
+    expectSliderEnabled("Density");
+    expectSliderEnabled("Flow Curvature");
+    expectSliderEnabled("Flow Coherence");
+    expectSliderEnabled("Flow Branch Rate");
+    expectSliderEnabled("Flow Taper");
+
+    mockedUseAppStore.mockReturnValue(createStoreState({ family: "grid" }));
+    rerender(<App />);
+
+    expectSliderHidden("Flow Curvature");
+    expectSliderHidden("Flow Coherence");
+    expectSliderHidden("Flow Branch Rate");
+    expectSliderHidden("Flow Taper");
+  });
+
+  it("shows the hollow ratio control for ring, arc, and mixed geometry", () => {
+    mockedUseAppStore.mockReturnValue(createStoreState({ shapeMode: "ring" }));
+    const { rerender } = render(<App />);
+    expectSliderEnabled("Hollow Ratio");
+
+    mockedUseAppStore.mockReturnValue(createStoreState({ shapeMode: "arc" }));
+    rerender(<App />);
+    expectSliderEnabled("Hollow Ratio");
+    expectSliderEnabled("Wedge Angle");
+
+    mockedUseAppStore.mockReturnValue(createStoreState({ shapeMode: "triangle" }));
+    rerender(<App />);
+    expectSliderHidden("Hollow Ratio");
   });
 
   it("shows density for organic layouts while hiding unrelated family controls", () => {
@@ -479,6 +518,9 @@ describe("App conditional sliders", () => {
     expectSliderEnabled("Perspective");
     expectSliderEnabled("Billboard");
     expectSliderEnabled("Z Jitter");
+    expectSliderEnabled("Rotation Jitter");
+    expectSliderEnabled("Scale Jitter");
+    expectSliderEnabled("Distortion");
     expectSliderHidden("Columns");
     expectSliderHidden("Rows");
     expectSliderHidden("Radial Segments");

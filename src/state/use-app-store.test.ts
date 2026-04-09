@@ -76,9 +76,12 @@ vi.mock("@/lib/serializer", () => ({
 import { createProjectDocument } from "@/lib/project-defaults";
 import { useAppStore } from "@/state/use-app-store";
 import type {
+  CellularSourceAsset,
   GradientSourceAsset,
-  NoiseSourceAsset,
+  PerlinSourceAsset,
+  ReactionSourceAsset,
   SourceAsset,
+  WaveSourceAsset,
 } from "@/types/project";
 
 function resetStore() {
@@ -181,19 +184,19 @@ function createGradientAsset(projectId: string): GradientSourceAsset {
   };
 }
 
-function createNoiseAsset(projectId: string): NoiseSourceAsset {
-  const base = createImageAsset(projectId, "asset_noise");
+function createPerlinAsset(projectId: string): PerlinSourceAsset {
+  const base = createImageAsset(projectId, "asset_perlin");
   return {
     id: base.id,
-    kind: "noise",
+    kind: "perlin",
     projectId: base.projectId,
-    name: "Noise",
-    originalFileName: "asset_noise.png",
+    name: "Perlin",
+    originalFileName: "asset_perlin.png",
     mimeType: "image/png",
     width: base.width,
     height: base.height,
     orientation: base.orientation,
-    originalPath: "assets/original/asset_noise.png",
+    originalPath: "assets/original/asset_perlin.png",
     normalizedPath: base.normalizedPath,
     previewPath: base.previewPath,
     averageColor: base.averageColor,
@@ -207,6 +210,96 @@ function createNoiseAsset(projectId: string): NoiseSourceAsset {
       contrast: 0.47,
       distortion: 0.28,
       seed: 12345,
+    },
+  };
+}
+
+function createCellularAsset(projectId: string): CellularSourceAsset {
+  const base = createImageAsset(projectId, "asset_cellular");
+  return {
+    id: base.id,
+    kind: "cellular",
+    projectId: base.projectId,
+    name: "Cellular",
+    originalFileName: "asset_cellular.png",
+    mimeType: "image/png",
+    width: base.width,
+    height: base.height,
+    orientation: base.orientation,
+    originalPath: "assets/original/asset_cellular.png",
+    normalizedPath: base.normalizedPath,
+    previewPath: base.previewPath,
+    averageColor: base.averageColor,
+    palette: base.palette,
+    luminance: base.luminance,
+    createdAt: base.createdAt,
+    recipe: {
+      color: "#8b5cf6",
+      scale: 0.55,
+      jitter: 0.6,
+      edge: 0.55,
+      contrast: 0.45,
+      seed: 54321,
+    },
+  };
+}
+
+function createReactionAsset(projectId: string): ReactionSourceAsset {
+  const base = createImageAsset(projectId, "asset_reaction");
+  return {
+    id: base.id,
+    kind: "reaction",
+    projectId: base.projectId,
+    name: "Reaction",
+    originalFileName: "asset_reaction.png",
+    mimeType: "image/png",
+    width: base.width,
+    height: base.height,
+    orientation: base.orientation,
+    originalPath: "assets/original/asset_reaction.png",
+    normalizedPath: base.normalizedPath,
+    previewPath: base.previewPath,
+    averageColor: base.averageColor,
+    palette: base.palette,
+    luminance: base.luminance,
+    createdAt: base.createdAt,
+    recipe: {
+      color: "#ef4444",
+      scale: 0.55,
+      diffusion: 0.55,
+      balance: 0.5,
+      distortion: 0.2,
+      seed: 24680,
+    },
+  };
+}
+
+function createWaveAsset(projectId: string): WaveSourceAsset {
+  const base = createImageAsset(projectId, "asset_waves");
+  return {
+    id: base.id,
+    kind: "waves",
+    projectId: base.projectId,
+    name: "Waves",
+    originalFileName: "asset_waves.png",
+    mimeType: "image/png",
+    width: base.width,
+    height: base.height,
+    orientation: base.orientation,
+    originalPath: "assets/original/asset_waves.png",
+    normalizedPath: base.normalizedPath,
+    previewPath: base.previewPath,
+    averageColor: base.averageColor,
+    palette: base.palette,
+    luminance: base.luminance,
+    createdAt: base.createdAt,
+    recipe: {
+      color: "#0ea5e9",
+      scale: 0.55,
+      interference: 0.65,
+      directionality: 0.6,
+      distortion: 0.2,
+      seed: 112233,
     },
   };
 }
@@ -432,12 +525,12 @@ describe("useAppStore import progress", () => {
     expect(useAppStore.getState().sourceImportProgress).toBeNull();
   });
 
-  it("adds noise sources through the generated source pipeline", async () => {
+  it("adds perlin sources through the generated source pipeline", async () => {
     const project = useAppStore.getState().projects[0]!;
-    const asset = createNoiseAsset(project.id);
+    const asset = createPerlinAsset(project.id);
     createGeneratedSourceAsset.mockResolvedValue(asset);
 
-    await useAppStore.getState().addNoiseSource({
+    await useAppStore.getState().addPerlinSource({
       name: "",
       color: "#0f766e",
       scale: 0.55,
@@ -449,7 +542,7 @@ describe("useAppStore import progress", () => {
 
     expect(createGeneratedSourceAsset).toHaveBeenCalledWith(
       expect.objectContaining({
-        kind: "noise",
+        kind: "perlin",
         recipe: expect.objectContaining({ seed: 12345 }),
       }),
       project.id,
@@ -457,7 +550,85 @@ describe("useAppStore import progress", () => {
     );
     expect(useAppStore.getState().assets.map((entry) => entry.id)).toEqual([asset.id]);
     expect(useAppStore.getState().projects[0]?.sourceIds).toEqual([asset.id]);
-    expect(useAppStore.getState().status).toBe("Noise source added.");
+    expect(useAppStore.getState().status).toBe("Perlin source added.");
+  });
+
+  it("adds cellular sources through the generated source pipeline", async () => {
+    const project = useAppStore.getState().projects[0]!;
+    const asset = createCellularAsset(project.id);
+    createGeneratedSourceAsset.mockResolvedValue(asset);
+
+    await useAppStore.getState().addCellularSource({
+      name: "",
+      color: "#8b5cf6",
+      scale: 0.55,
+      jitter: 0.6,
+      edge: 0.55,
+      contrast: 0.45,
+      seed: 54321,
+    });
+
+    expect(createGeneratedSourceAsset).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "cellular",
+        recipe: expect.objectContaining({ seed: 54321 }),
+      }),
+      project.id,
+      project.canvas,
+    );
+    expect(useAppStore.getState().status).toBe("Cellular source added.");
+  });
+
+  it("adds reaction sources through the generated source pipeline", async () => {
+    const project = useAppStore.getState().projects[0]!;
+    const asset = createReactionAsset(project.id);
+    createGeneratedSourceAsset.mockResolvedValue(asset);
+
+    await useAppStore.getState().addReactionSource({
+      name: "",
+      color: "#ef4444",
+      scale: 0.55,
+      diffusion: 0.55,
+      balance: 0.5,
+      distortion: 0.2,
+      seed: 24680,
+    });
+
+    expect(createGeneratedSourceAsset).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "reaction",
+        recipe: expect.objectContaining({ seed: 24680 }),
+      }),
+      project.id,
+      project.canvas,
+    );
+    expect(useAppStore.getState().status).toBe("Reaction source added.");
+  });
+
+  it("adds waves sources through the generated source pipeline", async () => {
+    const project = useAppStore.getState().projects[0]!;
+    const asset = createWaveAsset(project.id);
+    createGeneratedSourceAsset.mockResolvedValue(asset);
+
+    await useAppStore.getState().addWaveSource({
+      name: "",
+      color: "#0ea5e9",
+      scale: 0.55,
+      interference: 0.65,
+      directionality: 0.6,
+      distortion: 0.2,
+      seed: 112233,
+    });
+
+    expect(createGeneratedSourceAsset).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: "waves",
+        recipe: expect.objectContaining({ seed: 112233 }),
+      }),
+      project.id,
+      project.canvas,
+    );
+    expect(useAppStore.getState().status).toBe("Waves source added.");
   });
 
   it("updates generated gradients with the expanded recipe while keeping the asset id", async () => {
@@ -513,12 +684,12 @@ describe("useAppStore import progress", () => {
     expect(db.assets.put).toHaveBeenCalledWith(updatedAsset);
   });
 
-  it("updates generated noise sources while keeping the asset id", async () => {
+  it("updates generated perlin sources while keeping the asset id", async () => {
     const project = useAppStore.getState().projects[0]!;
-    const asset = createNoiseAsset(project.id);
-    const updatedAsset: NoiseSourceAsset = {
+    const asset = createPerlinAsset(project.id);
+    const updatedAsset: PerlinSourceAsset = {
       ...asset,
-      name: "Updated Noise",
+      name: "Updated Perlin",
       recipe: {
         ...asset.recipe,
         scale: 0.9,
@@ -536,7 +707,7 @@ describe("useAppStore import progress", () => {
     vi.mocked(updateGeneratedSourceAsset).mockResolvedValueOnce(updatedAsset);
 
     await useAppStore.getState().updateGeneratedSource(asset.id, {
-      name: "Updated Noise",
+      name: "Updated Perlin",
       color: "#0f766e",
       scale: 0.9,
       detail: 0.2,
@@ -557,6 +728,6 @@ describe("useAppStore import progress", () => {
     );
     expect(useAppStore.getState().assets[0]?.id).toBe(asset.id);
     expect(useAppStore.getState().assets[0]).toEqual(updatedAsset);
-    expect(useAppStore.getState().status).toBe("Noise source updated.");
+    expect(useAppStore.getState().status).toBe("Perlin source updated.");
   });
 });

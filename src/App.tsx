@@ -56,14 +56,21 @@ import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import {
   ACCEPTED_IMAGE_TYPES,
+  type CellularSourceInput,
   type GeneratedSourceInput,
   getDefaultGradientInput,
   getDefaultGradientDirection,
-  getDefaultNoiseInput,
+  getDefaultCellularInput,
+  getDefaultPerlinInput,
+  getDefaultReactionInput,
+  getDefaultWaveInput,
   getSourceContentSignature,
+  normalizeCellularInput,
   normalizeGradientInput,
-  normalizeNoiseInput,
+  normalizePerlinInput,
+  normalizeReactionInput,
   normalizeSolidInput,
+  normalizeWaveInput,
   renderGeneratedSourceToCanvas,
 } from "@/lib/assets";
 import { normalizeHexColor } from "@/lib/color";
@@ -78,6 +85,7 @@ import { useAppStore } from "@/state/use-app-store";
 import type {
   BlendMode,
   BundleImportInspection,
+  CellularSourceAsset,
   CropDistribution,
   GradientDirection,
   GradientMode,
@@ -85,14 +93,16 @@ import type {
   GeometryShape,
   KaleidoscopeMirrorMode,
   LayoutFamily,
-  NoiseSourceAsset,
+  PerlinSourceAsset,
   ProjectDocument,
   RadialChildRotationMode,
+  ReactionSourceAsset,
   SolidSourceAsset,
   SourceAsset,
   SourceAssignmentStrategy,
   SourceKind,
   ThreeDStructureMode,
+  WaveSourceAsset,
 } from "@/types/project";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
@@ -150,7 +160,21 @@ function SourceThumbnail({
   );
 }
 
-const SOURCE_DIALOG_MODES: SourceKind[] = ["image", "solid", "gradient", "noise"];
+const SOURCE_DIALOG_MODES: SourceKind[] = [
+  "image",
+  "solid",
+  "gradient",
+  "perlin",
+  "cellular",
+  "reaction",
+  "waves",
+];
+const PROCEDURAL_SOURCE_KINDS: SourceKind[] = [
+  "perlin",
+  "cellular",
+  "reaction",
+  "waves",
+];
 const GRADIENT_MODES: GradientMode[] = ["linear", "radial", "conic"];
 const GRADIENT_DIRECTIONS: GradientDirection[] = [
   "horizontal",
@@ -165,7 +189,10 @@ const THREE_D_DISTRIBUTION_MAX = 4_096;
 function formatSourceModeLabel(mode: SourceKind) {
   if (mode === "solid") return "Solid";
   if (mode === "gradient") return "Gradient";
-  if (mode === "noise") return "Noise";
+  if (mode === "perlin") return "Perlin";
+  if (mode === "cellular") return "Cellular";
+  if (mode === "reaction") return "Reaction";
+  if (mode === "waves") return "Waves";
   return "Image";
 }
 
@@ -403,6 +430,109 @@ function SliderField({
   );
 }
 
+interface ProceduralTextureField {
+  label: string;
+  value: number;
+  onChange: (value: number) => void;
+}
+
+function ProceduralTextureTab({
+  tabValue,
+  name,
+  setName,
+  namePlaceholder,
+  color,
+  setColor,
+  regenerateSeed,
+  fields,
+  previewSource,
+  canvasSize,
+  editingSource,
+  submitGeneratedSource,
+  closeDialog,
+}: {
+  tabValue: SourceKind;
+  name: string;
+  setName: (value: string) => void;
+  namePlaceholder: string;
+  color: string;
+  setColor: (value: string) => void;
+  regenerateSeed: () => void;
+  fields: ProceduralTextureField[];
+  previewSource: GeneratedSourceInput;
+  canvasSize: Pick<ProjectDocument["canvas"], "width" | "height">;
+  editingSource: SourceAsset | null;
+  submitGeneratedSource: () => Promise<void>;
+  closeDialog: () => void;
+}) {
+  return (
+    <TabsContent value={tabValue}>
+      <div
+        data-testid="source-editor-preview-layout"
+        className="grid gap-6 md:grid-cols-2 md:items-start"
+      >
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor={`${tabValue}-source-name`}>Name</Label>
+            <Input
+              id={`${tabValue}-source-name`}
+              placeholder={namePlaceholder}
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+            />
+          </div>
+          <SourceColorField
+            id={`${tabValue}-source-color`}
+            label="Base color"
+            value={color}
+            onChange={setColor}
+          />
+          <div className="rounded-md border border-border-subtle bg-surface-sunken/60 p-3">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <Label>Variation</Label>
+                <div className="text-xs text-text-muted">
+                  Regenerate the hidden seed while keeping the sliders unchanged.
+                </div>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={regenerateSeed}
+              >
+                <RefreshCw className="h-3.5 w-3.5" />
+                Regenerate
+              </Button>
+            </div>
+          </div>
+          {fields.map((field) => (
+            <SliderField
+              key={`${tabValue}-${field.label}`}
+              label={field.label}
+              min={0}
+              max={1}
+              step={0.01}
+              value={field.value}
+              formatter={formatPercentValue}
+              onChange={field.onChange}
+            />
+          ))}
+          <div className="flex justify-end gap-2">
+            <Button variant="outline" onClick={closeDialog}>
+              Cancel
+            </Button>
+            <Button onClick={() => void submitGeneratedSource()}>
+              {editingSource ? "Save source" : "Add source"}
+            </Button>
+          </div>
+        </div>
+        <GeneratedSourcePreview source={previewSource} canvasSize={canvasSize} />
+      </div>
+    </TabsContent>
+  );
+}
+
 const DENSITY_UI_SCALE = 4;
 
 function ProjectRow({
@@ -484,13 +614,34 @@ function App() {
   const [gradientSourceConicSpan, setGradientSourceConicSpan] = useState(360);
   const [gradientSourceConicRepeat, setGradientSourceConicRepeat] =
     useState(false);
-  const [noiseSourceName, setNoiseSourceName] = useState("");
-  const [noiseSourceColor, setNoiseSourceColor] = useState("#0f766e");
-  const [noiseSourceScale, setNoiseSourceScale] = useState(0.55);
-  const [noiseSourceDetail, setNoiseSourceDetail] = useState(0.55);
-  const [noiseSourceContrast, setNoiseSourceContrast] = useState(0.45);
-  const [noiseSourceDistortion, setNoiseSourceDistortion] = useState(0.25);
-  const [noiseSourceSeed, setNoiseSourceSeed] = useState(() => createNoiseSeed());
+  const [perlinSourceName, setPerlinSourceName] = useState("");
+  const [perlinSourceColor, setPerlinSourceColor] = useState("#0f766e");
+  const [perlinSourceScale, setPerlinSourceScale] = useState(0.55);
+  const [perlinSourceDetail, setPerlinSourceDetail] = useState(0.55);
+  const [perlinSourceContrast, setPerlinSourceContrast] = useState(0.45);
+  const [perlinSourceDistortion, setPerlinSourceDistortion] = useState(0.25);
+  const [perlinSourceSeed, setPerlinSourceSeed] = useState(() => createNoiseSeed());
+  const [cellularSourceName, setCellularSourceName] = useState("");
+  const [cellularSourceColor, setCellularSourceColor] = useState("#8b5cf6");
+  const [cellularSourceScale, setCellularSourceScale] = useState(0.55);
+  const [cellularSourceJitter, setCellularSourceJitter] = useState(0.6);
+  const [cellularSourceEdge, setCellularSourceEdge] = useState(0.55);
+  const [cellularSourceContrast, setCellularSourceContrast] = useState(0.45);
+  const [cellularSourceSeed, setCellularSourceSeed] = useState(() => createNoiseSeed());
+  const [reactionSourceName, setReactionSourceName] = useState("");
+  const [reactionSourceColor, setReactionSourceColor] = useState("#ef4444");
+  const [reactionSourceScale, setReactionSourceScale] = useState(0.55);
+  const [reactionSourceDiffusion, setReactionSourceDiffusion] = useState(0.55);
+  const [reactionSourceBalance, setReactionSourceBalance] = useState(0.5);
+  const [reactionSourceDistortion, setReactionSourceDistortion] = useState(0.2);
+  const [reactionSourceSeed, setReactionSourceSeed] = useState(() => createNoiseSeed());
+  const [waveSourceName, setWaveSourceName] = useState("");
+  const [waveSourceColor, setWaveSourceColor] = useState("#0ea5e9");
+  const [waveSourceScale, setWaveSourceScale] = useState(0.55);
+  const [waveSourceInterference, setWaveSourceInterference] = useState(0.65);
+  const [waveSourceDirectionality, setWaveSourceDirectionality] = useState(0.6);
+  const [waveSourceDistortion, setWaveSourceDistortion] = useState(0.2);
+  const [waveSourceSeed, setWaveSourceSeed] = useState(() => createNoiseSeed());
   const [pendingImportInspection, setPendingImportInspection] =
     useState<BundleImportInspection | null>(null);
 
@@ -523,7 +674,10 @@ function App() {
     importFiles,
     addSolidSource,
     addGradientSource,
-    addNoiseSource,
+    addPerlinSource,
+    addCellularSource,
+    addReactionSource,
+    addWaveSource,
     removeSource,
     updateGeneratedSource,
     randomizeSeed,
@@ -628,7 +782,8 @@ function App() {
   const isRadialGradientMode = gradientSourceMode === "radial";
   const isConicGradientMode = gradientSourceMode === "conic";
   const showGeneratedSourcePreview =
-    sourceDialogMode === "gradient" || sourceDialogMode === "noise";
+    sourceDialogMode === "gradient" ||
+    PROCEDURAL_SOURCE_KINDS.includes(sourceDialogMode);
 
   useEffect(() => {
     setRenderState({
@@ -711,17 +866,56 @@ function App() {
       conicRepeat: gradientSourceConicRepeat,
     }),
   };
-  const noisePreviewSource: GeneratedSourceInput = {
-    kind: "noise",
-    name: noiseSourceName,
-    recipe: normalizeNoiseInput({
-      name: noiseSourceName,
-      color: noiseSourceColor,
-      scale: noiseSourceScale,
-      detail: noiseSourceDetail,
-      contrast: noiseSourceContrast,
-      distortion: noiseSourceDistortion,
-      seed: noiseSourceSeed,
+  const perlinPreviewSource: GeneratedSourceInput = {
+    kind: "perlin",
+    name: perlinSourceName,
+    recipe: normalizePerlinInput({
+      name: perlinSourceName,
+      color: perlinSourceColor,
+      scale: perlinSourceScale,
+      detail: perlinSourceDetail,
+      contrast: perlinSourceContrast,
+      distortion: perlinSourceDistortion,
+      seed: perlinSourceSeed,
+    }),
+  };
+  const cellularPreviewSource: GeneratedSourceInput = {
+    kind: "cellular",
+    name: cellularSourceName,
+    recipe: normalizeCellularInput({
+      name: cellularSourceName,
+      color: cellularSourceColor,
+      scale: cellularSourceScale,
+      jitter: cellularSourceJitter,
+      edge: cellularSourceEdge,
+      contrast: cellularSourceContrast,
+      seed: cellularSourceSeed,
+    }),
+  };
+  const reactionPreviewSource: GeneratedSourceInput = {
+    kind: "reaction",
+    name: reactionSourceName,
+    recipe: normalizeReactionInput({
+      name: reactionSourceName,
+      color: reactionSourceColor,
+      scale: reactionSourceScale,
+      diffusion: reactionSourceDiffusion,
+      balance: reactionSourceBalance,
+      distortion: reactionSourceDistortion,
+      seed: reactionSourceSeed,
+    }),
+  };
+  const wavePreviewSource: GeneratedSourceInput = {
+    kind: "waves",
+    name: waveSourceName,
+    recipe: normalizeWaveInput({
+      name: waveSourceName,
+      color: waveSourceColor,
+      scale: waveSourceScale,
+      interference: waveSourceInterference,
+      directionality: waveSourceDirectionality,
+      distortion: waveSourceDistortion,
+      seed: waveSourceSeed,
     }),
   };
 
@@ -814,7 +1008,10 @@ function App() {
 
   const resetGeneratedSourceForms = () => {
     const defaultGradient = getDefaultGradientInput();
-    const defaultNoise = getDefaultNoiseInput();
+    const defaultPerlin = getDefaultPerlinInput();
+    const defaultCellular = getDefaultCellularInput();
+    const defaultReaction = getDefaultReactionInput();
+    const defaultWave = getDefaultWaveInput();
     setSolidSourceName("");
     setSolidSourceColor("#0f172a");
     setGradientSourceName(defaultGradient.name ?? "");
@@ -832,13 +1029,34 @@ function App() {
     setGradientSourceConicAngle(defaultGradient.conicAngle);
     setGradientSourceConicSpan(defaultGradient.conicSpan);
     setGradientSourceConicRepeat(defaultGradient.conicRepeat);
-    setNoiseSourceName(defaultNoise.name ?? "");
-    setNoiseSourceColor(defaultNoise.color);
-    setNoiseSourceScale(defaultNoise.scale);
-    setNoiseSourceDetail(defaultNoise.detail);
-    setNoiseSourceContrast(defaultNoise.contrast);
-    setNoiseSourceDistortion(defaultNoise.distortion);
-    setNoiseSourceSeed(createNoiseSeed());
+    setPerlinSourceName(defaultPerlin.name ?? "");
+    setPerlinSourceColor(defaultPerlin.color);
+    setPerlinSourceScale(defaultPerlin.scale);
+    setPerlinSourceDetail(defaultPerlin.detail);
+    setPerlinSourceContrast(defaultPerlin.contrast);
+    setPerlinSourceDistortion(defaultPerlin.distortion);
+    setPerlinSourceSeed(createNoiseSeed());
+    setCellularSourceName(defaultCellular.name ?? "");
+    setCellularSourceColor(defaultCellular.color);
+    setCellularSourceScale(defaultCellular.scale);
+    setCellularSourceJitter(defaultCellular.jitter);
+    setCellularSourceEdge(defaultCellular.edge);
+    setCellularSourceContrast(defaultCellular.contrast);
+    setCellularSourceSeed(createNoiseSeed());
+    setReactionSourceName(defaultReaction.name ?? "");
+    setReactionSourceColor(defaultReaction.color);
+    setReactionSourceScale(defaultReaction.scale);
+    setReactionSourceDiffusion(defaultReaction.diffusion);
+    setReactionSourceBalance(defaultReaction.balance);
+    setReactionSourceDistortion(defaultReaction.distortion);
+    setReactionSourceSeed(createNoiseSeed());
+    setWaveSourceName(defaultWave.name ?? "");
+    setWaveSourceColor(defaultWave.color);
+    setWaveSourceScale(defaultWave.scale);
+    setWaveSourceInterference(defaultWave.interference);
+    setWaveSourceDirectionality(defaultWave.directionality);
+    setWaveSourceDistortion(defaultWave.distortion);
+    setWaveSourceSeed(createNoiseSeed());
   };
 
   const openAddSourceDialog = (mode: SourceKind = "image") => {
@@ -850,7 +1068,15 @@ function App() {
 
   const openEditSourceDialog = (assetId: string) => {
     const asset = projectAssets.find(
-      (entry): entry is SolidSourceAsset | GradientSourceAsset | NoiseSourceAsset =>
+      (
+        entry,
+      ): entry is
+        | SolidSourceAsset
+        | GradientSourceAsset
+        | PerlinSourceAsset
+        | CellularSourceAsset
+        | ReactionSourceAsset
+        | WaveSourceAsset =>
         entry.id === assetId && entry.kind !== "image",
     );
     if (!asset) return;
@@ -876,14 +1102,38 @@ function App() {
       setGradientSourceConicAngle(asset.recipe.conicAngle);
       setGradientSourceConicSpan(asset.recipe.conicSpan);
       setGradientSourceConicRepeat(asset.recipe.conicRepeat);
+    } else if (asset.kind === "perlin") {
+      setPerlinSourceName(asset.name);
+      setPerlinSourceColor(asset.recipe.color);
+      setPerlinSourceScale(asset.recipe.scale);
+      setPerlinSourceDetail(asset.recipe.detail);
+      setPerlinSourceContrast(asset.recipe.contrast);
+      setPerlinSourceDistortion(asset.recipe.distortion);
+      setPerlinSourceSeed(asset.recipe.seed);
+    } else if (asset.kind === "cellular") {
+      setCellularSourceName(asset.name);
+      setCellularSourceColor(asset.recipe.color);
+      setCellularSourceScale(asset.recipe.scale);
+      setCellularSourceJitter(asset.recipe.jitter);
+      setCellularSourceEdge(asset.recipe.edge);
+      setCellularSourceContrast(asset.recipe.contrast);
+      setCellularSourceSeed(asset.recipe.seed);
+    } else if (asset.kind === "reaction") {
+      setReactionSourceName(asset.name);
+      setReactionSourceColor(asset.recipe.color);
+      setReactionSourceScale(asset.recipe.scale);
+      setReactionSourceDiffusion(asset.recipe.diffusion);
+      setReactionSourceBalance(asset.recipe.balance);
+      setReactionSourceDistortion(asset.recipe.distortion);
+      setReactionSourceSeed(asset.recipe.seed);
     } else {
-      setNoiseSourceName(asset.name);
-      setNoiseSourceColor(asset.recipe.color);
-      setNoiseSourceScale(asset.recipe.scale);
-      setNoiseSourceDetail(asset.recipe.detail);
-      setNoiseSourceContrast(asset.recipe.contrast);
-      setNoiseSourceDistortion(asset.recipe.distortion);
-      setNoiseSourceSeed(asset.recipe.seed);
+      setWaveSourceName(asset.name);
+      setWaveSourceColor(asset.recipe.color);
+      setWaveSourceScale(asset.recipe.scale);
+      setWaveSourceInterference(asset.recipe.interference);
+      setWaveSourceDirectionality(asset.recipe.directionality);
+      setWaveSourceDistortion(asset.recipe.distortion);
+      setWaveSourceSeed(asset.recipe.seed);
     }
     setSourceDialogOpen(true);
   };
@@ -939,19 +1189,76 @@ function App() {
       return;
     }
 
-    const input = normalizeNoiseInput({
-      name: noiseSourceName,
-      color: noiseSourceColor,
-      scale: noiseSourceScale,
-      detail: noiseSourceDetail,
-      contrast: noiseSourceContrast,
-      distortion: noiseSourceDistortion,
-      seed: noiseSourceSeed,
+    if (sourceDialogMode === "perlin") {
+      const input = normalizePerlinInput({
+        name: perlinSourceName,
+        color: perlinSourceColor,
+        scale: perlinSourceScale,
+        detail: perlinSourceDetail,
+        contrast: perlinSourceContrast,
+        distortion: perlinSourceDistortion,
+        seed: perlinSourceSeed,
+      });
+      if (editingSource?.kind === "perlin") {
+        await updateGeneratedSource(editingSource.id, input);
+      } else {
+        await addPerlinSource(input);
+      }
+      setSourceDialogOpen(false);
+      return;
+    }
+
+    if (sourceDialogMode === "cellular") {
+      const input = normalizeCellularInput({
+        name: cellularSourceName,
+        color: cellularSourceColor,
+        scale: cellularSourceScale,
+        jitter: cellularSourceJitter,
+        edge: cellularSourceEdge,
+        contrast: cellularSourceContrast,
+        seed: cellularSourceSeed,
+      });
+      if (editingSource?.kind === "cellular") {
+        await updateGeneratedSource(editingSource.id, input);
+      } else {
+        await addCellularSource(input);
+      }
+      setSourceDialogOpen(false);
+      return;
+    }
+
+    if (sourceDialogMode === "reaction") {
+      const input = normalizeReactionInput({
+        name: reactionSourceName,
+        color: reactionSourceColor,
+        scale: reactionSourceScale,
+        diffusion: reactionSourceDiffusion,
+        balance: reactionSourceBalance,
+        distortion: reactionSourceDistortion,
+        seed: reactionSourceSeed,
+      });
+      if (editingSource?.kind === "reaction") {
+        await updateGeneratedSource(editingSource.id, input);
+      } else {
+        await addReactionSource(input);
+      }
+      setSourceDialogOpen(false);
+      return;
+    }
+
+    const input = normalizeWaveInput({
+      name: waveSourceName,
+      color: waveSourceColor,
+      scale: waveSourceScale,
+      interference: waveSourceInterference,
+      directionality: waveSourceDirectionality,
+      distortion: waveSourceDistortion,
+      seed: waveSourceSeed,
     });
-    if (editingSource?.kind === "noise") {
+    if (editingSource?.kind === "waves") {
       await updateGeneratedSource(editingSource.id, input);
     } else {
-      await addNoiseSource(input);
+      await addWaveSource(input);
     }
     setSourceDialogOpen(false);
   };
@@ -3125,14 +3432,14 @@ function App() {
             </DialogTitle>
             <DialogDescription>
               Build the source pool from imported images, solid fills, and
-              generated gradients and noise textures.
+              generated gradients and procedural textures.
             </DialogDescription>
           </DialogHeader>
           <Tabs
             value={sourceDialogMode}
             onValueChange={(value) => setSourceDialogMode(value as SourceKind)}
           >
-            <TabsList className="grid w-full grid-cols-4">
+            <TabsList className="grid w-full grid-cols-7">
               {SOURCE_DIALOG_MODES.map((mode) => (
                 <TabsTrigger
                   key={mode}
@@ -3401,100 +3708,150 @@ function App() {
                 />
               </div>
             </TabsContent>
-            <TabsContent value="noise">
-              <div
-                data-testid="source-editor-preview-layout"
-                className="grid gap-6 md:grid-cols-2 md:items-start"
-              >
-                <div className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="noise-source-name">Name</Label>
-                    <Input
-                      id="noise-source-name"
-                      placeholder="Noise #RRGGBB"
-                      value={noiseSourceName}
-                      onChange={(event) => setNoiseSourceName(event.target.value)}
-                    />
-                  </div>
-                  <SourceColorField
-                    id="noise-source-color"
-                    label="Base color"
-                    value={noiseSourceColor}
-                    onChange={setNoiseSourceColor}
-                  />
-                  <div className="rounded-md border border-border-subtle bg-surface-sunken/60 p-3">
-                    <div className="flex items-center justify-between gap-3">
-                      <div>
-                        <Label>Variation</Label>
-                        <div className="text-xs text-text-muted">
-                          Regenerate the hidden seed while keeping the sliders unchanged.
-                        </div>
-                      </div>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setNoiseSourceSeed(createNoiseSeed())}
-                      >
-                        <RefreshCw className="h-3.5 w-3.5" />
-                        Regenerate
-                      </Button>
-                    </div>
-                  </div>
-                  <SliderField
-                    label="Scale"
-                    min={0}
-                    max={1}
-                    step={0.01}
-                    value={noiseSourceScale}
-                    formatter={formatPercentValue}
-                    onChange={setNoiseSourceScale}
-                  />
-                  <SliderField
-                    label="Detail"
-                    min={0}
-                    max={1}
-                    step={0.01}
-                    value={noiseSourceDetail}
-                    formatter={formatPercentValue}
-                    onChange={setNoiseSourceDetail}
-                  />
-                  <SliderField
-                    label="Contrast"
-                    min={0}
-                    max={1}
-                    step={0.01}
-                    value={noiseSourceContrast}
-                    formatter={formatPercentValue}
-                    onChange={setNoiseSourceContrast}
-                  />
-                  <SliderField
-                    label="Distortion"
-                    min={0}
-                    max={1}
-                    step={0.01}
-                    value={noiseSourceDistortion}
-                    formatter={formatPercentValue}
-                    onChange={setNoiseSourceDistortion}
-                  />
-                  <div className="flex justify-end gap-2">
-                    <Button
-                      variant="outline"
-                      onClick={() => setSourceDialogOpen(false)}
-                    >
-                      Cancel
-                    </Button>
-                    <Button onClick={() => void submitGeneratedSource()}>
-                      {editingSource ? "Save source" : "Add source"}
-                    </Button>
-                  </div>
-                </div>
-                <GeneratedSourcePreview
-                  source={noisePreviewSource}
-                  canvasSize={activeProject.canvas}
-                />
-              </div>
-            </TabsContent>
+            <ProceduralTextureTab
+              tabValue="perlin"
+              name={perlinSourceName}
+              setName={setPerlinSourceName}
+              namePlaceholder="Perlin #RRGGBB"
+              color={perlinSourceColor}
+              setColor={setPerlinSourceColor}
+              regenerateSeed={() => setPerlinSourceSeed(createNoiseSeed())}
+              fields={[
+                {
+                  label: "Scale",
+                  value: perlinSourceScale,
+                  onChange: setPerlinSourceScale,
+                },
+                {
+                  label: "Detail",
+                  value: perlinSourceDetail,
+                  onChange: setPerlinSourceDetail,
+                },
+                {
+                  label: "Contrast",
+                  value: perlinSourceContrast,
+                  onChange: setPerlinSourceContrast,
+                },
+                {
+                  label: "Distortion",
+                  value: perlinSourceDistortion,
+                  onChange: setPerlinSourceDistortion,
+                },
+              ]}
+              previewSource={perlinPreviewSource}
+              canvasSize={activeProject.canvas}
+              editingSource={editingSource}
+              submitGeneratedSource={submitGeneratedSource}
+              closeDialog={() => setSourceDialogOpen(false)}
+            />
+            <ProceduralTextureTab
+              tabValue="cellular"
+              name={cellularSourceName}
+              setName={setCellularSourceName}
+              namePlaceholder="Cellular #RRGGBB"
+              color={cellularSourceColor}
+              setColor={setCellularSourceColor}
+              regenerateSeed={() => setCellularSourceSeed(createNoiseSeed())}
+              fields={[
+                {
+                  label: "Scale",
+                  value: cellularSourceScale,
+                  onChange: setCellularSourceScale,
+                },
+                {
+                  label: "Jitter",
+                  value: cellularSourceJitter,
+                  onChange: setCellularSourceJitter,
+                },
+                {
+                  label: "Edge",
+                  value: cellularSourceEdge,
+                  onChange: setCellularSourceEdge,
+                },
+                {
+                  label: "Contrast",
+                  value: cellularSourceContrast,
+                  onChange: setCellularSourceContrast,
+                },
+              ]}
+              previewSource={cellularPreviewSource}
+              canvasSize={activeProject.canvas}
+              editingSource={editingSource}
+              submitGeneratedSource={submitGeneratedSource}
+              closeDialog={() => setSourceDialogOpen(false)}
+            />
+            <ProceduralTextureTab
+              tabValue="reaction"
+              name={reactionSourceName}
+              setName={setReactionSourceName}
+              namePlaceholder="Reaction #RRGGBB"
+              color={reactionSourceColor}
+              setColor={setReactionSourceColor}
+              regenerateSeed={() => setReactionSourceSeed(createNoiseSeed())}
+              fields={[
+                {
+                  label: "Scale",
+                  value: reactionSourceScale,
+                  onChange: setReactionSourceScale,
+                },
+                {
+                  label: "Diffusion",
+                  value: reactionSourceDiffusion,
+                  onChange: setReactionSourceDiffusion,
+                },
+                {
+                  label: "Balance",
+                  value: reactionSourceBalance,
+                  onChange: setReactionSourceBalance,
+                },
+                {
+                  label: "Distortion",
+                  value: reactionSourceDistortion,
+                  onChange: setReactionSourceDistortion,
+                },
+              ]}
+              previewSource={reactionPreviewSource}
+              canvasSize={activeProject.canvas}
+              editingSource={editingSource}
+              submitGeneratedSource={submitGeneratedSource}
+              closeDialog={() => setSourceDialogOpen(false)}
+            />
+            <ProceduralTextureTab
+              tabValue="waves"
+              name={waveSourceName}
+              setName={setWaveSourceName}
+              namePlaceholder="Waves #RRGGBB"
+              color={waveSourceColor}
+              setColor={setWaveSourceColor}
+              regenerateSeed={() => setWaveSourceSeed(createNoiseSeed())}
+              fields={[
+                {
+                  label: "Scale",
+                  value: waveSourceScale,
+                  onChange: setWaveSourceScale,
+                },
+                {
+                  label: "Interference",
+                  value: waveSourceInterference,
+                  onChange: setWaveSourceInterference,
+                },
+                {
+                  label: "Directionality",
+                  value: waveSourceDirectionality,
+                  onChange: setWaveSourceDirectionality,
+                },
+                {
+                  label: "Distortion",
+                  value: waveSourceDistortion,
+                  onChange: setWaveSourceDistortion,
+                },
+              ]}
+              previewSource={wavePreviewSource}
+              canvasSize={activeProject.canvas}
+              editingSource={editingSource}
+              submitGeneratedSource={submitGeneratedSource}
+              closeDialog={() => setSourceDialogOpen(false)}
+            />
           </Tabs>
         </DialogContent>
       </Dialog>

@@ -143,7 +143,7 @@ describe("normalizeSourceAsset", () => {
     });
   });
 
-  it("normalizes legacy noise assets with bounded defaults", () => {
+  it("normalizes legacy noise assets to perlin with bounded defaults", () => {
     const asset = normalizeSourceAsset({
       id: "asset_noise",
       kind: "noise",
@@ -170,9 +170,9 @@ describe("normalizeSourceAsset", () => {
       },
     });
 
-    expect(asset.kind).toBe("noise");
-    if (asset.kind !== "noise") {
-      throw new Error("Expected a noise source asset.");
+    expect(asset.kind).toBe("perlin");
+    if (asset.kind !== "perlin") {
+      throw new Error("Expected a perlin source asset.");
     }
     expect(asset.recipe).toEqual({
       color: "#225577",
@@ -365,7 +365,7 @@ describe("generated sources", () => {
     }
   });
 
-  it("creates a noise source with a persisted normalized recipe", async () => {
+  it("creates a perlin source with a persisted normalized recipe", async () => {
     const { primaryCanvas, previewCanvas, primaryContext } = createCanvasMocks();
     const createElementSpy = vi
       .spyOn(document, "createElement")
@@ -375,7 +375,7 @@ describe("generated sources", () => {
     try {
       const asset = await createGeneratedSourceAsset(
         {
-          kind: "noise",
+          kind: "perlin",
           name: "",
           recipe: {
             color: "#225577",
@@ -390,9 +390,9 @@ describe("generated sources", () => {
         { width: 64, height: 48 },
       );
 
-      expect(asset.kind).toBe("noise");
-      if (asset.kind !== "noise") {
-        throw new Error("Expected a noise source asset.");
+      expect(asset.kind).toBe("perlin");
+      if (asset.kind !== "perlin") {
+        throw new Error("Expected a perlin source asset.");
       }
       expect(asset.recipe).toEqual({
         color: "#225577",
@@ -402,7 +402,7 @@ describe("generated sources", () => {
         distortion: 0.2,
         seed: 42,
       });
-      expect(asset.name).toBe("Noise #225577");
+      expect(asset.name).toBe("Perlin #225577");
       expect(primaryContext.createImageData).toHaveBeenCalledWith(64, 48);
       expect(primaryContext.putImageData).toHaveBeenCalledTimes(1);
       expect(writeBlob).toHaveBeenCalledTimes(3);
@@ -411,25 +411,124 @@ describe("generated sources", () => {
     }
   });
 
-  it("updates an existing noise source without changing its id", async () => {
+  it("creates a cellular source with a persisted normalized recipe", async () => {
+    const { primaryCanvas, previewCanvas, primaryContext } = createCanvasMocks();
+    const createElementSpy = vi
+      .spyOn(document, "createElement")
+      .mockReturnValueOnce(primaryCanvas as never)
+      .mockReturnValueOnce(previewCanvas as never);
+
+    try {
+      const asset = await createGeneratedSourceAsset(
+        {
+          kind: "cellular",
+          name: "",
+          recipe: {
+            color: "#6655cc",
+            scale: 0.7,
+            jitter: 0.2,
+            edge: 0.8,
+            contrast: 0.6,
+            seed: 12,
+          },
+        },
+        "project_test",
+        { width: 64, height: 48 },
+      );
+
+      expect(asset.kind).toBe("cellular");
+      if (asset.kind !== "cellular") {
+        throw new Error("Expected a cellular source asset.");
+      }
+      expect(asset.recipe).toEqual({
+        color: "#6655cc",
+        scale: 0.7,
+        jitter: 0.2,
+        edge: 0.8,
+        contrast: 0.6,
+        seed: 12,
+      });
+      expect(asset.name).toBe("Cellular #6655CC");
+      expect(primaryContext.createImageData).toHaveBeenCalledWith(64, 48);
+      expect(primaryContext.putImageData).toHaveBeenCalledTimes(1);
+      expect(writeBlob).toHaveBeenCalledTimes(3);
+    } finally {
+      createElementSpy.mockRestore();
+    }
+  });
+
+  it("creates reaction and waves sources with normalized defaults", async () => {
+    const { primaryCanvas, previewCanvas } = createCanvasMocks();
+    const createElementSpy = vi
+      .spyOn(document, "createElement")
+      .mockReturnValueOnce(primaryCanvas as never)
+      .mockReturnValueOnce(previewCanvas as never)
+      .mockReturnValueOnce(primaryCanvas as never)
+      .mockReturnValueOnce(previewCanvas as never);
+
+    try {
+      const reaction = await createGeneratedSourceAsset(
+        {
+          kind: "reaction",
+          name: "",
+          recipe: {
+            color: "#cc5533",
+            scale: 0.8,
+            diffusion: 0.3,
+            balance: 0.6,
+            distortion: 0.45,
+            seed: 77,
+          },
+        },
+        "project_test",
+        { width: 64, height: 48 },
+      );
+      const waves = await createGeneratedSourceAsset(
+        {
+          kind: "waves",
+          name: "",
+          recipe: {
+            color: "#2299bb",
+            scale: 0.8,
+            interference: 0.2,
+            directionality: 0.9,
+            distortion: 0.45,
+            seed: 88,
+          },
+        },
+        "project_test",
+        { width: 64, height: 48 },
+      );
+
+      expect(reaction.kind).toBe("reaction");
+      expect(waves.kind).toBe("waves");
+      expect(reaction.name).toBe("Reaction #CC5533");
+      expect(waves.name).toBe("Waves #2299BB");
+      expect(writeBlob).toHaveBeenCalledTimes(6);
+    } finally {
+      createElementSpy.mockRestore();
+    }
+  });
+
+  it("updates an existing perlin source without changing its id", async () => {
     const { primaryCanvas, previewCanvas, primaryContext } = createCanvasMocks();
     const createElementSpy = vi
       .spyOn(document, "createElement")
       .mockReturnValueOnce(primaryCanvas as never)
       .mockReturnValueOnce(previewCanvas as never);
     const asset: SourceAsset = {
-      id: "asset_noise",
-      kind: "noise",
+      id: "asset_perlin",
+      kind: "perlin",
       projectId: "project_test",
-      name: "Noise Old",
-      originalFileName: "noise-asset_noise.png",
+      name: "Perlin Old",
+      originalFileName: "perlin-asset_perlin.png",
       mimeType: "image/png",
       width: 64,
       height: 48,
       orientation: 1,
-      originalPath: "assets/original/asset_noise.png",
-      normalizedPath: "assets/normalized/asset_noise.png",
-      previewPath: "assets/previews/asset_noise.webp",
+      originalPath: "assets/original/asset_perlin.png",
+      normalizedPath: "assets/normalized/asset_perlin.png",
+      previewPath: "assets/previews/asset_perlin.webp",
       averageColor: "#225577",
       palette: ["#225577", "#88aacc"],
       luminance: 0.2,
@@ -456,9 +555,9 @@ describe("generated sources", () => {
       });
 
       expect(updated.id).toBe(asset.id);
-      expect(updated.kind).toBe("noise");
-      if (updated.kind !== "noise") {
-        throw new Error("Expected a noise source asset.");
+      expect(updated.kind).toBe("perlin");
+      if (updated.kind !== "perlin") {
+        throw new Error("Expected a perlin source asset.");
       }
       expect(updated.name).toBe("Lagoon");
       expect(updated.recipe).toEqual({
@@ -471,6 +570,123 @@ describe("generated sources", () => {
       });
       expect(primaryContext.putImageData).toHaveBeenCalledTimes(1);
       expect(writeBlob).toHaveBeenCalledTimes(3);
+    } finally {
+      createElementSpy.mockRestore();
+    }
+  });
+
+  it("updates cellular, reaction, and waves sources without changing their ids", async () => {
+    const { primaryCanvas, previewCanvas } = createCanvasMocks();
+    const createElementSpy = vi
+      .spyOn(document, "createElement")
+      .mockReturnValueOnce(primaryCanvas as never)
+      .mockReturnValueOnce(previewCanvas as never)
+      .mockReturnValueOnce(primaryCanvas as never)
+      .mockReturnValueOnce(previewCanvas as never)
+      .mockReturnValueOnce(primaryCanvas as never)
+      .mockReturnValueOnce(previewCanvas as never);
+    const baseAsset = {
+      projectId: "project_test",
+      mimeType: "image/png",
+      width: 64,
+      height: 48,
+      orientation: 1,
+      averageColor: "#225577",
+      palette: ["#225577", "#88aacc"],
+      luminance: 0.2,
+      createdAt: "2026-04-01T00:00:00.000Z",
+    };
+    const cellular: SourceAsset = {
+      ...baseAsset,
+      id: "asset_cellular",
+      kind: "cellular",
+      name: "Cellular Old",
+      originalFileName: "cellular.png",
+      originalPath: "assets/original/asset_cellular.png",
+      normalizedPath: "assets/normalized/asset_cellular.png",
+      previewPath: "assets/previews/asset_cellular.webp",
+      recipe: {
+        color: "#8b5cf6",
+        scale: 0.4,
+        jitter: 0.4,
+        edge: 0.4,
+        contrast: 0.4,
+        seed: 1,
+      },
+    };
+    const reaction: SourceAsset = {
+      ...baseAsset,
+      id: "asset_reaction",
+      kind: "reaction",
+      name: "Reaction Old",
+      originalFileName: "reaction.png",
+      originalPath: "assets/original/asset_reaction.png",
+      normalizedPath: "assets/normalized/asset_reaction.png",
+      previewPath: "assets/previews/asset_reaction.webp",
+      recipe: {
+        color: "#ef4444",
+        scale: 0.4,
+        diffusion: 0.4,
+        balance: 0.4,
+        distortion: 0.4,
+        seed: 2,
+      },
+    };
+    const waves: SourceAsset = {
+      ...baseAsset,
+      id: "asset_waves",
+      kind: "waves",
+      name: "Waves Old",
+      originalFileName: "waves.png",
+      originalPath: "assets/original/asset_waves.png",
+      normalizedPath: "assets/normalized/asset_waves.png",
+      previewPath: "assets/previews/asset_waves.webp",
+      recipe: {
+        color: "#0ea5e9",
+        scale: 0.4,
+        interference: 0.4,
+        directionality: 0.4,
+        distortion: 0.4,
+        seed: 3,
+      },
+    };
+
+    try {
+      const nextCellular = await updateGeneratedSourceAsset(cellular, {
+        name: "Cellular Next",
+        color: "#6655cc",
+        scale: 0.7,
+        jitter: 0.3,
+        edge: 0.8,
+        contrast: 0.6,
+        seed: 9,
+      });
+      const nextReaction = await updateGeneratedSourceAsset(reaction, {
+        name: "Reaction Next",
+        color: "#cc5533",
+        scale: 0.8,
+        diffusion: 0.3,
+        balance: 0.6,
+        distortion: 0.45,
+        seed: 8,
+      });
+      const nextWaves = await updateGeneratedSourceAsset(waves, {
+        name: "Waves Next",
+        color: "#2299bb",
+        scale: 0.8,
+        interference: 0.2,
+        directionality: 0.9,
+        distortion: 0.45,
+        seed: 7,
+      });
+
+      expect(nextCellular.id).toBe(cellular.id);
+      expect(nextReaction.id).toBe(reaction.id);
+      expect(nextWaves.id).toBe(waves.id);
+      expect(nextCellular.kind).toBe("cellular");
+      expect(nextReaction.kind).toBe("reaction");
+      expect(nextWaves.kind).toBe("waves");
+      expect(writeBlob).toHaveBeenCalledTimes(9);
     } finally {
       createElementSpy.mockRestore();
     }
@@ -569,13 +785,13 @@ describe("generated sources", () => {
     expect(radialGradient.addColorStop).toHaveBeenNthCalledWith(3, 1, "#ddeeff");
   });
 
-  it("renders noise previews through the shared canvas renderer", () => {
+  it("renders perlin previews through the shared canvas renderer", () => {
     const { primaryCanvas, primaryContext } = createCanvasMocks();
     primaryCanvas.width = 96;
     primaryCanvas.height = 72;
 
     renderGeneratedSourceToCanvas(primaryCanvas, {
-      kind: "noise",
+      kind: "perlin",
       name: "Preview",
       recipe: {
         color: "#225577",
@@ -589,6 +805,52 @@ describe("generated sources", () => {
 
     expect(primaryContext.createImageData).toHaveBeenCalledWith(96, 72);
     expect(primaryContext.putImageData).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders cellular, reaction, and waves previews through the shared canvas renderer", () => {
+    const { primaryCanvas, primaryContext } = createCanvasMocks();
+    primaryCanvas.width = 96;
+    primaryCanvas.height = 72;
+
+    renderGeneratedSourceToCanvas(primaryCanvas, {
+      kind: "cellular",
+      name: "Cellular Preview",
+      recipe: {
+        color: "#6655cc",
+        scale: 0.7,
+        jitter: 0.2,
+        edge: 0.8,
+        contrast: 0.6,
+        seed: 42,
+      },
+    });
+    renderGeneratedSourceToCanvas(primaryCanvas, {
+      kind: "reaction",
+      name: "Reaction Preview",
+      recipe: {
+        color: "#cc5533",
+        scale: 0.8,
+        diffusion: 0.3,
+        balance: 0.6,
+        distortion: 0.45,
+        seed: 7,
+      },
+    });
+    renderGeneratedSourceToCanvas(primaryCanvas, {
+      kind: "waves",
+      name: "Waves Preview",
+      recipe: {
+        color: "#2299bb",
+        scale: 0.8,
+        interference: 0.2,
+        directionality: 0.9,
+        distortion: 0.45,
+        seed: 9,
+      },
+    });
+
+    expect(primaryContext.createImageData).toHaveBeenCalledWith(96, 72);
+    expect(primaryContext.putImageData).toHaveBeenCalledTimes(3);
   });
 
   it("includes the expanded gradient recipe in source signatures", () => {
@@ -632,12 +894,12 @@ describe("generated sources", () => {
     expect(signature).toContain("|#778899|0.25|0.4|0.6|0.8|0.2|45|180|1");
   });
 
-  it("includes the noise recipe in source signatures", () => {
+  it("includes the perlin recipe in source signatures", () => {
     const asset = normalizeSourceAsset({
       id: "asset_noise",
-      kind: "noise",
+      kind: "perlin",
       projectId: "project_test",
-      name: "Noise",
+      name: "Perlin",
       originalFileName: "noise.png",
       mimeType: "image/png",
       width: 320,
@@ -663,5 +925,90 @@ describe("generated sources", () => {
     const signature = getSourceContentSignature(asset);
 
     expect(signature).toContain("|#225577|0.9|0.4|0.7|0.2|42");
+  });
+
+  it("includes cellular, reaction, and waves recipes in source signatures", () => {
+    const cellular = normalizeSourceAsset({
+      id: "asset_cellular",
+      kind: "cellular",
+      projectId: "project_test",
+      name: "Cellular",
+      originalFileName: "cellular.png",
+      mimeType: "image/png",
+      width: 320,
+      height: 240,
+      orientation: 1,
+      originalPath: "assets/original/asset_cellular.png",
+      normalizedPath: "assets/normalized/asset_cellular.png",
+      previewPath: "assets/previews/asset_cellular.webp",
+      averageColor: "#6655cc",
+      palette: ["#6655cc"],
+      luminance: 0.2,
+      createdAt: "2026-04-01T00:00:00.000Z",
+      recipe: {
+        color: "#6655cc",
+        scale: 0.7,
+        jitter: 0.2,
+        edge: 0.8,
+        contrast: 0.6,
+        seed: 12,
+      },
+    });
+    const reaction = normalizeSourceAsset({
+      id: "asset_reaction",
+      kind: "reaction",
+      projectId: "project_test",
+      name: "Reaction",
+      originalFileName: "reaction.png",
+      mimeType: "image/png",
+      width: 320,
+      height: 240,
+      orientation: 1,
+      originalPath: "assets/original/asset_reaction.png",
+      normalizedPath: "assets/normalized/asset_reaction.png",
+      previewPath: "assets/previews/asset_reaction.webp",
+      averageColor: "#cc5533",
+      palette: ["#cc5533"],
+      luminance: 0.2,
+      createdAt: "2026-04-01T00:00:00.000Z",
+      recipe: {
+        color: "#cc5533",
+        scale: 0.8,
+        diffusion: 0.3,
+        balance: 0.6,
+        distortion: 0.45,
+        seed: 77,
+      },
+    });
+    const waves = normalizeSourceAsset({
+      id: "asset_waves",
+      kind: "waves",
+      projectId: "project_test",
+      name: "Waves",
+      originalFileName: "waves.png",
+      mimeType: "image/png",
+      width: 320,
+      height: 240,
+      orientation: 1,
+      originalPath: "assets/original/asset_waves.png",
+      normalizedPath: "assets/normalized/asset_waves.png",
+      previewPath: "assets/previews/asset_waves.webp",
+      averageColor: "#2299bb",
+      palette: ["#2299bb"],
+      luminance: 0.2,
+      createdAt: "2026-04-01T00:00:00.000Z",
+      recipe: {
+        color: "#2299bb",
+        scale: 0.8,
+        interference: 0.2,
+        directionality: 0.9,
+        distortion: 0.45,
+        seed: 88,
+      },
+    });
+
+    expect(getSourceContentSignature(cellular)).toContain("|#6655cc|0.7|0.2|0.8|0.6|12");
+    expect(getSourceContentSignature(reaction)).toContain("|#cc5533|0.8|0.3|0.6|0.45|77");
+    expect(getSourceContentSignature(waves)).toContain("|#2299bb|0.8|0.2|0.9|0.45|88");
   });
 });

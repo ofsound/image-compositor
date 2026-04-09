@@ -1,14 +1,17 @@
 import { create } from "zustand";
 
 import {
+  type CellularSourceInput,
   createGeneratedSourceAsset,
   duplicateSourceAsset,
   normalizeSourceAsset,
   persistProcessedAsset,
   updateGeneratedSourceAsset,
   type GradientSourceInput,
-  type NoiseSourceInput,
+  type PerlinSourceInput,
+  type ReactionSourceInput,
   type SolidSourceInput,
+  type WaveSourceInput,
 } from "@/lib/assets";
 import { db } from "@/lib/db";
 import { downloadBlob } from "@/lib/download";
@@ -32,14 +35,17 @@ import {
 } from "@/lib/serializer";
 import type {
   BundleImportInspection,
+  CellularSourceAsset,
   CompositorLayer,
   GradientSourceAsset,
-  NoiseSourceAsset,
+  PerlinSourceAsset,
   ProjectDocument,
   ProjectSnapshot,
   ProjectVersion,
+  ReactionSourceAsset,
   SolidSourceAsset,
   SourceAsset,
+  WaveSourceAsset,
 } from "@/types/project";
 
 type BundleImportResolution = "replace" | "copy";
@@ -126,11 +132,20 @@ interface AppState {
   importFiles: (files: FileList | File[]) => Promise<void>;
   addSolidSource: (input: SolidSourceInput) => Promise<void>;
   addGradientSource: (input: GradientSourceInput) => Promise<void>;
-  addNoiseSource: (input: NoiseSourceInput) => Promise<void>;
+  addPerlinSource: (input: PerlinSourceInput) => Promise<void>;
+  addCellularSource: (input: CellularSourceInput) => Promise<void>;
+  addReactionSource: (input: ReactionSourceInput) => Promise<void>;
+  addWaveSource: (input: WaveSourceInput) => Promise<void>;
   removeSource: (assetId: string) => Promise<void>;
   updateGeneratedSource: (
     assetId: string,
-    input: SolidSourceInput | GradientSourceInput | NoiseSourceInput,
+    input:
+      | SolidSourceInput
+      | GradientSourceInput
+      | PerlinSourceInput
+      | CellularSourceInput
+      | ReactionSourceInput
+      | WaveSourceInput,
   ) => Promise<void>;
   randomizeSeed: () => Promise<void>;
   saveVersion: (label: string, thumbnailBlob?: Blob | null) => Promise<void>;
@@ -176,6 +191,10 @@ function getActiveProject(state: Pick<AppState, "projects" | "activeProjectId">)
 
 function getNextProjectTitle(projects: ProjectDocument[]) {
   return `Study ${getLiveProjects(projects).length + 1}`;
+}
+
+function formatGeneratedSourceKind(kind: Exclude<SourceAsset["kind"], "image">) {
+  return kind[0]!.toUpperCase() + kind.slice(1);
 }
 
 function createProjectSnapshot(project: ProjectDocument): ProjectSnapshot {
@@ -939,15 +958,15 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
-  async addNoiseSource(input) {
+  async addPerlinSource(input) {
     const activeProject = getActiveProject(get());
     if (!activeProject) return;
 
-    set({ busy: true, status: "Creating noise source…" });
+    set({ busy: true, status: "Creating perlin source…" });
 
     try {
       const asset = await createGeneratedSourceAsset(
-        { kind: "noise", recipe: input, name: input.name },
+        { kind: "perlin", recipe: input, name: input.name },
         activeProject.id,
         activeProject.canvas,
       );
@@ -984,7 +1003,181 @@ export const useAppStore = create<AppState>((set, get) => ({
           projects: upsertProject(state.projects, nextProject),
           historyByProject,
           busy: false,
-          status: "Noise source added.",
+          status: "Perlin source added.",
+          ...getHistoryFlags(historyByProject, state.activeProjectId),
+        };
+      });
+    } catch (error) {
+      set({
+        busy: false,
+        status:
+          error instanceof Error ? `Could not add source: ${error.message}` : "Could not add source.",
+      });
+    }
+  },
+
+  async addCellularSource(input) {
+    const activeProject = getActiveProject(get());
+    if (!activeProject) return;
+
+    set({ busy: true, status: "Creating cellular source…" });
+
+    try {
+      const asset = await createGeneratedSourceAsset(
+        { kind: "cellular", recipe: input, name: input.name },
+        activeProject.id,
+        activeProject.canvas,
+      );
+      await db.assets.put(asset);
+
+      const nextProject = {
+        ...updateSelectedProjectLayer(activeProject, (layer) => ({
+          ...layer,
+          sourceIds: [...new Set([...layer.sourceIds, asset.id])],
+        })),
+      };
+      const before = createProjectSnapshot(activeProject);
+      const after = createProjectSnapshot(nextProject);
+
+      await db.projects.put(nextProject);
+
+      set((state) => {
+        const historyByProject = patchHistory(state.historyByProject, nextProject.id, (history) => ({
+          past: [
+            ...history.past,
+            {
+              kind: "add-assets",
+              projectId: nextProject.id,
+              assets: [structuredClone(asset)],
+              before,
+              after,
+            } satisfies AddAssetsHistoryEntry,
+          ],
+          future: [],
+        }));
+
+        return {
+          assets: sortAssetsByCreated([...state.assets, asset]),
+          projects: upsertProject(state.projects, nextProject),
+          historyByProject,
+          busy: false,
+          status: "Cellular source added.",
+          ...getHistoryFlags(historyByProject, state.activeProjectId),
+        };
+      });
+    } catch (error) {
+      set({
+        busy: false,
+        status:
+          error instanceof Error ? `Could not add source: ${error.message}` : "Could not add source.",
+      });
+    }
+  },
+
+  async addReactionSource(input) {
+    const activeProject = getActiveProject(get());
+    if (!activeProject) return;
+
+    set({ busy: true, status: "Creating reaction source…" });
+
+    try {
+      const asset = await createGeneratedSourceAsset(
+        { kind: "reaction", recipe: input, name: input.name },
+        activeProject.id,
+        activeProject.canvas,
+      );
+      await db.assets.put(asset);
+
+      const nextProject = {
+        ...updateSelectedProjectLayer(activeProject, (layer) => ({
+          ...layer,
+          sourceIds: [...new Set([...layer.sourceIds, asset.id])],
+        })),
+      };
+      const before = createProjectSnapshot(activeProject);
+      const after = createProjectSnapshot(nextProject);
+
+      await db.projects.put(nextProject);
+
+      set((state) => {
+        const historyByProject = patchHistory(state.historyByProject, nextProject.id, (history) => ({
+          past: [
+            ...history.past,
+            {
+              kind: "add-assets",
+              projectId: nextProject.id,
+              assets: [structuredClone(asset)],
+              before,
+              after,
+            } satisfies AddAssetsHistoryEntry,
+          ],
+          future: [],
+        }));
+
+        return {
+          assets: sortAssetsByCreated([...state.assets, asset]),
+          projects: upsertProject(state.projects, nextProject),
+          historyByProject,
+          busy: false,
+          status: "Reaction source added.",
+          ...getHistoryFlags(historyByProject, state.activeProjectId),
+        };
+      });
+    } catch (error) {
+      set({
+        busy: false,
+        status:
+          error instanceof Error ? `Could not add source: ${error.message}` : "Could not add source.",
+      });
+    }
+  },
+
+  async addWaveSource(input) {
+    const activeProject = getActiveProject(get());
+    if (!activeProject) return;
+
+    set({ busy: true, status: "Creating waves source…" });
+
+    try {
+      const asset = await createGeneratedSourceAsset(
+        { kind: "waves", recipe: input, name: input.name },
+        activeProject.id,
+        activeProject.canvas,
+      );
+      await db.assets.put(asset);
+
+      const nextProject = {
+        ...updateSelectedProjectLayer(activeProject, (layer) => ({
+          ...layer,
+          sourceIds: [...new Set([...layer.sourceIds, asset.id])],
+        })),
+      };
+      const before = createProjectSnapshot(activeProject);
+      const after = createProjectSnapshot(nextProject);
+
+      await db.projects.put(nextProject);
+
+      set((state) => {
+        const historyByProject = patchHistory(state.historyByProject, nextProject.id, (history) => ({
+          past: [
+            ...history.past,
+            {
+              kind: "add-assets",
+              projectId: nextProject.id,
+              assets: [structuredClone(asset)],
+              before,
+              after,
+            } satisfies AddAssetsHistoryEntry,
+          ],
+          future: [],
+        }));
+
+        return {
+          assets: sortAssetsByCreated([...state.assets, asset]),
+          projects: upsertProject(state.projects, nextProject),
+          historyByProject,
+          busy: false,
+          status: "Waves source added.",
           ...getHistoryFlags(historyByProject, state.activeProjectId),
         };
       });
@@ -1066,7 +1259,15 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (!activeProject) return;
 
     const asset = get().assets.find(
-      (entry): entry is SolidSourceAsset | GradientSourceAsset | NoiseSourceAsset =>
+      (
+        entry,
+      ): entry is
+        | SolidSourceAsset
+        | GradientSourceAsset
+        | PerlinSourceAsset
+        | CellularSourceAsset
+        | ReactionSourceAsset
+        | WaveSourceAsset =>
         entry.id === assetId &&
         entry.projectId === activeProject.id &&
         entry.kind !== "image",
@@ -1096,7 +1297,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           ),
           historyByProject,
           busy: false,
-          status: `${asset.kind[0]!.toUpperCase() + asset.kind.slice(1)} source updated.`,
+          status: `${formatGeneratedSourceKind(asset.kind)} source updated.`,
           ...getHistoryFlags(historyByProject, state.activeProjectId),
         };
       });

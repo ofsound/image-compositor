@@ -3,13 +3,16 @@ import { makeId } from "@/lib/id";
 import { readBlob, writeBlob } from "@/lib/opfs";
 import { clamp, lerp } from "@/lib/utils";
 import type {
+  CellularSourceRecipe,
   GradientDirection,
   GradientMode,
   GradientSourceRecipe,
-  NoiseSourceRecipe,
+  PerlinSourceRecipe,
   ProcessedAssetPayload,
+  ReactionSourceRecipe,
   SourceAsset,
   SourceKind,
+  WaveSourceRecipe,
 } from "@/types/project";
 
 const COMMON_EXTENSIONS = [
@@ -41,6 +44,21 @@ const DEFAULT_NOISE_DETAIL = 0.55;
 const DEFAULT_NOISE_CONTRAST = 0.45;
 const DEFAULT_NOISE_DISTORTION = 0.25;
 const DEFAULT_NOISE_SEED = 1;
+const DEFAULT_CELLULAR_SCALE = 0.55;
+const DEFAULT_CELLULAR_JITTER = 0.6;
+const DEFAULT_CELLULAR_EDGE = 0.55;
+const DEFAULT_CELLULAR_CONTRAST = 0.45;
+const DEFAULT_CELLULAR_SEED = 1;
+const DEFAULT_REACTION_SCALE = 0.55;
+const DEFAULT_REACTION_DIFFUSION = 0.55;
+const DEFAULT_REACTION_BALANCE = 0.5;
+const DEFAULT_REACTION_DISTORTION = 0.2;
+const DEFAULT_REACTION_SEED = 1;
+const DEFAULT_WAVE_SCALE = 0.55;
+const DEFAULT_WAVE_INTERFERENCE = 0.65;
+const DEFAULT_WAVE_DIRECTIONALITY = 0.6;
+const DEFAULT_WAVE_DISTORTION = 0.2;
+const DEFAULT_WAVE_SEED = 1;
 
 export const ACCEPTED_IMAGE_TYPES = COMMON_EXTENSIONS.join(",");
 
@@ -66,7 +84,7 @@ export interface GradientSourceInput {
   conicRepeat: boolean;
 }
 
-export interface NoiseSourceInput {
+export interface PerlinSourceInput {
   name?: string;
   color: string;
   scale: number;
@@ -76,13 +94,46 @@ export interface NoiseSourceInput {
   seed: number;
 }
 
+export interface CellularSourceInput {
+  name?: string;
+  color: string;
+  scale: number;
+  jitter: number;
+  edge: number;
+  contrast: number;
+  seed: number;
+}
+
+export interface ReactionSourceInput {
+  name?: string;
+  color: string;
+  scale: number;
+  diffusion: number;
+  balance: number;
+  distortion: number;
+  seed: number;
+}
+
+export interface WaveSourceInput {
+  name?: string;
+  color: string;
+  scale: number;
+  interference: number;
+  directionality: number;
+  distortion: number;
+  seed: number;
+}
+
 export type GeneratedSourceInput =
   | { kind: "solid"; name?: string; recipe: SolidSourceInput }
   | { kind: "gradient"; name?: string; recipe: GradientSourceInput }
-  | { kind: "noise"; name?: string; recipe: NoiseSourceInput };
+  | { kind: "perlin"; name?: string; recipe: PerlinSourceInput }
+  | { kind: "cellular"; name?: string; recipe: CellularSourceInput }
+  | { kind: "reaction"; name?: string; recipe: ReactionSourceInput }
+  | { kind: "waves"; name?: string; recipe: WaveSourceInput };
 
 type LegacySourceAsset = Omit<SourceAsset, "kind"> & {
-  kind?: SourceKind;
+  kind?: SourceKind | "noise";
   recipe?: unknown;
 };
 
@@ -120,7 +171,7 @@ function getDefaultGradientRecipe(): GradientSourceRecipe {
   };
 }
 
-function getDefaultNoiseRecipe(): NoiseSourceRecipe {
+function getDefaultPerlinRecipe(): PerlinSourceRecipe {
   return {
     color: "#0f766e",
     scale: DEFAULT_NOISE_SCALE,
@@ -131,6 +182,39 @@ function getDefaultNoiseRecipe(): NoiseSourceRecipe {
   };
 }
 
+function getDefaultCellularRecipe(): CellularSourceRecipe {
+  return {
+    color: "#8b5cf6",
+    scale: DEFAULT_CELLULAR_SCALE,
+    jitter: DEFAULT_CELLULAR_JITTER,
+    edge: DEFAULT_CELLULAR_EDGE,
+    contrast: DEFAULT_CELLULAR_CONTRAST,
+    seed: DEFAULT_CELLULAR_SEED,
+  };
+}
+
+function getDefaultReactionRecipe(): ReactionSourceRecipe {
+  return {
+    color: "#ef4444",
+    scale: DEFAULT_REACTION_SCALE,
+    diffusion: DEFAULT_REACTION_DIFFUSION,
+    balance: DEFAULT_REACTION_BALANCE,
+    distortion: DEFAULT_REACTION_DISTORTION,
+    seed: DEFAULT_REACTION_SEED,
+  };
+}
+
+function getDefaultWaveRecipe(): WaveSourceRecipe {
+  return {
+    color: "#0ea5e9",
+    scale: DEFAULT_WAVE_SCALE,
+    interference: DEFAULT_WAVE_INTERFERENCE,
+    directionality: DEFAULT_WAVE_DIRECTIONALITY,
+    distortion: DEFAULT_WAVE_DISTORTION,
+    seed: DEFAULT_WAVE_SEED,
+  };
+}
+
 export function getDefaultGradientInput(): GradientSourceInput {
   return {
     name: "",
@@ -138,10 +222,31 @@ export function getDefaultGradientInput(): GradientSourceInput {
   };
 }
 
-export function getDefaultNoiseInput(): NoiseSourceInput {
+export function getDefaultPerlinInput(): PerlinSourceInput {
   return {
     name: "",
-    ...getDefaultNoiseRecipe(),
+    ...getDefaultPerlinRecipe(),
+  };
+}
+
+export function getDefaultCellularInput(): CellularSourceInput {
+  return {
+    name: "",
+    ...getDefaultCellularRecipe(),
+  };
+}
+
+export function getDefaultReactionInput(): ReactionSourceInput {
+  return {
+    name: "",
+    ...getDefaultReactionRecipe(),
+  };
+}
+
+export function getDefaultWaveInput(): WaveSourceInput {
+  return {
+    name: "",
+    ...getDefaultWaveRecipe(),
   };
 }
 
@@ -192,14 +297,73 @@ function normalizeGradientRecipe(
   };
 }
 
-function normalizeNoiseRecipe(input: Omit<NoiseSourceInput, "name">): NoiseSourceRecipe {
-  const defaults = getDefaultNoiseRecipe();
+function normalizePerlinRecipe(input: Omit<PerlinSourceInput, "name">): PerlinSourceRecipe {
+  const defaults = getDefaultPerlinRecipe();
 
   return {
     color: normalizeHexColor(input.color, defaults.color),
     scale: clampRange(input.scale, 0, 1, defaults.scale),
     detail: clampRange(input.detail, 0, 1, defaults.detail),
     contrast: clampRange(input.contrast, 0, 1, defaults.contrast),
+    distortion: clampRange(input.distortion, 0, 1, defaults.distortion),
+    seed: Number.isFinite(input.seed)
+      ? Math.abs(Math.trunc(input.seed)) >>> 0
+      : defaults.seed,
+  };
+}
+
+function normalizeCellularRecipe(
+  input: Omit<CellularSourceInput, "name">,
+): CellularSourceRecipe {
+  const defaults = getDefaultCellularRecipe();
+
+  return {
+    color: normalizeHexColor(input.color, defaults.color),
+    scale: clampRange(input.scale, 0, 1, defaults.scale),
+    jitter: clampRange(input.jitter, 0, 1, defaults.jitter),
+    edge: clampRange(input.edge, 0, 1, defaults.edge),
+    contrast: clampRange(input.contrast, 0, 1, defaults.contrast),
+    seed: Number.isFinite(input.seed)
+      ? Math.abs(Math.trunc(input.seed)) >>> 0
+      : defaults.seed,
+  };
+}
+
+function normalizeReactionRecipe(
+  input: Omit<ReactionSourceInput, "name">,
+): ReactionSourceRecipe {
+  const defaults = getDefaultReactionRecipe();
+
+  return {
+    color: normalizeHexColor(input.color, defaults.color),
+    scale: clampRange(input.scale, 0, 1, defaults.scale),
+    diffusion: clampRange(input.diffusion, 0, 1, defaults.diffusion),
+    balance: clampRange(input.balance, 0, 1, defaults.balance),
+    distortion: clampRange(input.distortion, 0, 1, defaults.distortion),
+    seed: Number.isFinite(input.seed)
+      ? Math.abs(Math.trunc(input.seed)) >>> 0
+      : defaults.seed,
+  };
+}
+
+function normalizeWaveRecipe(input: Omit<WaveSourceInput, "name">): WaveSourceRecipe {
+  const defaults = getDefaultWaveRecipe();
+
+  return {
+    color: normalizeHexColor(input.color, defaults.color),
+    scale: clampRange(input.scale, 0, 1, defaults.scale),
+    interference: clampRange(
+      input.interference,
+      0,
+      1,
+      defaults.interference,
+    ),
+    directionality: clampRange(
+      input.directionality,
+      0,
+      1,
+      defaults.directionality,
+    ),
     distortion: clampRange(input.distortion, 0, 1, defaults.distortion),
     seed: Number.isFinite(input.seed)
       ? Math.abs(Math.trunc(input.seed)) >>> 0
@@ -495,11 +659,56 @@ function shapeNoiseValue(value: number, contrast: number) {
   return clamp(shaped * 0.5 + 0.5, 0, 1);
 }
 
-function drawNoiseSource(
+function smoothstep(edge0: number, edge1: number, value: number) {
+  const t = clamp((value - edge0) / Math.max(edge1 - edge0, 1e-6), 0, 1);
+  return t * t * (3 - 2 * t);
+}
+
+function sampleBilinearField(
+  field: Float32Array,
+  width: number,
+  height: number,
+  x: number,
+  y: number,
+) {
+  const clampedX = clamp(x, 0, width - 1);
+  const clampedY = clamp(y, 0, height - 1);
+  const x0 = Math.floor(clampedX);
+  const y0 = Math.floor(clampedY);
+  const x1 = Math.min(width - 1, x0 + 1);
+  const y1 = Math.min(height - 1, y0 + 1);
+  const tx = clampedX - x0;
+  const ty = clampedY - y0;
+  const top = lerp(field[y0 * width + x0] ?? 0, field[y0 * width + x1] ?? 0, tx);
+  const bottom = lerp(
+    field[y1 * width + x0] ?? 0,
+    field[y1 * width + x1] ?? 0,
+    tx,
+  );
+  return lerp(top, bottom, ty);
+}
+
+function shadeTextureValue(
+  data: Uint8ClampedArray,
+  index: number,
+  base: ReturnType<typeof rgbToHsl>,
+  value: number,
+) {
+  const shapedValue = clamp(value, 0, 1);
+  const lightness = clamp(base.l + lerp(-0.26, 0.18, shapedValue), 0.08, 0.9);
+  const saturation = clamp(base.s + lerp(0.08, -0.05, shapedValue), 0.12, 0.96);
+  const rgb = hslToRgb(base.h, saturation, lightness);
+  data[index] = rgb.r;
+  data[index + 1] = rgb.g;
+  data[index + 2] = rgb.b;
+  data[index + 3] = 255;
+}
+
+function drawPerlinSource(
   context: CanvasRenderingContext2D,
   width: number,
   height: number,
-  recipe: NoiseSourceRecipe,
+  recipe: PerlinSourceRecipe,
 ) {
   const { r, g, b } = hexToRgbTriplet(recipe.color);
   const base = rgbToHsl(r, g, b);
@@ -532,14 +741,250 @@ function drawNoiseSource(
         lacunarity,
       );
       const shapedValue = shapeNoiseValue(sample * 0.5 + 0.5, recipe.contrast);
-      const lightness = clamp(base.l + lerp(-0.26, 0.18, shapedValue), 0.08, 0.9);
-      const saturation = clamp(base.s + lerp(0.08, -0.05, shapedValue), 0.12, 0.96);
-      const rgb = hslToRgb(base.h, saturation, lightness);
       const index = (y * width + x) * 4;
-      data[index] = rgb.r;
-      data[index + 1] = rgb.g;
-      data[index + 2] = rgb.b;
-      data[index + 3] = 255;
+      shadeTextureValue(data, index, base, shapedValue);
+    }
+  }
+
+  context.putImageData(image, 0, 0);
+}
+
+function drawCellularSource(
+  context: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  recipe: CellularSourceRecipe,
+) {
+  const { r, g, b } = hexToRgbTriplet(recipe.color);
+  const base = rgbToHsl(r, g, b);
+  const image = context.createImageData(width, height);
+  const data = image.data;
+  const shortestSide = Math.max(1, Math.min(width, height));
+  const cellFrequency = lerp(5.5, 22, recipe.scale);
+  const jitterAmount = lerp(0.05, 0.95, recipe.jitter);
+
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const nx = (x / shortestSide) * cellFrequency;
+      const ny = (y / shortestSide) * cellFrequency;
+      const cellX = Math.floor(nx);
+      const cellY = Math.floor(ny);
+      let nearest = Number.POSITIVE_INFINITY;
+      let secondNearest = Number.POSITIVE_INFINITY;
+
+      for (let offsetY = -1; offsetY <= 1; offsetY += 1) {
+        for (let offsetX = -1; offsetX <= 1; offsetX += 1) {
+          const ix = cellX + offsetX;
+          const iy = cellY + offsetY;
+          const pointX = ix + 0.5 + (hash2D(ix, iy, recipe.seed + 17) - 0.5) * jitterAmount;
+          const pointY = iy + 0.5 + (hash2D(ix, iy, recipe.seed + 101) - 0.5) * jitterAmount;
+          const distance = Math.hypot(nx - pointX, ny - pointY);
+          if (distance < nearest) {
+            secondNearest = nearest;
+            nearest = distance;
+          } else if (distance < secondNearest) {
+            secondNearest = distance;
+          }
+        }
+      }
+
+      const cellFill = 1 - clamp(nearest / 1.35, 0, 1);
+      const edgeGap = clamp(secondNearest - nearest, 0, 1);
+      const edgeMask = 1 - smoothstep(0.03, lerp(0.24, 0.06, recipe.edge), edgeGap);
+      const sample = clamp(
+        lerp(cellFill, edgeMask, recipe.edge * 0.8) + edgeMask * 0.12,
+        0,
+        1,
+      );
+      const shapedValue = shapeNoiseValue(sample, recipe.contrast);
+      const index = (y * width + x) * 4;
+      shadeTextureValue(data, index, base, shapedValue);
+    }
+  }
+
+  context.putImageData(image, 0, 0);
+}
+
+function drawReactionSource(
+  context: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  recipe: ReactionSourceRecipe,
+) {
+  const { r, g, b } = hexToRgbTriplet(recipe.color);
+  const base = rgbToHsl(r, g, b);
+  const image = context.createImageData(width, height);
+  const data = image.data;
+  const simulationWidth = clamp(
+    Math.round(lerp(48, 112, recipe.scale)),
+    24,
+    Math.max(24, width),
+  );
+  const simulationHeight = Math.max(
+    24,
+    Math.round((simulationWidth * height) / Math.max(width, 1)),
+  );
+  let a = new Float32Array(simulationWidth * simulationHeight).fill(1);
+  let bField = new Float32Array(simulationWidth * simulationHeight);
+  const nextA = new Float32Array(simulationWidth * simulationHeight);
+  const nextB = new Float32Array(simulationWidth * simulationHeight);
+  const feed = lerp(0.026, 0.058, recipe.balance);
+  const kill = lerp(0.05, 0.064, recipe.balance);
+  const diffusionA = lerp(0.16, 0.24, recipe.diffusion);
+  const diffusionB = lerp(0.08, 0.14, recipe.diffusion);
+  const iterations = Math.round(lerp(14, 42, recipe.scale));
+
+  for (let y = 0; y < simulationHeight; y += 1) {
+    for (let x = 0; x < simulationWidth; x += 1) {
+      const index = y * simulationWidth + x;
+      const nx = x / simulationWidth;
+      const ny = y / simulationHeight;
+      const seedNoise = sampleFbm(
+        nx * lerp(2.5, 8, recipe.scale),
+        ny * lerp(2.5, 8, recipe.scale),
+        recipe.seed,
+        3,
+        0.55,
+        2,
+      );
+      const radial = Math.hypot(nx - 0.5, ny - 0.5);
+      const blot = seedNoise * 0.5 + 0.5 > lerp(0.48, 0.58, recipe.balance) - radial * 0.15;
+      if (blot) {
+        bField[index] = lerp(0.55, 1, recipe.diffusion);
+        a[index] = 1 - bField[index] * 0.45;
+      }
+    }
+  }
+
+  for (let iteration = 0; iteration < iterations; iteration += 1) {
+    for (let y = 0; y < simulationHeight; y += 1) {
+      for (let x = 0; x < simulationWidth; x += 1) {
+        const index = y * simulationWidth + x;
+        const centerA = a[index] ?? 1;
+        const centerB = bField[index] ?? 0;
+        let laplaceA = -centerA;
+        let laplaceB = -centerB;
+
+        for (let offsetY = -1; offsetY <= 1; offsetY += 1) {
+          for (let offsetX = -1; offsetX <= 1; offsetX += 1) {
+            if (offsetX === 0 && offsetY === 0) continue;
+            const nx = Math.min(
+              simulationWidth - 1,
+              Math.max(0, x + offsetX),
+            );
+            const ny = Math.min(
+              simulationHeight - 1,
+              Math.max(0, y + offsetY),
+            );
+            const weight = offsetX === 0 || offsetY === 0 ? 0.2 : 0.05;
+            const neighborIndex = ny * simulationWidth + nx;
+            laplaceA += (a[neighborIndex] ?? centerA) * weight;
+            laplaceB += (bField[neighborIndex] ?? centerB) * weight;
+          }
+        }
+
+        const reaction = centerA * centerB * centerB;
+        nextA[index] = clamp(
+          centerA + (diffusionA * laplaceA - reaction + feed * (1 - centerA)),
+          0,
+          1,
+        );
+        nextB[index] = clamp(
+          centerB + (diffusionB * laplaceB + reaction - (kill + feed) * centerB),
+          0,
+          1,
+        );
+      }
+    }
+
+    a.set(nextA);
+    bField.set(nextB);
+  }
+
+  const shortestSide = Math.max(1, Math.min(width, height));
+  const warpAmount = recipe.distortion * 4;
+
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const nx = x / shortestSide;
+      const ny = y / shortestSide;
+      const warpX =
+        sampleFbm(nx * 1.8 + 13.7, ny * 1.8 + 7.3, recipe.seed + 19, 3, 0.55, 2) *
+        warpAmount;
+      const warpY =
+        sampleFbm(nx * 1.8 + 47.1, ny * 1.8 + 29.4, recipe.seed + 97, 3, 0.55, 2) *
+        warpAmount;
+      const sample = sampleBilinearField(
+        bField,
+        simulationWidth,
+        simulationHeight,
+        ((x / Math.max(width - 1, 1)) * (simulationWidth - 1)) + warpX,
+        ((y / Math.max(height - 1, 1)) * (simulationHeight - 1)) + warpY,
+      );
+      const shapedValue = shapeNoiseValue(sample, recipe.balance);
+      const index = (y * width + x) * 4;
+      shadeTextureValue(data, index, base, shapedValue);
+    }
+  }
+
+  context.putImageData(image, 0, 0);
+}
+
+function drawWaveSource(
+  context: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  recipe: WaveSourceRecipe,
+) {
+  const { r, g, b } = hexToRgbTriplet(recipe.color);
+  const base = rgbToHsl(r, g, b);
+  const image = context.createImageData(width, height);
+  const data = image.data;
+  const shortestSide = Math.max(1, Math.min(width, height));
+  const baseFrequency = lerp(5, 30, recipe.scale);
+  const directionAngle = lerp(Math.PI / 10, Math.PI / 2, recipe.directionality);
+  const dirX = Math.cos(directionAngle);
+  const dirY = Math.sin(directionAngle);
+  const crossX = -dirY;
+  const crossY = dirX;
+  const warpAmount = recipe.distortion * 0.18;
+
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const nx = x / shortestSide;
+      const ny = y / shortestSide;
+      const warpX =
+        sampleFbm(nx * 2.2 + 5.1, ny * 2.2 + 17.4, recipe.seed + 7, 3, 0.55, 2) *
+        warpAmount;
+      const warpY =
+        sampleFbm(nx * 2.2 + 61.3, ny * 2.2 + 43.2, recipe.seed + 29, 3, 0.55, 2) *
+        warpAmount;
+      const px = nx + warpX;
+      const py = ny + warpY;
+      const primaryAxis = px * dirX + py * dirY;
+      const crossAxis = px * crossX + py * crossY;
+      const primary = Math.sin(primaryAxis * baseFrequency * Math.PI * 2);
+      const secondary = Math.sin(
+        (primaryAxis * lerp(1.8, 4.4, recipe.interference) +
+          crossAxis * lerp(0.2, 2.1, 1 - recipe.directionality)) *
+          Math.PI *
+          2,
+      );
+      const tertiary = Math.cos(
+        (crossAxis * baseFrequency * lerp(0.45, 1.8, recipe.interference) +
+          primaryAxis * 0.7) *
+          Math.PI *
+          2,
+      );
+      const blend = lerp(
+        primary,
+        primary * 0.45 + secondary * 0.35 + tertiary * 0.2,
+        recipe.interference,
+      );
+      const sample = clamp(blend * 0.5 + 0.5, 0, 1);
+      const shapedValue = shapeNoiseValue(sample, recipe.interference);
+      const index = (y * width + x) * 4;
+      shadeTextureValue(data, index, base, shapedValue);
     }
   }
 
@@ -558,8 +1003,33 @@ function drawGeneratedSource(
     return;
   }
 
-  if (source.kind === "noise") {
-    drawNoiseSource(context, width, height, normalizeNoiseRecipe(source.recipe));
+  if (source.kind === "perlin") {
+    drawPerlinSource(context, width, height, normalizePerlinRecipe(source.recipe));
+    return;
+  }
+
+  if (source.kind === "cellular") {
+    drawCellularSource(
+      context,
+      width,
+      height,
+      normalizeCellularRecipe(source.recipe),
+    );
+    return;
+  }
+
+  if (source.kind === "reaction") {
+    drawReactionSource(
+      context,
+      width,
+      height,
+      normalizeReactionRecipe(source.recipe),
+    );
+    return;
+  }
+
+  if (source.kind === "waves") {
+    drawWaveSource(context, width, height, normalizeWaveRecipe(source.recipe));
     return;
   }
 
@@ -624,11 +1094,35 @@ function normalizeGeneratedSourceInput(
     };
   }
 
-  if (source.kind === "noise") {
+  if (source.kind === "perlin") {
     return {
-      kind: "noise",
+      kind: "perlin",
       name: source.name,
-      recipe: normalizeNoiseInput(source.recipe),
+      recipe: normalizePerlinInput(source.recipe),
+    };
+  }
+
+  if (source.kind === "cellular") {
+    return {
+      kind: "cellular",
+      name: source.name,
+      recipe: normalizeCellularInput(source.recipe),
+    };
+  }
+
+  if (source.kind === "reaction") {
+    return {
+      kind: "reaction",
+      name: source.name,
+      recipe: normalizeReactionInput(source.recipe),
+    };
+  }
+
+  if (source.kind === "waves") {
+    return {
+      kind: "waves",
+      name: source.name,
+      recipe: normalizeWaveInput(source.recipe),
     };
   }
 
@@ -646,7 +1140,11 @@ export function renderGeneratedSourceToCanvas(
   const width = Math.max(1, Math.round(canvas.width));
   const height = Math.max(1, Math.round(canvas.height));
   const context = canvas.getContext("2d", {
-    willReadFrequently: source.kind === "noise",
+    willReadFrequently:
+      source.kind === "perlin" ||
+      source.kind === "cellular" ||
+      source.kind === "reaction" ||
+      source.kind === "waves",
   });
   if (!context) {
     throw new Error("Unable to create a canvas for generated source preview.");
@@ -702,8 +1200,20 @@ function buildGeneratedSourceName(source: GeneratedSourceInput) {
     return `Solid ${normalizeHexColor(source.recipe.color).toUpperCase()}`;
   }
 
-  if (source.kind === "noise") {
-    return `Noise ${normalizeHexColor(source.recipe.color).toUpperCase()}`;
+  if (source.kind === "perlin") {
+    return `Perlin ${normalizeHexColor(source.recipe.color).toUpperCase()}`;
+  }
+
+  if (source.kind === "cellular") {
+    return `Cellular ${normalizeHexColor(source.recipe.color).toUpperCase()}`;
+  }
+
+  if (source.kind === "reaction") {
+    return `Reaction ${normalizeHexColor(source.recipe.color).toUpperCase()}`;
+  }
+
+  if (source.kind === "waves") {
+    return `Waves ${normalizeHexColor(source.recipe.color).toUpperCase()}`;
   }
 
   const modeLabel =
@@ -723,7 +1233,10 @@ function buildGeneratedOriginalFileName(
 export function getSourceKindLabel(kind: SourceKind) {
   if (kind === "solid") return "Solid";
   if (kind === "gradient") return "Gradient";
-  if (kind === "noise") return "Noise";
+  if (kind === "perlin") return "Perlin";
+  if (kind === "cellular") return "Cellular";
+  if (kind === "reaction") return "Reaction";
+  if (kind === "waves") return "Waves";
   return "Image";
 }
 
@@ -763,13 +1276,49 @@ export function getSourceContentSignature(asset: SourceAsset) {
     ].join("|");
   }
 
-  if (asset.kind === "noise") {
+  if (asset.kind === "perlin") {
     return [
       base,
       asset.recipe.color,
       asset.recipe.scale,
       asset.recipe.detail,
       asset.recipe.contrast,
+      asset.recipe.distortion,
+      asset.recipe.seed,
+    ].join("|");
+  }
+
+  if (asset.kind === "cellular") {
+    return [
+      base,
+      asset.recipe.color,
+      asset.recipe.scale,
+      asset.recipe.jitter,
+      asset.recipe.edge,
+      asset.recipe.contrast,
+      asset.recipe.seed,
+    ].join("|");
+  }
+
+  if (asset.kind === "reaction") {
+    return [
+      base,
+      asset.recipe.color,
+      asset.recipe.scale,
+      asset.recipe.diffusion,
+      asset.recipe.balance,
+      asset.recipe.distortion,
+      asset.recipe.seed,
+    ].join("|");
+  }
+
+  if (asset.kind === "waves") {
+    return [
+      base,
+      asset.recipe.color,
+      asset.recipe.scale,
+      asset.recipe.interference,
+      asset.recipe.directionality,
       asset.recipe.distortion,
       asset.recipe.seed,
     ].join("|");
@@ -800,10 +1349,35 @@ export function normalizeGradientInput(input: GradientSourceInput): GradientSour
   };
 }
 
-export function normalizeNoiseInput(input: NoiseSourceInput): NoiseSourceInput {
+export function normalizePerlinInput(input: PerlinSourceInput): PerlinSourceInput {
   return {
     name: input.name?.trim() ?? "",
-    ...normalizeNoiseRecipe(input),
+    ...normalizePerlinRecipe(input),
+  };
+}
+
+export function normalizeCellularInput(
+  input: CellularSourceInput,
+): CellularSourceInput {
+  return {
+    name: input.name?.trim() ?? "",
+    ...normalizeCellularRecipe(input),
+  };
+}
+
+export function normalizeReactionInput(
+  input: ReactionSourceInput,
+): ReactionSourceInput {
+  return {
+    name: input.name?.trim() ?? "",
+    ...normalizeReactionRecipe(input),
+  };
+}
+
+export function normalizeWaveInput(input: WaveSourceInput): WaveSourceInput {
+  return {
+    name: input.name?.trim() ?? "",
+    ...normalizeWaveRecipe(input),
   };
 }
 
@@ -875,18 +1449,91 @@ export function normalizeSourceAsset(asset: LegacySourceAsset): SourceAsset {
     };
   }
 
-  if (asset.kind === "noise") {
-    const recipe = asset.recipe as Partial<NoiseSourceInput> | undefined;
-    const defaults = getDefaultNoiseRecipe();
+  if (asset.kind === "noise" || asset.kind === "perlin") {
+    const recipe = asset.recipe as Partial<PerlinSourceInput> | undefined;
+    const defaults = getDefaultPerlinRecipe();
     return {
       ...asset,
-      kind: "noise",
-      recipe: normalizeNoiseRecipe({
+      kind: "perlin",
+      recipe: normalizePerlinRecipe({
         color: recipe?.color ?? asset.averageColor ?? defaults.color,
         scale: typeof recipe?.scale === "number" ? recipe.scale : defaults.scale,
         detail: typeof recipe?.detail === "number" ? recipe.detail : defaults.detail,
         contrast:
           typeof recipe?.contrast === "number" ? recipe.contrast : defaults.contrast,
+        distortion:
+          typeof recipe?.distortion === "number"
+            ? recipe.distortion
+            : defaults.distortion,
+        seed: typeof recipe?.seed === "number" ? recipe.seed : defaults.seed,
+      }),
+    };
+  }
+
+  if (asset.kind === "cellular") {
+    const recipe = asset.recipe as Partial<CellularSourceInput> | undefined;
+    const defaults = getDefaultCellularRecipe();
+    return {
+      ...asset,
+      kind: "cellular",
+      recipe: normalizeCellularRecipe({
+        color: recipe?.color ?? asset.averageColor ?? defaults.color,
+        scale: typeof recipe?.scale === "number" ? recipe.scale : defaults.scale,
+        jitter:
+          typeof recipe?.jitter === "number" ? recipe.jitter : defaults.jitter,
+        edge: typeof recipe?.edge === "number" ? recipe.edge : defaults.edge,
+        contrast:
+          typeof recipe?.contrast === "number"
+            ? recipe.contrast
+            : defaults.contrast,
+        seed: typeof recipe?.seed === "number" ? recipe.seed : defaults.seed,
+      }),
+    };
+  }
+
+  if (asset.kind === "reaction") {
+    const recipe = asset.recipe as Partial<ReactionSourceInput> | undefined;
+    const defaults = getDefaultReactionRecipe();
+    return {
+      ...asset,
+      kind: "reaction",
+      recipe: normalizeReactionRecipe({
+        color: recipe?.color ?? asset.averageColor ?? defaults.color,
+        scale: typeof recipe?.scale === "number" ? recipe.scale : defaults.scale,
+        diffusion:
+          typeof recipe?.diffusion === "number"
+            ? recipe.diffusion
+            : defaults.diffusion,
+        balance:
+          typeof recipe?.balance === "number"
+            ? recipe.balance
+            : defaults.balance,
+        distortion:
+          typeof recipe?.distortion === "number"
+            ? recipe.distortion
+            : defaults.distortion,
+        seed: typeof recipe?.seed === "number" ? recipe.seed : defaults.seed,
+      }),
+    };
+  }
+
+  if (asset.kind === "waves") {
+    const recipe = asset.recipe as Partial<WaveSourceInput> | undefined;
+    const defaults = getDefaultWaveRecipe();
+    return {
+      ...asset,
+      kind: "waves",
+      recipe: normalizeWaveRecipe({
+        color: recipe?.color ?? asset.averageColor ?? defaults.color,
+        scale: typeof recipe?.scale === "number" ? recipe.scale : defaults.scale,
+        interference:
+          typeof recipe?.interference === "number"
+            ? recipe.interference
+            : defaults.interference,
+        directionality:
+          typeof recipe?.directionality === "number"
+            ? recipe.directionality
+            : defaults.directionality,
         distortion:
           typeof recipe?.distortion === "number"
             ? recipe.distortion
@@ -1010,7 +1657,13 @@ export async function createGeneratedSourceAsset(
 
 export async function updateGeneratedSourceAsset(
   asset: SourceAsset,
-  source: SolidSourceInput | GradientSourceInput | NoiseSourceInput,
+  source:
+    | SolidSourceInput
+    | GradientSourceInput
+    | PerlinSourceInput
+    | CellularSourceInput
+    | ReactionSourceInput
+    | WaveSourceInput,
 ) {
   if (asset.kind === "image") {
     throw new Error("Image sources cannot be edited.");
@@ -1023,17 +1676,35 @@ export async function updateGeneratedSourceAsset(
           name: source.name,
           recipe: source as SolidSourceInput,
         }
-      : asset.kind === "noise"
+      : asset.kind === "perlin"
         ? {
-            kind: "noise",
+            kind: "perlin",
             name: source.name,
-            recipe: source as NoiseSourceInput,
+            recipe: source as PerlinSourceInput,
           }
-        : {
-            kind: "gradient",
-            name: source.name,
-            recipe: source as GradientSourceInput,
-          };
+        : asset.kind === "cellular"
+          ? {
+              kind: "cellular",
+              name: source.name,
+              recipe: source as CellularSourceInput,
+            }
+          : asset.kind === "reaction"
+            ? {
+                kind: "reaction",
+                name: source.name,
+                recipe: source as ReactionSourceInput,
+              }
+            : asset.kind === "waves"
+              ? {
+                  kind: "waves",
+                  name: source.name,
+                  recipe: source as WaveSourceInput,
+                }
+              : {
+                  kind: "gradient",
+                  name: source.name,
+                  recipe: source as GradientSourceInput,
+                };
   const normalizedSource = normalizeGeneratedSourceInput(nextSource);
 
   const payload = await buildGeneratedSourcePayload(

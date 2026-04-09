@@ -406,15 +406,15 @@ describe("createImportCopy", () => {
     expect(copy.projectDoc.sourceIds).toEqual([copy.assetDocs[0]?.id]);
   });
 
-  it("preserves noise source metadata when copying imported bundles", () => {
+  it("preserves perlin source metadata when copying imported bundles", () => {
     const generatedBundle: ImportedProjectBundle = {
       ...bundle,
       assetDocs: [
         {
           ...bundle.assetDocs[0]!,
-          id: "asset_noise",
-          kind: "noise",
-          name: "Noise One",
+          id: "asset_perlin",
+          kind: "perlin",
+          name: "Perlin One",
           recipe: {
             color: "#225577",
             scale: 0.9,
@@ -427,18 +427,18 @@ describe("createImportCopy", () => {
       ],
       manifest: {
         ...bundle.manifest,
-        assetIds: ["asset_noise"],
+        assetIds: ["asset_perlin"],
       },
       projectDoc: {
         ...bundle.projectDoc,
-        sourceIds: ["asset_noise"],
+        sourceIds: ["asset_perlin"],
       },
       versionDocs: [
         {
           ...bundle.versionDocs[0]!,
           snapshot: {
             ...bundle.versionDocs[0]!.snapshot,
-            sourceIds: ["asset_noise"],
+            sourceIds: ["asset_perlin"],
           },
         },
       ],
@@ -453,10 +453,10 @@ describe("createImportCopy", () => {
 
     const copy = createImportCopy(generatedBundle);
 
-    expect(copy.assetDocs[0]?.kind).toBe("noise");
+    expect(copy.assetDocs[0]?.kind).toBe("perlin");
     const copiedAsset = copy.assetDocs[0];
-    if (!copiedAsset || copiedAsset.kind !== "noise") {
-      throw new Error("Expected copied noise source metadata.");
+    if (!copiedAsset || copiedAsset.kind !== "perlin") {
+      throw new Error("Expected copied perlin source metadata.");
     }
     expect(copiedAsset.recipe).toEqual({
       color: "#225577",

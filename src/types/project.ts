@@ -22,7 +22,14 @@ export type KaleidoscopeMirrorMode =
   | "alternate"
   | "mirror-all";
 export type CropDistribution = "center" | "distributed";
-export type SourceKind = "image" | "solid" | "gradient" | "noise";
+export type SourceKind =
+  | "image"
+  | "solid"
+  | "gradient"
+  | "perlin"
+  | "cellular"
+  | "reaction"
+  | "waves";
 export type GradientMode = "linear" | "radial" | "conic";
 export type GradientDirection =
   | "horizontal"
@@ -98,7 +105,7 @@ export interface GradientSourceAsset extends BaseSourceAsset {
   recipe: GradientSourceRecipe;
 }
 
-export interface NoiseSourceRecipe {
+export interface PerlinSourceRecipe {
   color: string;
   scale: number;
   detail: number;
@@ -107,16 +114,61 @@ export interface NoiseSourceRecipe {
   seed: number;
 }
 
-export interface NoiseSourceAsset extends BaseSourceAsset {
-  kind: "noise";
-  recipe: NoiseSourceRecipe;
+export interface PerlinSourceAsset extends BaseSourceAsset {
+  kind: "perlin";
+  recipe: PerlinSourceRecipe;
+}
+
+export interface CellularSourceRecipe {
+  color: string;
+  scale: number;
+  jitter: number;
+  edge: number;
+  contrast: number;
+  seed: number;
+}
+
+export interface CellularSourceAsset extends BaseSourceAsset {
+  kind: "cellular";
+  recipe: CellularSourceRecipe;
+}
+
+export interface ReactionSourceRecipe {
+  color: string;
+  scale: number;
+  diffusion: number;
+  balance: number;
+  distortion: number;
+  seed: number;
+}
+
+export interface ReactionSourceAsset extends BaseSourceAsset {
+  kind: "reaction";
+  recipe: ReactionSourceRecipe;
+}
+
+export interface WaveSourceRecipe {
+  color: string;
+  scale: number;
+  interference: number;
+  directionality: number;
+  distortion: number;
+  seed: number;
+}
+
+export interface WaveSourceAsset extends BaseSourceAsset {
+  kind: "waves";
+  recipe: WaveSourceRecipe;
 }
 
 export type SourceAsset =
   | ImageSourceAsset
   | SolidSourceAsset
   | GradientSourceAsset
-  | NoiseSourceAsset;
+  | PerlinSourceAsset
+  | CellularSourceAsset
+  | ReactionSourceAsset
+  | WaveSourceAsset;
 
 export interface CanvasSettings {
   width: number;

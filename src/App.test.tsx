@@ -143,7 +143,10 @@ function createStoreState(overrides?: {
     importFiles: vi.fn(async () => undefined),
     addSolidSource: vi.fn(async () => undefined),
     addGradientSource: vi.fn(async () => undefined),
-    addNoiseSource: vi.fn(async () => undefined),
+    addPerlinSource: vi.fn(async () => undefined),
+    addCellularSource: vi.fn(async () => undefined),
+    addReactionSource: vi.fn(async () => undefined),
+    addWaveSource: vi.fn(async () => undefined),
     removeSource: vi.fn(async () => undefined),
     updateGeneratedSource: vi.fn(async () => undefined),
     randomizeSeed: vi.fn(async () => undefined),
@@ -227,7 +230,7 @@ function createGradientAsset(
   };
 }
 
-function createNoiseAsset(
+function createPerlinAsset(
   projectId: string,
   overrides?: {
     id?: string;
@@ -236,10 +239,10 @@ function createNoiseAsset(
 ): SourceAsset {
   return {
     ...createImageAsset(projectId),
-    id: overrides?.id ?? "asset_noise",
-    kind: "noise",
-    name: overrides?.name ?? "Noise Source",
-    originalFileName: `${overrides?.id ?? "asset_noise"}.png`,
+    id: overrides?.id ?? "asset_perlin",
+    kind: "perlin",
+    name: overrides?.name ?? "Perlin Source",
+    originalFileName: `${overrides?.id ?? "asset_perlin"}.png`,
     mimeType: "image/png",
     recipe: {
       color: "#0f766e",
@@ -248,6 +251,63 @@ function createNoiseAsset(
       contrast: 0.47,
       distortion: 0.28,
       seed: 12345,
+    },
+  };
+}
+
+function createCellularAsset(projectId: string, name = "Cellular Source"): SourceAsset {
+  return {
+    ...createImageAsset(projectId),
+    id: "asset_cellular",
+    kind: "cellular",
+    name,
+    originalFileName: "asset_cellular.png",
+    mimeType: "image/png",
+    recipe: {
+      color: "#8b5cf6",
+      scale: 0.55,
+      jitter: 0.6,
+      edge: 0.55,
+      contrast: 0.45,
+      seed: 54321,
+    },
+  };
+}
+
+function createReactionAsset(projectId: string, name = "Reaction Source"): SourceAsset {
+  return {
+    ...createImageAsset(projectId),
+    id: "asset_reaction",
+    kind: "reaction",
+    name,
+    originalFileName: "asset_reaction.png",
+    mimeType: "image/png",
+    recipe: {
+      color: "#ef4444",
+      scale: 0.55,
+      diffusion: 0.55,
+      balance: 0.5,
+      distortion: 0.2,
+      seed: 24680,
+    },
+  };
+}
+
+function createWaveAsset(projectId: string, name = "Wave Source"): SourceAsset {
+  return {
+    ...createImageAsset(projectId),
+    id: "asset_waves",
+    kind: "waves",
+    name,
+    originalFileName: "asset_waves.png",
+    mimeType: "image/png",
+    recipe: {
+      color: "#0ea5e9",
+      scale: 0.55,
+      interference: 0.65,
+      directionality: 0.6,
+      distortion: 0.2,
+      seed: 112233,
     },
   };
 }
@@ -868,7 +928,7 @@ describe("App gradient sources", () => {
     );
   });
 
-  it("shows a noise tab and submits normalized noise recipes", async () => {
+  it("shows a perlin tab and submits normalized perlin recipes", async () => {
     const user = userEvent.setup();
     const state = createStoreState();
     mockedUseAppStore.mockReturnValue(state);
@@ -876,7 +936,7 @@ describe("App gradient sources", () => {
     render(<App />);
 
     await user.click(screen.getAllByText("Add Source")[0]!);
-    await user.click(screen.getByRole("tab", { name: "Noise" }));
+    await user.click(screen.getByRole("tab", { name: "Perlin" }));
     const dialog = screen.getByRole("dialog");
 
     expect(within(dialog).getByTestId("source-editor-preview-layout")).toBeInTheDocument();
@@ -891,13 +951,112 @@ describe("App gradient sources", () => {
     fireEvent.keyDown(within(dialog).getByLabelText("Distortion"), { key: "ArrowRight" });
     await user.click(within(dialog).getByRole("button", { name: "Add source" }));
 
-    expect(state.addNoiseSource).toHaveBeenCalledTimes(1);
-    expect(state.addNoiseSource).toHaveBeenCalledWith(
+    expect(state.addPerlinSource).toHaveBeenCalledTimes(1);
+    expect(state.addPerlinSource).toHaveBeenCalledWith(
       expect.objectContaining({
         color: "#224466",
         scale: 1,
         detail: 0,
         contrast: expect.any(Number),
+        distortion: expect.any(Number),
+        seed: expect.any(Number),
+      }),
+    );
+  });
+
+  it("submits normalized cellular recipes", async () => {
+    const user = userEvent.setup();
+    const state = createStoreState();
+    mockedUseAppStore.mockReturnValue(state);
+
+    render(<App />);
+
+    await user.click(screen.getAllByText("Add Source")[0]!);
+    await user.click(screen.getByRole("tab", { name: "Cellular" }));
+    const dialog = screen.getByRole("dialog");
+
+    fireEvent.change(within(dialog).getByLabelText("Base color"), {
+      target: { value: "#6655cc" },
+    });
+    fireEvent.keyDown(within(dialog).getByLabelText("Scale"), { key: "End" });
+    fireEvent.keyDown(within(dialog).getByLabelText("Jitter"), { key: "Home" });
+    fireEvent.keyDown(within(dialog).getByLabelText("Edge"), { key: "ArrowRight" });
+    fireEvent.keyDown(within(dialog).getByLabelText("Contrast"), { key: "ArrowRight" });
+    await user.click(within(dialog).getByRole("button", { name: "Add source" }));
+
+    expect(state.addCellularSource).toHaveBeenCalledTimes(1);
+    expect(state.addCellularSource).toHaveBeenCalledWith(
+      expect.objectContaining({
+        color: "#6655cc",
+        scale: 1,
+        jitter: 0,
+        edge: expect.any(Number),
+        contrast: expect.any(Number),
+        seed: expect.any(Number),
+      }),
+    );
+  });
+
+  it("submits normalized reaction recipes", async () => {
+    const user = userEvent.setup();
+    const state = createStoreState();
+    mockedUseAppStore.mockReturnValue(state);
+
+    render(<App />);
+
+    await user.click(screen.getAllByText("Add Source")[0]!);
+    await user.click(screen.getByRole("tab", { name: "Reaction" }));
+    const dialog = screen.getByRole("dialog");
+
+    fireEvent.change(within(dialog).getByLabelText("Base color"), {
+      target: { value: "#cc5533" },
+    });
+    fireEvent.keyDown(within(dialog).getByLabelText("Scale"), { key: "End" });
+    fireEvent.keyDown(within(dialog).getByLabelText("Diffusion"), { key: "Home" });
+    fireEvent.keyDown(within(dialog).getByLabelText("Balance"), { key: "ArrowRight" });
+    fireEvent.keyDown(within(dialog).getByLabelText("Distortion"), { key: "ArrowRight" });
+    await user.click(within(dialog).getByRole("button", { name: "Add source" }));
+
+    expect(state.addReactionSource).toHaveBeenCalledTimes(1);
+    expect(state.addReactionSource).toHaveBeenCalledWith(
+      expect.objectContaining({
+        color: "#cc5533",
+        scale: 1,
+        diffusion: 0,
+        balance: expect.any(Number),
+        distortion: expect.any(Number),
+        seed: expect.any(Number),
+      }),
+    );
+  });
+
+  it("submits normalized waves recipes", async () => {
+    const user = userEvent.setup();
+    const state = createStoreState();
+    mockedUseAppStore.mockReturnValue(state);
+
+    render(<App />);
+
+    await user.click(screen.getAllByText("Add Source")[0]!);
+    await user.click(screen.getByRole("tab", { name: "Waves" }));
+    const dialog = screen.getByRole("dialog");
+
+    fireEvent.change(within(dialog).getByLabelText("Base color"), {
+      target: { value: "#2299bb" },
+    });
+    fireEvent.keyDown(within(dialog).getByLabelText("Scale"), { key: "End" });
+    fireEvent.keyDown(within(dialog).getByLabelText("Interference"), { key: "Home" });
+    fireEvent.keyDown(within(dialog).getByLabelText("Directionality"), { key: "ArrowRight" });
+    fireEvent.keyDown(within(dialog).getByLabelText("Distortion"), { key: "ArrowRight" });
+    await user.click(within(dialog).getByRole("button", { name: "Add source" }));
+
+    expect(state.addWaveSource).toHaveBeenCalledTimes(1);
+    expect(state.addWaveSource).toHaveBeenCalledWith(
+      expect.objectContaining({
+        color: "#2299bb",
+        scale: 1,
+        interference: 0,
+        directionality: expect.any(Number),
         distortion: expect.any(Number),
         seed: expect.any(Number),
       }),
@@ -921,10 +1080,10 @@ describe("App gradient sources", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("repopulates the noise editor for existing noise assets", async () => {
+  it("repopulates the perlin editor for existing perlin assets", async () => {
     const user = userEvent.setup();
     const state = createStoreState({
-      assets: [createNoiseAsset("project_unused", { name: "Sea Foam" })],
+      assets: [createPerlinAsset("project_unused", { name: "Sea Foam" })],
     });
     mockedUseAppStore.mockReturnValue(state);
 
@@ -933,7 +1092,7 @@ describe("App gradient sources", () => {
     await user.click(screen.getByLabelText("Edit Sea Foam"));
     const dialog = screen.getByRole("dialog");
 
-    expect(within(dialog).getByRole("tab", { name: "Noise" })).toHaveAttribute(
+    expect(within(dialog).getByRole("tab", { name: "Perlin" })).toHaveAttribute(
       "data-state",
       "active",
     );
@@ -949,12 +1108,55 @@ describe("App gradient sources", () => {
     ).toBeInTheDocument();
   });
 
-  it("sends normalized noise preview recipes to the preview renderer", async () => {
+  it("repopulates the cellular, reaction, and waves editors for existing assets", async () => {
+    const user = userEvent.setup();
+    const state = createStoreState({
+      assets: [
+        createCellularAsset("project_unused", "Cell Sample"),
+        createReactionAsset("project_unused", "React Sample"),
+        createWaveAsset("project_unused", "Wave Sample"),
+      ],
+    });
+    mockedUseAppStore.mockReturnValue(state);
+
+    render(<App />);
+
+    await user.click(screen.getByLabelText("Edit Cell Sample"));
+    let dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByRole("tab", { name: "Cellular" })).toHaveAttribute(
+      "data-state",
+      "active",
+    );
+    expect(within(dialog).getByLabelText("Jitter")).toBeInTheDocument();
+    expect(within(dialog).getByLabelText("Edge")).toBeInTheDocument();
+    await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+
+    await user.click(screen.getByLabelText("Edit React Sample"));
+    dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByRole("tab", { name: "Reaction" })).toHaveAttribute(
+      "data-state",
+      "active",
+    );
+    expect(within(dialog).getByLabelText("Diffusion")).toBeInTheDocument();
+    expect(within(dialog).getByLabelText("Balance")).toBeInTheDocument();
+    await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+
+    await user.click(screen.getByLabelText("Edit Wave Sample"));
+    dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByRole("tab", { name: "Waves" })).toHaveAttribute(
+      "data-state",
+      "active",
+    );
+    expect(within(dialog).getByLabelText("Interference")).toBeInTheDocument();
+    expect(within(dialog).getByLabelText("Directionality")).toBeInTheDocument();
+  });
+
+  it("sends normalized perlin preview recipes to the preview renderer", async () => {
     const user = userEvent.setup();
     renderApp();
 
     await user.click(screen.getAllByText("Add Source")[0]!);
-    await user.click(screen.getByRole("tab", { name: "Noise" }));
+    await user.click(screen.getByRole("tab", { name: "Perlin" }));
     const dialog = screen.getByRole("dialog");
 
     renderGeneratedSourceToCanvasSpy.mockClear();
@@ -968,7 +1170,7 @@ describe("App gradient sources", () => {
     await waitFor(() =>
       expect(renderGeneratedSourceToCanvasSpy.mock.calls.at(-1)?.[1]).toEqual(
         expect.objectContaining({
-          kind: "noise",
+          kind: "perlin",
           recipe: expect.objectContaining({
             color: "#224466",
             scale: 1,

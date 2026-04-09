@@ -1688,7 +1688,7 @@ function App() {
         </div>
 
         <div className="mx-auto flex min-h-0 w-full flex-1 overflow-hidden p-3">
-          <div className="grid min-h-0 flex-1 grid-cols-[288px_minmax(720px,1fr)_228px_560px] gap-3 overflow-hidden">
+          <div className="grid min-h-0 flex-1 grid-cols-[288px_228px_minmax(720px,1fr)_560px] gap-3 overflow-hidden">
             <PanelShell
               title="Sources"
               actions={
@@ -1771,20 +1771,6 @@ function App() {
             </PanelShell>
 
             <PanelShell
-              title="Preview"
-              sectionLabel="Preview"
-              cardClassName="rounded-none border-0 bg-transparent shadow-none backdrop-blur-none"
-              contentClassName="flex min-h-0 items-center justify-center p-0"
-            >
-              <PreviewStage
-                canvasRef={canvasRef}
-                project={previewProject ?? activeProject}
-                assets={previewAssets}
-                onRenderState={setRenderState}
-              />
-            </PanelShell>
-
-            <PanelShell
               title="Layers"
               actions={
                 <Button
@@ -1824,6 +1810,20 @@ function App() {
                   </div>
                 </SortableContext>
               </DndContext>
+            </PanelShell>
+
+            <PanelShell
+              title="Preview"
+              sectionLabel="Preview"
+              cardClassName="rounded-none border-0 bg-transparent shadow-none backdrop-blur-none"
+              contentClassName="flex min-h-0 items-center justify-center p-0"
+            >
+              <PreviewStage
+                canvasRef={canvasRef}
+                project={previewProject ?? activeProject}
+                assets={previewAssets}
+                onRenderState={setRenderState}
+              />
             </PanelShell>
 
             <div className="flex min-h-0 flex-col gap-3">

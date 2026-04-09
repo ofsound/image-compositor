@@ -945,14 +945,18 @@ describe("App inspector grouping", () => {
     expect(within(projectSettings).queryByText("Layout")).not.toBeInTheDocument();
   });
 
-  it("renders sources before layers in the main grid", () => {
+  it("renders sources, layers, and preview in main-grid order", () => {
     renderApp();
 
     const sources = screen.getByRole("region", { name: "Sources" });
     const layers = screen.getByRole("region", { name: "Layers" });
+    const preview = screen.getByRole("region", { name: "Preview" });
 
     expect(
       sources.compareDocumentPosition(layers) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(
+      layers.compareDocumentPosition(preview) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
   });
 

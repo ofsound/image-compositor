@@ -631,19 +631,20 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   async addLayer() {
     await get().updateProject((project) => {
-      const selectedLayer = getSelectedLayer(project);
+      const baseProject = createProjectMutationBase(project);
+      const selectedLayer = getSelectedLayer(baseProject);
       const insertIndex = selectedLayer
-        ? project.layers.findIndex((layer) => layer.id === selectedLayer.id) + 1
-        : project.layers.length;
+        ? baseProject.layers.findIndex((layer) => layer.id === selectedLayer.id) + 1
+        : baseProject.layers.length;
       const nextLayer = createCompositorLayer({
-        name: getNextLayerName(project),
+        name: getNextLayerName(baseProject),
         visible: true,
       });
-      const layers = [...project.layers];
+      const layers = [...baseProject.layers];
       layers.splice(insertIndex, 0, nextLayer);
 
       return {
-        ...project,
+        ...baseProject,
         layers,
         selectedLayerId: nextLayer.id,
       };
@@ -656,14 +657,15 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (!project.layers.some((layer) => layer.id === layerId)) return;
 
     await get().updateProject((currentProject) => {
-      const layers = currentProject.layers.filter((layer) => layer.id !== layerId);
+      const baseProject = createProjectMutationBase(currentProject);
+      const layers = baseProject.layers.filter((layer) => layer.id !== layerId);
       const selectedLayerId =
-        currentProject.selectedLayerId === layerId
+        baseProject.selectedLayerId === layerId
           ? layers.at(-1)?.id ?? null
-          : currentProject.selectedLayerId;
+          : baseProject.selectedLayerId;
 
       return {
-        ...currentProject,
+        ...baseProject,
         layers,
         selectedLayerId,
       };

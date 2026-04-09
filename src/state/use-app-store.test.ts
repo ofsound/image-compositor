@@ -73,7 +73,12 @@ vi.mock("@/lib/serializer", () => ({
   persistImportedProjectBundle: vi.fn(),
 }));
 
-import { createCompositorLayer, createProjectDocument } from "@/lib/project-defaults";
+import {
+  createCompositorLayer,
+  createProjectDocument,
+  normalizeProjectDocument,
+  serializeProjectDocument,
+} from "@/lib/project-defaults";
 import { useAppStore } from "@/state/use-app-store";
 import type {
   CellularSourceAsset,
@@ -304,6 +309,47 @@ function createWaveAsset(projectId: string): WaveSourceAsset {
   };
 }
 
+function createCustomizedLayerState(
+  layer: ReturnType<typeof createCompositorLayer>,
+  sourceId: string,
+) {
+  const customizedLayer = structuredClone(layer);
+  customizedLayer.sourceIds = [sourceId];
+  customizedLayer.inset = 12;
+  customizedLayer.layout = {
+    ...customizedLayer.layout,
+    columns: 5,
+    rows: 3,
+  };
+  customizedLayer.sourceMapping = {
+    ...customizedLayer.sourceMapping,
+    strategy: "weighted",
+    sourceWeights: { [sourceId]: 2.25 },
+    cropDistribution: "center",
+  };
+  customizedLayer.effects = {
+    ...customizedLayer.effects,
+    blur: 12,
+    kaleidoscopeSegments: 4,
+  };
+  customizedLayer.compositing = {
+    ...customizedLayer.compositing,
+    blendMode: "screen",
+    opacity: 0.55,
+    overlap: 0.2,
+    feather: 0.1,
+  };
+  customizedLayer.finish = {
+    ...customizedLayer.finish,
+    shadowOpacity: 0.3,
+    brightness: 1.25,
+    contrast: 1.1,
+  };
+  customizedLayer.activeSeed = 424242;
+
+  return customizedLayer;
+}
+
 describe("useAppStore history", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -405,6 +451,101 @@ describe("useAppStore history", () => {
     ]);
     expect(useAppStore.getState().projects[0]?.selectedLayerId).toBe(middleLayer.id);
     expect(useAppStore.getState().canUndo).toBe(true);
+  });
+
+  it("adds a new empty layer with default settings", async () => {
+    const project = useAppStore.getState().projects[0]!;
+    const asset = createSolidAsset(project.id);
+    const customizedLayer = createCustomizedLayerState(project.layers[0]!, asset.id);
+
+    useAppStore.setState((state) => ({
+      ...state,
+      assets: [asset],
+      projects: [
+        normalizeProjectDocument({
+          ...serializeProjectDocument(project),
+          layers: [customizedLayer],
+          selectedLayerId: customizedLayer.id,
+        }),
+      ],
+    }));
+
+    await useAppStore.getState().addLayer();
+
+    const updatedProject = useAppStore.getState().projects[0]!;
+    const nextLayer = updatedProject.layers[1]!;
+    const defaultLayer = createCompositorLayer({
+      name: "Layer 2",
+      visible: true,
+    });
+
+    expect(updatedProject.selectedLayerId).toBe(nextLayer.id);
+    expect(nextLayer.name).toBe("Layer 2");
+    expect(nextLayer.visible).toBe(true);
+    expect(nextLayer.sourceIds).toEqual(defaultLayer.sourceIds);
+    expect(nextLayer.inset).toBe(defaultLayer.inset);
+    expect(nextLayer.layout).toEqual(defaultLayer.layout);
+    expect(nextLayer.sourceMapping).toEqual(defaultLayer.sourceMapping);
+    expect(nextLayer.effects).toEqual(defaultLayer.effects);
+    expect(nextLayer.compositing).toEqual(defaultLayer.compositing);
+    expect(nextLayer.finish).toEqual(defaultLayer.finish);
+    expect(nextLayer.activeSeed).toBe(defaultLayer.activeSeed);
+    expect(nextLayer.presets).toEqual(defaultLayer.presets);
+    expect(nextLayer.passes).toEqual(defaultLayer.passes);
+  });
+
+  it("preserves the previous selected layer when adding a layer", async () => {
+    const project = useAppStore.getState().projects[0]!;
+    const asset = createSolidAsset(project.id);
+    const customizedLayer = createCustomizedLayerState(project.layers[0]!, asset.id);
+
+    useAppStore.setState((state) => ({
+      ...state,
+      assets: [asset],
+      projects: [
+        normalizeProjectDocument({
+          ...serializeProjectDocument(project),
+          layers: [customizedLayer],
+          selectedLayerId: customizedLayer.id,
+        }),
+      ],
+    }));
+
+    await useAppStore.getState().addLayer();
+
+    expect(useAppStore.getState().projects[0]?.layers[0]).toEqual(customizedLayer);
+  });
+
+  it("deleting the selected layer does not overwrite the remaining layer", async () => {
+    const project = useAppStore.getState().projects[0]!;
+    const retainedAsset = createSolidAsset(project.id);
+    const deletedAsset = createImageAsset(project.id, "asset_deleted");
+    const retainedLayer = createCustomizedLayerState(project.layers[0]!, retainedAsset.id);
+    const selectedLayer = createCustomizedLayerState(
+      createCompositorLayer({
+        name: "Layer 2",
+        visible: true,
+      }),
+      deletedAsset.id,
+    );
+
+    useAppStore.setState((state) => ({
+      ...state,
+      assets: [retainedAsset, deletedAsset],
+      projects: [
+        normalizeProjectDocument({
+          ...serializeProjectDocument(project),
+          layers: [retainedLayer, selectedLayer],
+          selectedLayerId: selectedLayer.id,
+        }),
+      ],
+    }));
+
+    await useAppStore.getState().deleteLayer(selectedLayer.id);
+
+    const updatedProject = useAppStore.getState().projects[0]!;
+    expect(updatedProject.layers).toEqual([retainedLayer]);
+    expect(updatedProject.selectedLayerId).toBe(retainedLayer.id);
   });
 
   it("undoes and redoes added sources", async () => {

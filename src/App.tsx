@@ -25,6 +25,8 @@ import {
 import {
   CopyPlus,
   Download,
+  Eye,
+  EyeOff,
   FolderOpen,
   GripVertical,
   ImagePlus,
@@ -218,71 +220,94 @@ function SortableLayerRow({
     transform: CSS.Transform.toString(transform),
     transition,
   };
+  const sourceCountLabel = `${layer.sourceIds.length} source${
+    layer.sourceIds.length === 1 ? "" : "s"
+  }`;
 
   return (
     <div
       ref={setNodeRef}
       style={style}
-      className={`flex items-center justify-between gap-3 rounded-md border px-3 py-2 ${
+      className={`rounded-lg border p-3 ${
         isSelected
-          ? "border-border-subtle bg-surface-sunken"
+          ? "border-border-strong bg-surface-sunken"
           : "border-border bg-surface-muted/50"
       } ${isDragging ? "z-10 shadow-lg ring-1 ring-border-strong" : ""}`}
     >
-      <div className="flex min-w-0 flex-1 items-center gap-2">
+      <div className="flex items-start gap-2">
+        <div className="min-w-0 flex-1">
+          <button
+            type="button"
+            className="block w-full text-left"
+            onClick={onSelect}
+          >
+            <div className="flex items-center gap-2 text-sm font-medium text-text">
+              <Layers className="h-3.5 w-3.5 shrink-0 text-text-muted" />
+              <span className="truncate">{layer.name}</span>
+            </div>
+            <div className="mt-2 flex flex-wrap items-center gap-2 text-[10px] font-mono uppercase tracking-[0.08em] text-text-muted">
+              {isSelected ? (
+                <span className="rounded-full border border-border-subtle bg-surface px-2 py-1 text-text">
+                  Editing
+                </span>
+              ) : null}
+              <span className="rounded-full border border-border-subtle px-2 py-1">
+                {layer.visible ? "Visible" : "Hidden"}
+              </span>
+              <span>{sourceCountLabel}</span>
+            </div>
+          </button>
+        </div>
         <Button
           size="sm"
           variant="ghost"
-          className="touch-none px-2 text-text-faint hover:text-text active:cursor-grabbing"
+          className="touch-none h-8 w-8 shrink-0 px-0 text-text-faint hover:text-text active:cursor-grabbing"
           aria-label={`Reorder ${layer.name}`}
           {...attributes}
           {...listeners}
         >
           <GripVertical className="h-4 w-4 cursor-grab" />
         </Button>
+      </div>
+      <button
+        type="button"
+        className="mt-3 block w-full text-left"
+        onClick={onSelect}
+      >
+        <LayerRowThumbnail
+          layerId={layer.id}
+          layerName={layer.name}
+          thumbnailUrl={thumbnailUrl}
+        />
+      </button>
+      <div className="mt-3 grid grid-cols-2 gap-2">
         <button
           type="button"
-          className="flex min-w-0 flex-1 items-center gap-3 text-left"
-          onClick={onSelect}
-        >
-          <LayerRowThumbnail
-            layerId={layer.id}
-            layerName={layer.name}
-            thumbnailUrl={thumbnailUrl}
-          />
-          <div className="min-w-0">
-            <div className="flex items-center gap-2 text-xs font-medium text-text">
-              <Layers className="h-3.5 w-3.5 text-text-muted" />
-              <span className="truncate">{layer.name}</span>
-              {isSelected ? (
-                <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-text-faint">
-                  Editing
-                </span>
-              ) : null}
-            </div>
-            <div className="mt-1 text-[11px] text-text-muted">
-              {layer.visible ? "Visible" : "Hidden"} · {layer.sourceIds.length} source
-              {layer.sourceIds.length === 1 ? "" : "s"}
-            </div>
-          </div>
-        </button>
-      </div>
-      <div className="flex shrink-0 items-center gap-1">
-        <Button
-          size="sm"
-          variant="ghost"
+          className={cn(
+            "inline-flex h-8 items-center justify-center gap-2 rounded-md border px-3 text-xs font-medium transition-all",
+            layer.visible
+              ? "border-control-secondary-border bg-control-secondary text-control-secondary-text hover:bg-control-secondary-hover"
+              : "border-border bg-transparent text-text-secondary hover:border-border-strong hover:bg-control-ghost-hover hover:text-text",
+          )}
           onClick={onToggleVisibility}
           aria-label={layer.visible ? `Hide ${layer.name}` : `Show ${layer.name}`}
         >
+          {layer.visible ? (
+            <EyeOff className="h-3.5 w-3.5" />
+          ) : (
+            <Eye className="h-3.5 w-3.5" />
+          )}
           {layer.visible ? "Hide" : "Show"}
-        </Button>
+        </button>
         <Button
           size="sm"
           variant="ghost"
+          className="w-full justify-center"
           onClick={onDelete}
           disabled={!canDelete}
           aria-label={`Delete ${layer.name}`}
         >
+          <Trash2 className="h-3.5 w-3.5" />
           Delete
         </Button>
       </div>
@@ -304,12 +329,12 @@ function LayerRowThumbnail({
       src={thumbnailUrl}
       alt={`${layerName} preview`}
       data-testid={`layer-thumbnail-${layerId}`}
-      className="h-12 w-16 shrink-0 rounded-md bg-preview-canvas object-contain"
+      className="h-32 w-full rounded-md border border-border-subtle bg-preview-canvas object-contain"
     />
   ) : (
     <div
       data-testid={`layer-thumbnail-placeholder-${layerId}`}
-      className="flex h-12 w-16 shrink-0 items-center justify-center rounded-md bg-preview-canvas font-mono text-[9px] uppercase tracking-[0.08em] text-text-faint"
+      className="flex h-32 w-full items-center justify-center rounded-md border border-border-subtle bg-preview-canvas font-mono text-[9px] uppercase tracking-[0.08em] text-text-faint"
     >
       Loading
     </div>
@@ -331,8 +356,8 @@ const PROCEDURAL_SOURCE_KINDS: SourceKind[] = [
   "reaction",
   "waves",
 ];
-const LAYER_ROW_THUMBNAIL_WIDTH = 64;
-const LAYER_ROW_THUMBNAIL_HEIGHT = 48;
+const LAYER_ROW_THUMBNAIL_WIDTH = 224;
+const LAYER_ROW_THUMBNAIL_HEIGHT = 140;
 const GRADIENT_MODES: GradientMode[] = ["linear", "radial", "conic"];
 const GRADIENT_DIRECTIONS: GradientDirection[] = [
   "horizontal",
@@ -1688,7 +1713,7 @@ function App() {
         </div>
 
         <div className="mx-auto flex min-h-0 w-full flex-1 overflow-hidden p-3">
-          <div className="grid min-h-0 flex-1 grid-cols-[288px_228px_minmax(720px,1fr)_560px] gap-3 overflow-hidden">
+          <div className="grid min-h-0 flex-1 grid-cols-[288px_minmax(280px,22vw)_minmax(640px,1fr)_560px] gap-3 overflow-hidden">
             <PanelShell
               title="Sources"
               actions={
@@ -1774,7 +1799,7 @@ function App() {
               title="Layers"
               actions={
                 <Button
-                  className="w-fit shrink-0"
+                  className="min-w-[9rem] shrink-0 justify-center"
                   variant="outline"
                   size="sm"
                   onClick={() => void addLayer()}

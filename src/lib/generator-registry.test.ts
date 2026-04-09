@@ -229,6 +229,67 @@ describe("buildRenderSlices", () => {
     expect(first.length).toBeGreaterThan(0);
   });
 
+  it("uses the configured symmetry center as the mirror pivot", () => {
+    const project = createProjectDocument("Symmetry Center");
+    project.sourceIds = [assets[0]!.id];
+    project.layout.family = "grid";
+    project.layout.columns = 1;
+    project.layout.rows = 1;
+    project.layout.symmetryMode = "mirror-x";
+
+    const centered = buildRenderSlices(project, [assets[0]!]);
+
+    project.layout.symmetryCenterX = 0.25;
+    const shifted = buildRenderSlices(project, [assets[0]!]);
+
+    expect(centered.find((slice) => slice.id === "slice_0_mx")?.rect.x).not.toBe(
+      shifted.find((slice) => slice.id === "slice_0_mx")?.rect.x,
+    );
+  });
+
+  it("applies symmetry angle offset to radial clones", () => {
+    const project = createProjectDocument("Symmetry Angle Offset");
+    project.sourceIds = [assets[0]!.id];
+    project.layout.family = "grid";
+    project.layout.columns = 1;
+    project.layout.rows = 1;
+    project.layout.symmetryMode = "radial";
+    project.layout.symmetryCopies = 4;
+
+    const baseline = buildRenderSlices(project, [assets[0]!]);
+
+    project.layout.symmetryAngleOffset = 45;
+    const offset = buildRenderSlices(project, [assets[0]!]);
+
+    expect(
+      offset.find((slice) => slice.id === "slice_0_r1")!.rotation -
+        baseline.find((slice) => slice.id === "slice_0_r1")!.rotation,
+    ).toBeCloseTo(Math.PI / 4, 6);
+  });
+
+  it("adds deterministic clone drift without moving the base slice", () => {
+    const project = createProjectDocument("Symmetry Drift");
+    project.sourceIds = [assets[0]!.id];
+    project.layout.family = "grid";
+    project.layout.columns = 1;
+    project.layout.rows = 1;
+    project.layout.symmetryMode = "mirror-x";
+
+    const baseline = buildRenderSlices(project, [assets[0]!]);
+
+    project.layout.symmetryJitter = 1;
+    const drifted = buildRenderSlices(project, [assets[0]!]);
+    const driftedAgain = buildRenderSlices(project, [assets[0]!]);
+
+    expect(drifted).toEqual(driftedAgain);
+    expect(drifted.find((slice) => slice.id === "slice_0")?.rect).toEqual(
+      baseline.find((slice) => slice.id === "slice_0")?.rect,
+    );
+    expect(drifted.find((slice) => slice.id === "slice_0_mx")?.rect).not.toEqual(
+      baseline.find((slice) => slice.id === "slice_0_mx")?.rect,
+    );
+  });
+
   it("increases block slice count as block depth rises", () => {
     const project = createProjectDocument("Block Depth");
     project.sourceIds = [assets[0]!.id];

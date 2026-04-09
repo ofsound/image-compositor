@@ -10,7 +10,7 @@ import type {
   SourceAssignmentStrategy,
   ThreeDStructureMode,
 } from "@/types/project";
-import { mulberry32 } from "@/lib/rng";
+import { hashToSeed, mulberry32 } from "@/lib/rng";
 import { getSourceWeight } from "@/lib/source-weights";
 import { clamp, lerp } from "@/lib/utils";
 
@@ -128,6 +128,16 @@ function translatePoints(points: RenderPoint[], dx: number, dy: number) {
     x: point.x + dx,
     y: point.y + dy,
   }));
+}
+
+function translateRect(rect: RenderRect | null, dx: number, dy: number) {
+  if (!rect) return null;
+
+  return {
+    ...rect,
+    x: rect.x + dx,
+    y: rect.y + dy,
+  };
 }
 
 function rotatePoints(points: RenderPoint[], angle: number, center: Point) {
@@ -1748,8 +1758,10 @@ function reflectSlices(slices: RenderSlice[], project: ProjectDocument) {
   if (symmetryMode === "none") return slices;
 
   const clones = [...slices];
-  const centerX = project.canvas.width / 2;
-  const centerY = project.canvas.height / 2;
+  const centerX = project.canvas.width * clamp(project.layout.symmetryCenterX, 0, 1);
+  const centerY = project.canvas.height * clamp(project.layout.symmetryCenterY, 0, 1);
+  const angleOffset = degToRad(project.layout.symmetryAngleOffset);
+  const symmetryJitter = clamp(project.layout.symmetryJitter, 0, 1);
   const mirrorRect = (rect: RenderRect | null, axis: "x" | "y") => {
     if (!rect) return null;
     return axis === "x"
@@ -1762,6 +1774,35 @@ function reflectSlices(slices: RenderSlice[], project: ProjectDocument) {
           y: centerY + (centerY - rect.y - rect.height),
         };
   };
+  const applyCloneDrift = (slice: RenderSlice, cloneKey: string) => {
+    if (symmetryJitter <= 0) {
+      return slice;
+    }
+
+    const driftRng = mulberry32(
+      hashToSeed(`${project.activeSeed}:${slice.id}:${cloneKey}`),
+    );
+    const maxOffset = Math.min(project.canvas.width, project.canvas.height) * 0.12;
+    const offsetX = (driftRng.next() - 0.5) * maxOffset * symmetryJitter;
+    const offsetY = (driftRng.next() - 0.5) * maxOffset * symmetryJitter;
+    const rotationDrift = (driftRng.next() - 0.5) * (Math.PI / 3) * symmetryJitter;
+    const scaleDrift = 1 + (driftRng.next() - 0.5) * 0.28 * symmetryJitter;
+
+    return {
+      ...slice,
+      rect: translateRect(slice.rect, offsetX, offsetY) ?? slice.rect,
+      clipRect: translateRect(slice.clipRect, offsetX, offsetY),
+      imageRect: translateRect(slice.imageRect, offsetX, offsetY),
+      clipPathPoints: slice.clipPathPoints
+        ? translatePoints(slice.clipPathPoints, offsetX, offsetY)
+        : null,
+      quadPoints: slice.quadPoints
+        ? translatePoints(slice.quadPoints, offsetX, offsetY)
+        : null,
+      rotation: slice.rotation + rotationDrift,
+      scale: Math.max(0.2, slice.scale * scaleDrift),
+    };
+  };
 
   for (const slice of slices) {
     if (symmetryMode === "mirror-x" || symmetryMode === "quad") {
@@ -1771,7 +1812,7 @@ function reflectSlices(slices: RenderSlice[], project: ProjectDocument) {
       };
       const sliceCenter = getRectCenter(slice.rect);
       const mirroredCenter = getRectCenter(mirroredRect);
-      clones.push({
+      clones.push(applyCloneDrift({
         ...slice,
         id: `${slice.id}_mx`,
         rect: mirroredRect,
@@ -1792,7 +1833,7 @@ function reflectSlices(slices: RenderSlice[], project: ProjectDocument) {
           : null,
         rotationY: -slice.rotationY,
         mirrorAxis: "x",
-      });
+      }, "mirror-x"));
     }
 
     if (symmetryMode === "mirror-y" || symmetryMode === "quad") {
@@ -1802,7 +1843,7 @@ function reflectSlices(slices: RenderSlice[], project: ProjectDocument) {
       };
       const sliceCenter = getRectCenter(slice.rect);
       const mirroredCenter = getRectCenter(mirroredRect);
-      clones.push({
+      clones.push(applyCloneDrift({
         ...slice,
         id: `${slice.id}_my`,
         rect: mirroredRect,
@@ -1823,14 +1864,14 @@ function reflectSlices(slices: RenderSlice[], project: ProjectDocument) {
           : null,
         rotationX: -slice.rotationX,
         mirrorAxis: "y",
-      });
+      }, "mirror-y"));
     }
   }
 
   if (symmetryMode === "radial") {
     const radialClones: RenderSlice[] = [];
     for (let copyIndex = 1; copyIndex < symmetryCopies; copyIndex += 1) {
-      const angle = (Math.PI * 2 * copyIndex) / symmetryCopies;
+      const angle = angleOffset + (Math.PI * 2 * copyIndex) / symmetryCopies;
       for (const slice of slices) {
         const x = slice.rect.x - centerX;
         const y = slice.rect.y - centerY;
@@ -1847,7 +1888,7 @@ function reflectSlices(slices: RenderSlice[], project: ProjectDocument) {
               y: centerY,
             })
           : null;
-        radialClones.push({
+        radialClones.push(applyCloneDrift({
           ...slice,
           id: `${slice.id}_r${copyIndex}`,
           rect: quadPoints
@@ -1880,7 +1921,7 @@ function reflectSlices(slices: RenderSlice[], project: ProjectDocument) {
           rotation: slice.rotation + angle,
           rotationX: slice.rotationX,
           rotationY: slice.rotationY,
-        });
+        }, `radial-${copyIndex}`));
       }
     }
     clones.push(...radialClones);

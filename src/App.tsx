@@ -654,6 +654,7 @@ function App() {
     activeProject.layout.shapeMode === "ring" ||
     activeProject.layout.shapeMode === "arc" ||
     activeProject.layout.shapeMode === "mixed";
+  const isSymmetryActive = activeProject.layout.symmetryMode !== "none";
   const isRadialSymmetry = activeProject.layout.symmetryMode === "radial";
   const isWeightedAssignment =
     activeProject.sourceMapping.strategy === "weighted";
@@ -2041,24 +2042,98 @@ function App() {
                         </SelectContent>
                       </Select>
                     </ControlBlock>
+                    {isSymmetryActive ? (
+                      <>
+                        <SliderField
+                          label="Symmetry Center X"
+                          min={0}
+                          max={1}
+                          step={0.01}
+                          value={activeProject.layout.symmetryCenterX}
+                          formatter={formatPercentValue}
+                          onChange={(value) =>
+                            patchProject((project) => ({
+                              ...project,
+                              layout: {
+                                ...project.layout,
+                                symmetryCenterX: value,
+                              },
+                            }))
+                          }
+                        />
+                        <SliderField
+                          label="Symmetry Center Y"
+                          min={0}
+                          max={1}
+                          step={0.01}
+                          value={activeProject.layout.symmetryCenterY}
+                          formatter={formatPercentValue}
+                          onChange={(value) =>
+                            patchProject((project) => ({
+                              ...project,
+                              layout: {
+                                ...project.layout,
+                                symmetryCenterY: value,
+                              },
+                            }))
+                          }
+                        />
+                        <SliderField
+                          label="Clone Drift"
+                          min={0}
+                          max={1}
+                          step={0.01}
+                          value={activeProject.layout.symmetryJitter}
+                          formatter={formatPercentValue}
+                          onChange={(value) =>
+                            patchProject((project) => ({
+                              ...project,
+                              layout: {
+                                ...project.layout,
+                                symmetryJitter: value,
+                              },
+                            }))
+                          }
+                        />
+                      </>
+                    ) : null}
                     {isRadialSymmetry ? (
-                      <SliderField
-                        label="Radial Copies"
-                        min={2}
-                        max={12}
-                        step={1}
-                        value={activeProject.layout.symmetryCopies}
-                        formatter={(value) => `${Math.round(value)}`}
-                        onChange={(value) =>
-                          patchProject((project) => ({
-                            ...project,
-                            layout: {
-                              ...project.layout,
-                              symmetryCopies: Math.round(value),
-                            },
-                          }))
-                        }
-                      />
+                      <>
+                        <SliderField
+                          label="Symmetry Angle Offset"
+                          min={-180}
+                          max={180}
+                          step={1}
+                          value={activeProject.layout.symmetryAngleOffset}
+                          formatter={formatDegreeValue}
+                          onChange={(value) =>
+                            patchProject((project) => ({
+                              ...project,
+                              layout: {
+                                ...project.layout,
+                                symmetryAngleOffset: value,
+                              },
+                            }))
+                          }
+                        />
+                        <SliderField
+                          label="Radial Copies"
+                          min={2}
+                          max={12}
+                          step={1}
+                          value={activeProject.layout.symmetryCopies}
+                          formatter={(value) => `${Math.round(value)}`}
+                          onChange={(value) =>
+                            patchProject((project) => ({
+                              ...project,
+                              layout: {
+                                ...project.layout,
+                                symmetryCopies: Math.round(value),
+                              },
+                            }))
+                          }
+                        />
+                      </>
                     ) : null}
                     <SliderField
                       label="Hide Percentage"

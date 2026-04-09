@@ -297,6 +297,10 @@ describe("App conditional sliders", () => {
     expectSliderHidden("Min Block Size");
     expectSliderHidden("Split Bias");
     expectSliderHidden("Radial Copies");
+    expectSliderHidden("Symmetry Center X");
+    expectSliderHidden("Symmetry Center Y");
+    expectSliderHidden("Symmetry Angle Offset");
+    expectSliderHidden("Clone Drift");
     expectSliderEnabled("Hide Percentage");
     expectSliderEnabled("Letterbox");
     expectSliderHidden("Source Bias");
@@ -339,6 +343,10 @@ describe("App conditional sliders", () => {
     expectSliderHidden("Gutter Horizontal");
     expectSliderHidden("Gutter Vertical");
     expectSliderHidden("Radial Copies");
+    expectSliderEnabled("Symmetry Center X");
+    expectSliderEnabled("Symmetry Center Y");
+    expectSliderHidden("Symmetry Angle Offset");
+    expectSliderEnabled("Clone Drift");
     expectSliderEnabled("Hide Percentage");
     expectSliderEnabled("Letterbox");
     expectSliderHidden("Distribution");
@@ -423,6 +431,10 @@ describe("App conditional sliders", () => {
     expectSliderEnabled("Min Block Size");
     expectSliderEnabled("Split Bias");
     expectSliderEnabled("Radial Copies");
+    expectSliderEnabled("Symmetry Center X");
+    expectSliderEnabled("Symmetry Center Y");
+    expectSliderEnabled("Symmetry Angle Offset");
+    expectSliderEnabled("Clone Drift");
     expectSliderEnabled("Hide Percentage");
     expectSliderEnabled("Letterbox");
     expectSliderEnabled("Source Bias");
@@ -456,6 +468,10 @@ describe("App conditional sliders", () => {
     expectSliderHidden("Gutter Horizontal");
     expectSliderHidden("Gutter Vertical");
     expectSliderHidden("Radial Copies");
+    expectSliderEnabled("Symmetry Center X");
+    expectSliderEnabled("Symmetry Center Y");
+    expectSliderHidden("Symmetry Angle Offset");
+    expectSliderEnabled("Clone Drift");
     expectSliderEnabled("Hide Percentage");
     expectSliderEnabled("Letterbox");
     expectSliderHidden("Source Bias");

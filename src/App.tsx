@@ -513,6 +513,12 @@ function App() {
     restoreProject,
     purgeProject,
     setActiveProject,
+    selectLayer,
+    addLayer,
+    deleteLayer,
+    toggleLayerVisibility,
+    moveLayerUp,
+    moveLayerDown,
     updateProject,
     importFiles,
     addSolidSource,
@@ -577,7 +583,13 @@ function App() {
     ? assets.filter((asset) => asset.projectId === deferredProject.id)
     : [];
   const previewAssets = deferredProject
-    ? deferredProject.sourceIds
+    ? Array.from(
+        new Set(
+          deferredProject.layers
+            .filter((layer) => layer.visible)
+            .flatMap((layer) => layer.sourceIds),
+        ),
+      )
         .map((sourceId) =>
           deferredProjectAssets.find((asset) => asset.id === sourceId),
         )
@@ -601,10 +613,15 @@ function App() {
         .map((sourceId) => projectAssets.find((asset) => asset.id === sourceId))
         .filter((asset): asset is SourceAsset => Boolean(asset))
     : [];
+  const selectedLayer = activeProject
+    ? activeProject.layers.find((layer) => layer.id === activeProject.selectedLayerId) ??
+      activeProject.layers.at(-1) ??
+      null
+    : null;
   const activeVersions = activeProject
     ? versions.filter((version) => version.projectId === activeProject.id)
     : [];
-  const activeAssetSignature = activeAssets.map((asset) => asset.id).join("|");
+  const previewAssetSignature = previewAssets.map((asset) => asset.id).join("|");
   const purgeDialogProject =
     projects.find((project) => project.id === purgeDialogProjectId) ?? null;
   const isLinearGradientMode = gradientSourceMode === "linear";
@@ -618,7 +635,7 @@ function App() {
       ready: false,
       lastRenderedPreview: null,
     });
-  }, [activeAssetSignature, activeProject?.id, activeProject?.updatedAt]);
+  }, [previewAssetSignature, activeProject?.id, activeProject?.updatedAt]);
 
   if (!ready || !activeProject || !deferredProject) {
     return (
@@ -1135,7 +1152,7 @@ function App() {
               onClick={() => void handleExport()}
               disabled={
                 busy ||
-                activeAssets.length === 0 ||
+                previewAssets.length === 0 ||
                 !renderState.ready ||
                 !renderState.lastRenderedPreview
               }
@@ -1159,6 +1176,96 @@ function App() {
                     assets={previewAssets}
                     onRenderState={setRenderState}
                   />
+                </CardContent>
+              </Card>
+
+              <Card className="shrink-0">
+                <CardHeader className="flex-row items-center justify-between gap-4 space-y-0">
+                  <CardTitle>Layers</CardTitle>
+                  <Button
+                    className="w-fit shrink-0"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => void addLayer()}
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    Add Layer
+                  </Button>
+                </CardHeader>
+                <CardContent className="flex flex-col gap-2">
+                  {activeProject.layers.map((layer, index) => {
+                    const isSelected = layer.id === selectedLayer?.id;
+                    const isTop = index === activeProject.layers.length - 1;
+                    const isBottom = index === 0;
+
+                    return (
+                      <div
+                        key={layer.id}
+                        className={`flex items-center justify-between gap-3 rounded-md border px-3 py-2 ${
+                          isSelected
+                            ? "border-border-subtle bg-surface-sunken"
+                            : "border-border bg-surface-muted/50"
+                        }`}
+                      >
+                        <button
+                          type="button"
+                          className="min-w-0 flex-1 text-left"
+                          onClick={() => void selectLayer(layer.id)}
+                        >
+                          <div className="flex items-center gap-2 text-xs font-medium text-text">
+                            <Layers className="h-3.5 w-3.5 text-text-muted" />
+                            <span className="truncate">{layer.name}</span>
+                            {isSelected ? (
+                              <span className="font-mono text-[10px] uppercase tracking-[0.08em] text-text-faint">
+                                Editing
+                              </span>
+                            ) : null}
+                          </div>
+                          <div className="mt-1 text-[11px] text-text-muted">
+                            {layer.visible ? "Visible" : "Hidden"} · {layer.sourceIds.length} source
+                            {layer.sourceIds.length === 1 ? "" : "s"}
+                          </div>
+                        </button>
+                        <div className="flex shrink-0 items-center gap-1">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => void toggleLayerVisibility(layer.id)}
+                            aria-label={layer.visible ? `Hide ${layer.name}` : `Show ${layer.name}`}
+                          >
+                            {layer.visible ? "Hide" : "Show"}
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => void moveLayerDown(layer.id)}
+                            disabled={isBottom}
+                            aria-label={`Move ${layer.name} down`}
+                          >
+                            Down
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => void moveLayerUp(layer.id)}
+                            disabled={isTop}
+                            aria-label={`Move ${layer.name} up`}
+                          >
+                            Up
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            onClick={() => void deleteLayer(layer.id)}
+                            disabled={activeProject.layers.length <= 1}
+                            aria-label={`Delete ${layer.name}`}
+                          >
+                            Delete
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </CardContent>
               </Card>
 

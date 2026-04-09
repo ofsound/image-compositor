@@ -1,6 +1,10 @@
 import Dexie, { type Table } from "dexie";
 
 import { normalizeSourceAsset } from "@/lib/assets";
+import {
+  normalizeProjectDocument,
+  normalizeProjectVersion,
+} from "@/lib/project-defaults";
 import type {
   ProjectDocument,
   ProjectVersion,
@@ -48,13 +52,16 @@ export class ImageGridDb extends Dexie {
         const ownership = new Map<string, string>();
 
         for (const project of projects) {
+          const legacySourceIds = Array.isArray((project as { sourceIds?: string[] }).sourceIds)
+            ? ((project as { sourceIds?: string[] }).sourceIds ?? [])
+            : [];
           const normalizedProject = {
             ...project,
             deletedAt: project.deletedAt ?? null,
           };
           await projectsTable.put(normalizedProject);
 
-          for (const sourceId of project.sourceIds) {
+          for (const sourceId of legacySourceIds) {
             if (!ownership.has(sourceId)) {
               ownership.set(sourceId, project.id);
             }
@@ -83,6 +90,30 @@ export class ImageGridDb extends Dexie {
 
         for (const asset of assets) {
           await assetsTable.put(normalizeSourceAsset(asset));
+        }
+      });
+    this.version(4)
+      .stores({
+        assets: "id, projectId, createdAt, name, mimeType, kind",
+        projects: "id, updatedAt, deletedAt, title",
+        versions: "id, projectId, createdAt",
+        kv: "&key",
+        blobs: "&path",
+      })
+      .upgrade(async (tx) => {
+        const projectsTable = tx.table<ProjectDocument, string>("projects");
+        const versionsTable = tx.table<ProjectVersion, string>("versions");
+        const [projects, versions] = await Promise.all([
+          projectsTable.toArray(),
+          versionsTable.toArray(),
+        ]);
+
+        for (const project of projects) {
+          await projectsTable.put(normalizeProjectDocument(project));
+        }
+
+        for (const version of versions) {
+          await versionsTable.put(normalizeProjectVersion(version));
         }
       });
   }

@@ -16,9 +16,12 @@ import { processImageFile } from "@/lib/image-worker-client";
 import { makeId } from "@/lib/id";
 import { deleteBlob, readBlob, writeBlob } from "@/lib/opfs";
 import {
+  createCompositorLayer,
   createProjectDocument,
+  getSelectedLayer,
   normalizeProjectDocument,
   normalizeProjectVersion,
+  syncLegacyProjectFieldsToSelectedLayer,
 } from "@/lib/project-defaults";
 import { exportProjectImage } from "@/lib/render";
 import {
@@ -29,6 +32,7 @@ import {
 } from "@/lib/serializer";
 import type {
   BundleImportInspection,
+  CompositorLayer,
   GradientSourceAsset,
   NoiseSourceAsset,
   ProjectDocument,
@@ -52,8 +56,8 @@ interface AddAssetsHistoryEntry {
   kind: "add-assets";
   projectId: string;
   assets: SourceAsset[];
-  sourceIdsBefore: string[];
-  sourceIdsAfter: string[];
+  before: ProjectSnapshot;
+  after: ProjectSnapshot;
 }
 
 interface RemovedAssetSnapshot {
@@ -69,8 +73,8 @@ interface RemoveAssetsHistoryEntry {
   kind: "remove-assets";
   projectId: string;
   assets: RemovedAssetSnapshot[];
-  sourceIdsBefore: string[];
-  sourceIdsAfter: string[];
+  before: ProjectSnapshot;
+  after: ProjectSnapshot;
 }
 
 type HistoryEntry =
@@ -106,6 +110,15 @@ interface AppState {
   restoreProject: (projectId: string) => Promise<void>;
   purgeProject: (projectId: string) => Promise<void>;
   setActiveProject: (projectId: string) => Promise<void>;
+  selectLayer: (layerId: string) => Promise<void>;
+  addLayer: () => Promise<void>;
+  deleteLayer: (layerId: string) => Promise<void>;
+  toggleLayerVisibility: (layerId: string) => Promise<void>;
+  moveLayerUp: (layerId: string) => Promise<void>;
+  moveLayerDown: (layerId: string) => Promise<void>;
+  updateSelectedLayer: (
+    updater: (layer: CompositorLayer) => CompositorLayer,
+  ) => Promise<void>;
   updateProject: (
     updater: (project: ProjectDocument) => ProjectDocument,
     options?: { recordHistory?: boolean },
@@ -166,18 +179,9 @@ function getNextProjectTitle(projects: ProjectDocument[]) {
 }
 
 function createProjectSnapshot(project: ProjectDocument): ProjectSnapshot {
-  return structuredClone({
-    sourceIds: project.sourceIds,
-    canvas: project.canvas,
-    layout: project.layout,
-    sourceMapping: project.sourceMapping,
-    effects: project.effects,
-    compositing: project.compositing,
-    export: project.export,
-    activeSeed: project.activeSeed,
-    presets: project.presets,
-    passes: project.passes,
-  });
+  return structuredClone(
+    normalizeProjectDocument(syncLegacyProjectFieldsToSelectedLayer(project)),
+  );
 }
 
 function snapshotsEqual(a: ProjectSnapshot, b: ProjectSnapshot) {
@@ -239,6 +243,63 @@ function upsertProject(projects: ProjectDocument[], project: ProjectDocument) {
 function removeAssetsById(assets: SourceAsset[], assetIds: string[]) {
   const assetIdSet = new Set(assetIds);
   return sortAssetsByCreated(assets.filter((asset) => !assetIdSet.has(asset.id)));
+}
+
+function replaceLayer(
+  project: ProjectDocument,
+  layerId: string,
+  updater: (layer: CompositorLayer) => CompositorLayer,
+) {
+  return normalizeProjectDocument({
+    ...project,
+    layers: project.layers.map((layer) =>
+      layer.id === layerId ? updater(layer) : layer,
+    ),
+    updatedAt: new Date().toISOString(),
+  });
+}
+
+function updateSelectedProjectLayer(
+  project: ProjectDocument,
+  updater: (layer: CompositorLayer) => CompositorLayer,
+) {
+  const selectedLayer = getSelectedLayer(project);
+  if (!selectedLayer) {
+    return project;
+  }
+
+  return replaceLayer(project, selectedLayer.id, updater);
+}
+
+function removeSourceFromLayer(layer: CompositorLayer, assetId: string): CompositorLayer {
+  const sourceWeights = { ...layer.sourceMapping.sourceWeights };
+  delete sourceWeights[assetId];
+
+  return {
+    ...layer,
+    sourceIds: layer.sourceIds.filter((sourceId) => sourceId !== assetId),
+    sourceMapping: {
+      ...layer.sourceMapping,
+      sourceWeights,
+    },
+  };
+}
+
+function removeSourceFromAllLayers(project: ProjectDocument, assetId: string) {
+  const normalizedProject = normalizeProjectDocument(
+    syncLegacyProjectFieldsToSelectedLayer(project),
+  );
+  return normalizeProjectDocument({
+    ...normalizedProject,
+    layers: normalizedProject.layers.map((layer) =>
+      removeSourceFromLayer(layer, assetId),
+    ),
+    updatedAt: new Date().toISOString(),
+  });
+}
+
+function getNextLayerName(project: ProjectDocument) {
+  return `Layer ${project.layers.length + 1}`;
 }
 
 async function restoreRemovedAssetSnapshots(assets: RemovedAssetSnapshot[]) {
@@ -432,16 +493,30 @@ export const useAppStore = create<AppState>((set, get) => ({
     );
     const sourceIdMap = new Map(projectAssets.map((asset, index) => [asset.id, duplicatedAssets[index]?.id ?? asset.id]));
     const now = new Date().toISOString();
-    const duplicateProject: ProjectDocument = {
+    const duplicateProject: ProjectDocument = normalizeProjectDocument({
       ...sourceProject,
       id: nextProjectId,
       title: nextTitle,
-      sourceIds: sourceProject.sourceIds.map((sourceId) => sourceIdMap.get(sourceId) ?? sourceId),
+      layers: sourceProject.layers.map((layer) => ({
+        ...structuredClone(layer),
+        sourceIds: layer.sourceIds.map(
+          (sourceId) => sourceIdMap.get(sourceId) ?? sourceId,
+        ),
+        sourceMapping: {
+          ...structuredClone(layer.sourceMapping),
+          sourceWeights: Object.fromEntries(
+            Object.entries(layer.sourceMapping.sourceWeights).map(([sourceId, weight]) => [
+              sourceIdMap.get(sourceId) ?? sourceId,
+              weight,
+            ]),
+          ),
+        },
+      })),
       currentVersionId: null,
       deletedAt: null,
       createdAt: now,
       updatedAt: now,
-    };
+    });
 
     await Promise.all([
       db.projects.put(duplicateProject),
@@ -527,15 +602,119 @@ export const useAppStore = create<AppState>((set, get) => ({
     );
   },
 
+  async selectLayer(layerId) {
+    const project = getActiveProject(get());
+    if (!project || !project.layers.some((layer) => layer.id === layerId)) return;
+
+    const updatedProject = normalizeProjectDocument({
+      ...project,
+      selectedLayerId: layerId,
+      updatedAt: new Date().toISOString(),
+    });
+    await db.projects.put(updatedProject);
+
+    set((state) => ({
+      projects: upsertProject(state.projects, updatedProject),
+      status: "Layer selected.",
+      ...getHistoryFlags(state.historyByProject, state.activeProjectId),
+    }));
+  },
+
+  async addLayer() {
+    await get().updateProject((project) => {
+      const selectedLayer = getSelectedLayer(project);
+      const insertIndex = selectedLayer
+        ? project.layers.findIndex((layer) => layer.id === selectedLayer.id) + 1
+        : project.layers.length;
+      const nextLayer = createCompositorLayer({
+        name: getNextLayerName(project),
+        visible: true,
+      });
+      const layers = [...project.layers];
+      layers.splice(insertIndex, 0, nextLayer);
+
+      return {
+        ...project,
+        layers,
+        selectedLayerId: nextLayer.id,
+      };
+    });
+  },
+
+  async deleteLayer(layerId) {
+    const project = getActiveProject(get());
+    if (!project || project.layers.length <= 1) return;
+    if (!project.layers.some((layer) => layer.id === layerId)) return;
+
+    await get().updateProject((currentProject) => {
+      const layers = currentProject.layers.filter((layer) => layer.id !== layerId);
+      const selectedLayerId =
+        currentProject.selectedLayerId === layerId
+          ? layers.at(-1)?.id ?? null
+          : currentProject.selectedLayerId;
+
+      return {
+        ...currentProject,
+        layers,
+        selectedLayerId,
+      };
+    });
+  },
+
+  async toggleLayerVisibility(layerId) {
+    await get().updateProject((project) =>
+      replaceLayer(project, layerId, (layer) => ({
+        ...layer,
+        visible: !layer.visible,
+      })),
+    );
+  },
+
+  async moveLayerUp(layerId) {
+    await get().updateProject((project) => {
+      const index = project.layers.findIndex((layer) => layer.id === layerId);
+      if (index < 0 || index >= project.layers.length - 1) {
+        return project;
+      }
+
+      const layers = [...project.layers];
+      const [layer] = layers.splice(index, 1);
+      layers.splice(index + 1, 0, layer!);
+      return { ...project, layers };
+    });
+  },
+
+  async moveLayerDown(layerId) {
+    await get().updateProject((project) => {
+      const index = project.layers.findIndex((layer) => layer.id === layerId);
+      if (index <= 0) {
+        return project;
+      }
+
+      const layers = [...project.layers];
+      const [layer] = layers.splice(index, 1);
+      layers.splice(index - 1, 0, layer!);
+      return { ...project, layers };
+    });
+  },
+
+  async updateSelectedLayer(updater) {
+    await get().updateProject((project) => updateSelectedProjectLayer(project, updater));
+  },
+
   async updateProject(updater, options) {
     const project = getActiveProject(get());
     if (!project) return;
 
     const before = createProjectSnapshot(project);
-    const updatedProject = updater({
-      ...project,
-      updatedAt: new Date().toISOString(),
-    });
+    const updatedProject = normalizeProjectDocument(
+      syncLegacyProjectFieldsToSelectedLayer(
+        updater({
+          ...project,
+          updatedAt: new Date().toISOString(),
+        }),
+      ),
+    );
     const after = createProjectSnapshot(updatedProject);
 
     if (snapshotsEqual(before, after)) {
@@ -597,15 +776,15 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
 
       const nextProject = {
-        ...activeProject,
-        sourceIds: [
-          ...new Set([
-            ...activeProject.sourceIds,
-            ...importedAssets.map((asset) => asset.id),
-          ]),
-        ],
-        updatedAt: new Date().toISOString(),
+        ...updateSelectedProjectLayer(activeProject, (layer) => ({
+          ...layer,
+          sourceIds: [
+            ...new Set([...layer.sourceIds, ...importedAssets.map((asset) => asset.id)]),
+          ],
+        })),
       };
+      const before = createProjectSnapshot(activeProject);
+      const after = createProjectSnapshot(nextProject);
 
       await db.projects.put(nextProject);
 
@@ -617,8 +796,8 @@ export const useAppStore = create<AppState>((set, get) => ({
               kind: "add-assets",
               projectId: nextProject.id,
               assets: structuredClone(importedAssets),
-              sourceIdsBefore: structuredClone(activeProject.sourceIds),
-              sourceIdsAfter: structuredClone(nextProject.sourceIds),
+              before,
+              after,
             } satisfies AddAssetsHistoryEntry,
           ],
           future: [],
@@ -659,10 +838,13 @@ export const useAppStore = create<AppState>((set, get) => ({
       await db.assets.put(asset);
 
       const nextProject = {
-        ...activeProject,
-        sourceIds: [...new Set([...activeProject.sourceIds, asset.id])],
-        updatedAt: new Date().toISOString(),
+        ...updateSelectedProjectLayer(activeProject, (layer) => ({
+          ...layer,
+          sourceIds: [...new Set([...layer.sourceIds, asset.id])],
+        })),
       };
+      const before = createProjectSnapshot(activeProject);
+      const after = createProjectSnapshot(nextProject);
 
       await db.projects.put(nextProject);
 
@@ -674,8 +856,8 @@ export const useAppStore = create<AppState>((set, get) => ({
               kind: "add-assets",
               projectId: nextProject.id,
               assets: [structuredClone(asset)],
-              sourceIdsBefore: structuredClone(activeProject.sourceIds),
-              sourceIdsAfter: structuredClone(nextProject.sourceIds),
+              before,
+              after,
             } satisfies AddAssetsHistoryEntry,
           ],
           future: [],
@@ -714,10 +896,13 @@ export const useAppStore = create<AppState>((set, get) => ({
       await db.assets.put(asset);
 
       const nextProject = {
-        ...activeProject,
-        sourceIds: [...new Set([...activeProject.sourceIds, asset.id])],
-        updatedAt: new Date().toISOString(),
+        ...updateSelectedProjectLayer(activeProject, (layer) => ({
+          ...layer,
+          sourceIds: [...new Set([...layer.sourceIds, asset.id])],
+        })),
       };
+      const before = createProjectSnapshot(activeProject);
+      const after = createProjectSnapshot(nextProject);
 
       await db.projects.put(nextProject);
 
@@ -729,8 +914,8 @@ export const useAppStore = create<AppState>((set, get) => ({
               kind: "add-assets",
               projectId: nextProject.id,
               assets: [structuredClone(asset)],
-              sourceIdsBefore: structuredClone(activeProject.sourceIds),
-              sourceIdsAfter: structuredClone(nextProject.sourceIds),
+              before,
+              after,
             } satisfies AddAssetsHistoryEntry,
           ],
           future: [],
@@ -769,10 +954,13 @@ export const useAppStore = create<AppState>((set, get) => ({
       await db.assets.put(asset);
 
       const nextProject = {
-        ...activeProject,
-        sourceIds: [...new Set([...activeProject.sourceIds, asset.id])],
-        updatedAt: new Date().toISOString(),
+        ...updateSelectedProjectLayer(activeProject, (layer) => ({
+          ...layer,
+          sourceIds: [...new Set([...layer.sourceIds, asset.id])],
+        })),
       };
+      const before = createProjectSnapshot(activeProject);
+      const after = createProjectSnapshot(nextProject);
 
       await db.projects.put(nextProject);
 
@@ -784,8 +972,8 @@ export const useAppStore = create<AppState>((set, get) => ({
               kind: "add-assets",
               projectId: nextProject.id,
               assets: [structuredClone(asset)],
-              sourceIdsBefore: structuredClone(activeProject.sourceIds),
-              sourceIdsAfter: structuredClone(nextProject.sourceIds),
+              before,
+              after,
             } satisfies AddAssetsHistoryEntry,
           ],
           future: [],
@@ -830,11 +1018,9 @@ export const useAppStore = create<AppState>((set, get) => ({
         },
       };
 
-      const nextProject = {
-        ...activeProject,
-        sourceIds: activeProject.sourceIds.filter((sourceId) => sourceId !== asset.id),
-        updatedAt: new Date().toISOString(),
-      };
+      const nextProject = removeSourceFromAllLayers(activeProject, asset.id);
+      const before = createProjectSnapshot(activeProject);
+      const after = createProjectSnapshot(nextProject);
 
       await Promise.all([
         deleteAssetFiles([asset]),
@@ -850,8 +1036,8 @@ export const useAppStore = create<AppState>((set, get) => ({
               kind: "remove-assets",
               projectId: nextProject.id,
               assets: [removedAsset],
-              sourceIdsBefore: structuredClone(activeProject.sourceIds),
-              sourceIdsAfter: structuredClone(nextProject.sourceIds),
+              before,
+              after,
             } satisfies RemoveAssetsHistoryEntry,
           ],
           future: [],
@@ -926,8 +1112,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   async randomizeSeed() {
-    await get().updateProject((project) => ({
-      ...project,
+    await get().updateSelectedLayer((layer) => ({
+      ...layer,
       activeSeed: Math.floor(Math.random() * 1_000_000_000),
     }));
   },
@@ -949,18 +1135,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       label: label || `Snapshot ${new Date().toLocaleString()}`,
       createdAt: new Date().toISOString(),
       thumbnailPath,
-      snapshot: {
-        sourceIds: project.sourceIds,
-        canvas: structuredClone(project.canvas),
-        layout: structuredClone(project.layout),
-        sourceMapping: structuredClone(project.sourceMapping),
-        effects: structuredClone(project.effects),
-        compositing: structuredClone(project.compositing),
-        export: structuredClone(project.export),
-        activeSeed: project.activeSeed,
-        presets: structuredClone(project.presets),
-        passes: structuredClone(project.passes),
-      },
+      snapshot: createProjectSnapshot(project),
     };
 
     const updatedProject = {
@@ -1122,7 +1297,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       const restoredAssets = entry.assets.map((removedAsset) => removedAsset.asset);
       const updatedProject: ProjectDocument = {
         ...project,
-        sourceIds: structuredClone(entry.sourceIdsBefore),
+        ...structuredClone(entry.before),
         updatedAt: new Date().toISOString(),
       };
 
@@ -1151,7 +1326,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     const updatedProject: ProjectDocument = {
       ...project,
-      sourceIds: structuredClone(entry.sourceIdsBefore),
+      ...structuredClone(entry.before),
       updatedAt: new Date().toISOString(),
     };
     const assetIds = entry.assets.map((asset) => asset.id);
@@ -1214,7 +1389,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       const removedAssetIds = removedAssets.map((asset) => asset.id);
       const updatedProject: ProjectDocument = {
         ...project,
-        sourceIds: structuredClone(entry.sourceIdsAfter),
+        ...structuredClone(entry.after),
         updatedAt: new Date().toISOString(),
       };
 
@@ -1243,7 +1418,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     const updatedProject: ProjectDocument = {
       ...project,
-      sourceIds: structuredClone(entry.sourceIdsAfter),
+      ...structuredClone(entry.after),
       updatedAt: new Date().toISOString(),
     };
 

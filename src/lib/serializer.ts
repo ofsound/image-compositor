@@ -6,9 +6,12 @@ import { readBlob, writeBlob } from "@/lib/opfs";
 import { makeId } from "@/lib/id";
 import {
   normalizeProjectDocument,
+  normalizeProjectSnapshot,
   normalizeProjectVersion,
+  syncLegacyProjectFieldsToSelectedLayer,
 } from "@/lib/project-defaults";
 import type {
+  CompositorLayer,
   ImportedProjectBundle,
   ProjectBundleManifest,
   ProjectDocument,
@@ -39,7 +42,7 @@ export async function exportProjectBundle(
 ) {
   const zip = new JSZip();
   const manifest: ProjectBundleManifest = {
-    version: 1,
+    version: 2,
     projectId: project.id,
     exportedAt: new Date().toISOString(),
     assetIds: assets.map((asset) => asset.id),
@@ -85,10 +88,29 @@ export async function loadProjectBundle(bundle: Blob) {
   }
 
   const parsedManifest = JSON.parse(manifest) as ProjectBundleManifest;
-  const projectDoc = normalizeProjectDocument(JSON.parse(project) as ProjectDocument);
-  const versionDocs = (JSON.parse(versions) as ProjectVersion[]).map((version) =>
-    normalizeProjectVersion(version),
-  );
+  const parsedProject = JSON.parse(project) as ProjectDocument;
+  const parsedVersions = JSON.parse(versions) as ProjectVersion[];
+  const projectInput =
+    parsedManifest.version === 1
+      ? ({
+          ...parsedProject,
+          layers: undefined,
+          selectedLayerId: undefined,
+        } as unknown as ProjectDocument)
+      : parsedProject;
+  const versionInputs =
+    parsedManifest.version === 1
+      ? parsedVersions.map((version) => ({
+          ...version,
+          snapshot: {
+            ...version.snapshot,
+            layers: undefined,
+            selectedLayerId: undefined,
+          },
+        }) as unknown as ProjectVersion)
+      : parsedVersions;
+  const projectDoc = normalizeProjectDocument(projectInput);
+  const versionDocs = versionInputs.map((version) => normalizeProjectVersion(version));
   const assetDocs = (JSON.parse(assets) as SourceAsset[]).map((asset) =>
     normalizeSourceAsset(asset),
   );
@@ -147,11 +169,41 @@ export async function persistImportedProjectBundle(bundle: ImportedProjectBundle
   return { projectDoc, versionDocs, assetDocs };
 }
 
+function remapLayerSourceIds(
+  sourceIds: string[],
+  sourceIdMap: Map<string, string>,
+) {
+  return sourceIds.map((sourceId) => sourceIdMap.get(sourceId) ?? sourceId);
+}
+
+function remapLayer(
+  layer: CompositorLayer,
+  sourceIdMap: Map<string, string>,
+): CompositorLayer {
+  return {
+    ...structuredClone(layer),
+    sourceIds: remapLayerSourceIds(layer.sourceIds, sourceIdMap),
+    sourceMapping: {
+      ...structuredClone(layer.sourceMapping),
+      sourceWeights: remapSourceWeights(layer.sourceMapping.sourceWeights, sourceIdMap),
+    },
+  };
+}
+
 export function createImportCopy(bundle: ImportedProjectBundle) {
   const nextProjectId = makeId("project");
   const now = new Date().toISOString();
+  const sourceProject = normalizeProjectDocument(
+    syncLegacyProjectFieldsToSelectedLayer(bundle.projectDoc),
+  );
+  const sourceVersions = bundle.versionDocs.map((version) => ({
+    ...version,
+    snapshot: normalizeProjectSnapshot(
+      syncLegacyProjectFieldsToSelectedLayer(version.snapshot),
+    ),
+  }));
   const assetIdMap = new Map(bundle.assetDocs.map((asset) => [asset.id, makeId("asset")]));
-  const versionIdMap = new Map(bundle.versionDocs.map((version) => [version.id, makeId("version")]));
+  const versionIdMap = new Map(sourceVersions.map((version) => [version.id, makeId("version")]));
 
   const assetDocs = bundle.assetDocs.map((asset) => {
     const nextAssetId = assetIdMap.get(asset.id) ?? asset.id;
@@ -165,46 +217,32 @@ export function createImportCopy(bundle: ImportedProjectBundle) {
   });
 
   const sourceIdMap = new Map(assetDocs.map((asset, index) => [bundle.assetDocs[index]?.id ?? asset.id, asset.id]));
-  const versionDocs = bundle.versionDocs.map((version) => {
+  const versionDocs = sourceVersions.map((version) => {
     const nextVersionId = versionIdMap.get(version.id) ?? version.id;
     return {
       ...version,
       id: nextVersionId,
       projectId: nextProjectId,
       thumbnailPath: version.thumbnailPath ? `versions/${nextVersionId}.webp` : null,
-      snapshot: {
+      snapshot: normalizeProjectSnapshot({
         ...structuredClone(version.snapshot),
-        sourceIds: version.snapshot.sourceIds.map((sourceId) => sourceIdMap.get(sourceId) ?? sourceId),
-        sourceMapping: {
-          ...structuredClone(version.snapshot.sourceMapping),
-          sourceWeights: remapSourceWeights(
-            version.snapshot.sourceMapping.sourceWeights,
-            sourceIdMap,
-          ),
-        },
-      },
+        layers: version.snapshot.layers.map((layer) => remapLayer(layer, sourceIdMap)),
+      }),
     } satisfies ProjectVersion;
   });
 
-  const projectDoc: ProjectDocument = {
-    ...bundle.projectDoc,
+  const projectDoc: ProjectDocument = normalizeProjectDocument({
+    ...sourceProject,
     id: nextProjectId,
-    title: `${bundle.projectDoc.title} Copy`,
-    sourceIds: bundle.projectDoc.sourceIds.map((sourceId) => sourceIdMap.get(sourceId) ?? sourceId),
-    sourceMapping: {
-      ...structuredClone(bundle.projectDoc.sourceMapping),
-      sourceWeights: remapSourceWeights(
-        bundle.projectDoc.sourceMapping.sourceWeights,
-        sourceIdMap,
-      ),
-    },
-    currentVersionId: bundle.projectDoc.currentVersionId
-      ? (versionIdMap.get(bundle.projectDoc.currentVersionId) ?? null)
+    title: `${sourceProject.title} Copy`,
+    layers: sourceProject.layers.map((layer) => remapLayer(layer, sourceIdMap)),
+    currentVersionId: sourceProject.currentVersionId
+      ? (versionIdMap.get(sourceProject.currentVersionId) ?? null)
       : null,
     deletedAt: null,
     createdAt: now,
     updatedAt: now,
-  };
+  });
 
   const assetBlobs = Object.fromEntries(
     assetDocs.flatMap((asset, index) => {

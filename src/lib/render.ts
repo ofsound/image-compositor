@@ -1,5 +1,6 @@
 import type {
   KaleidoscopeMirrorMode,
+  LayerRenderProject,
   ProjectDocument,
   RenderSlice,
   SourceAsset,
@@ -7,6 +8,11 @@ import type {
 import { withAlpha } from "@/lib/color";
 import { buildRenderSlices } from "@/lib/generator-registry";
 import { lockExportDimensionsToCanvas } from "@/lib/export-sizing";
+import {
+  createLayerRenderProject,
+  normalizeProjectDocument,
+  syncLegacyProjectFieldsToSelectedLayer,
+} from "@/lib/project-defaults";
 import { clamp } from "@/lib/utils";
 
 interface AssetBitmapEntry {
@@ -32,7 +38,7 @@ const RENDER_CONTEXT_OPTIONS = {
   colorSpace: "srgb",
 } as CanvasRenderingContext2DSettings & { colorSpace?: "srgb" };
 
-function getHollowRatio(project: ProjectDocument) {
+function getHollowRatio(project: LayerRenderProject) {
   return clamp(project.layout.hollowRatio, 0, 0.95);
 }
 
@@ -46,7 +52,7 @@ async function loadBitmap(blob: Blob) {
 function drawShapePath(
   context: RenderContext,
   slice: RenderSlice,
-  project: ProjectDocument,
+  project: LayerRenderProject,
 ) {
   const bounds = slice.clipRect ?? slice.rect;
   const { x, y, width, height } = bounds;
@@ -134,7 +140,7 @@ function drawShapePath(
 function clipSliceToInsetArea(
   context: RenderContext,
   slice: RenderSlice,
-  project: ProjectDocument,
+  project: LayerRenderProject,
 ) {
   if (slice.shape !== "interlock") return;
 
@@ -148,7 +154,11 @@ function clipSliceToInsetArea(
   context.clip();
 }
 
-function getSourceRect(slice: RenderSlice, asset: SourceAsset, project: ProjectDocument) {
+function getSourceRect(
+  slice: RenderSlice,
+  asset: SourceAsset,
+  project: LayerRenderProject,
+) {
   const targetRect = slice.imageRect ?? slice.rect;
   if (slice.sourceCrop) {
     return {
@@ -273,7 +283,7 @@ function renderSliceSurface(
   slice: RenderSlice,
   bitmap: ImageBitmap,
   asset: SourceAsset,
-  project: ProjectDocument,
+  project: LayerRenderProject,
 ) {
   const width = Math.max(1, Math.ceil(slice.rect.width));
   const height = Math.max(1, Math.ceil(slice.rect.height));
@@ -332,7 +342,7 @@ function drawWarpedSlice(
   slice: RenderSlice,
   bitmap: ImageBitmap,
   asset: SourceAsset,
-  project: ProjectDocument,
+  project: LayerRenderProject,
 ) {
   if (!slice.quadPoints || slice.quadPoints.length !== 4) {
     return false;
@@ -416,7 +426,7 @@ async function drawSlice(
   slice: RenderSlice,
   bitmap: ImageBitmap,
   asset: SourceAsset,
-  project: ProjectDocument,
+  project: LayerRenderProject,
 ) {
   const targetRect = slice.imageRect ?? slice.rect;
   const { x, y, width, height } = targetRect;
@@ -578,7 +588,7 @@ function getKaleidoscopeScaleX(
 function applyKaleidoscope(
   context: RenderContext,
   sourceCanvas: RenderCanvas,
-  project: ProjectDocument,
+  project: LayerRenderProject,
 ) {
   const { effects } = project;
   if (effects.kaleidoscopeSegments <= 1) {
@@ -638,13 +648,73 @@ export async function renderProjectToCanvas(
   canvas: RenderCanvas,
   options: RenderOptions = {},
 ) {
-  canvas.width = project.canvas.width;
-  canvas.height = project.canvas.height;
+  const normalizedProject = normalizeProjectDocument(
+    syncLegacyProjectFieldsToSelectedLayer(project),
+  );
+  canvas.width = normalizedProject.canvas.width;
+  canvas.height = normalizedProject.canvas.height;
   const context = getRenderContext(canvas);
 
   if (options.includeBackground ?? true) {
-    drawBackground(context, project);
+    drawBackground(context, normalizedProject);
+  } else if (typeof context.clearRect === "function") {
+    context.clearRect(
+      0,
+      0,
+      normalizedProject.canvas.width,
+      normalizedProject.canvas.height,
+    );
   }
+
+  const visibleLayers = normalizedProject.layers.filter((layer) => layer.visible);
+
+  for (const layer of visibleLayers) {
+    if (!layer.visible) continue;
+
+    const layerAssets =
+      layer.sourceIds.length > 0
+        ? layer.sourceIds
+            .map((sourceId) => assets.find((asset) => asset.id === sourceId))
+            .filter((asset): asset is SourceAsset => Boolean(asset))
+        : assets;
+
+    const usesDirectComposite = visibleLayers.length === 1;
+
+    if (usesDirectComposite) {
+      const layerProject = createLayerRenderProject(normalizedProject, layer);
+      await renderLayer(layerProject, layerAssets, bitmaps, context, canvas);
+      continue;
+    }
+
+    const layerProject = createLayerRenderProject(normalizedProject, {
+      ...layer,
+      compositing: {
+        ...layer.compositing,
+        blendMode: "source-over",
+        opacity: 1,
+      },
+    });
+    const layerCanvas = createRenderCanvas(
+      normalizedProject.canvas.width,
+      normalizedProject.canvas.height,
+    );
+    await renderLayerToCanvas(layerProject, layerAssets, bitmaps, layerCanvas);
+
+    context.save();
+    context.globalCompositeOperation = layer.compositing.blendMode;
+    context.globalAlpha = clamp(layer.compositing.opacity, 0, 1);
+    context.drawImage(layerCanvas, 0, 0);
+    context.restore();
+  }
+}
+
+async function renderLayer(
+  project: LayerRenderProject,
+  assets: SourceAsset[],
+  bitmaps: Map<string, AssetBitmapEntry>,
+  context: RenderContext,
+  canvas: RenderCanvas,
+) {
   const slices = buildRenderSlices(project, assets);
   const kaleidoscopeSourceCanvas =
     project.effects.kaleidoscopeSegments > 1
@@ -674,6 +744,18 @@ export async function renderProjectToCanvas(
   }
 
   applySharpen(context, canvas, project.effects.sharpen);
+}
+
+async function renderLayerToCanvas(
+  project: LayerRenderProject,
+  assets: SourceAsset[],
+  bitmaps: Map<string, AssetBitmapEntry>,
+  canvas: RenderCanvas,
+) {
+  canvas.width = project.canvas.width;
+  canvas.height = project.canvas.height;
+  const context = getRenderContext(canvas);
+  await renderLayer(project, assets, bitmaps, context, canvas);
 }
 
 export async function exportProjectImage(

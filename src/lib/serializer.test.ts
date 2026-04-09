@@ -1,6 +1,10 @@
 import JSZip from "jszip";
 import { describe, expect, it } from "vitest";
 
+import {
+  normalizeProjectDocument,
+  normalizeProjectSnapshot,
+} from "@/lib/project-defaults";
 import { createImportCopy, loadProjectBundle } from "@/lib/serializer";
 import type { ImportedProjectBundle } from "@/types/project";
 
@@ -12,7 +16,7 @@ const bundle: ImportedProjectBundle = {
     assetIds: ["asset_original"],
     versionIds: ["version_original"],
   },
-  projectDoc: {
+  projectDoc: normalizeProjectDocument({
     id: "project_original",
     title: "Original",
     currentVersionId: "version_original",
@@ -123,7 +127,7 @@ const bundle: ImportedProjectBundle = {
     activeSeed: 1,
     presets: [],
     passes: [],
-  },
+  }),
   versionDocs: [
     {
       id: "version_original",
@@ -131,7 +135,7 @@ const bundle: ImportedProjectBundle = {
       label: "Version 1",
       createdAt: "2026-03-31T00:00:00.000Z",
       thumbnailPath: "versions/version_original.webp",
-      snapshot: {
+      snapshot: normalizeProjectSnapshot({
         sourceIds: ["asset_original"],
         canvas: {
           width: 100,
@@ -236,7 +240,7 @@ const bundle: ImportedProjectBundle = {
         activeSeed: 1,
         presets: [],
         passes: [],
-      },
+      }),
     },
   ],
   assetDocs: [

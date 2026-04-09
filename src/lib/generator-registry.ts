@@ -1,5 +1,6 @@
 import type {
   GeometryShape,
+  LayerRenderProject,
   LayoutFamily,
   NormalizedRect,
   RenderPoint,
@@ -10,12 +11,18 @@ import type {
   SourceAssignmentStrategy,
   ThreeDStructureMode,
 } from "@/types/project";
+import {
+  createLayerRenderProject,
+  getSelectedLayer,
+  normalizeProjectDocument,
+  syncLegacyProjectFieldsToSelectedLayer,
+} from "@/lib/project-defaults";
 import { hashToSeed, mulberry32 } from "@/lib/rng";
 import { getSourceWeight } from "@/lib/source-weights";
 import { clamp, lerp } from "@/lib/utils";
 
 interface GeneratorContext {
-  project: ProjectDocument;
+  project: LayerRenderProject;
   assets: SourceAsset[];
 }
 
@@ -334,7 +341,7 @@ function rotatePoint3D(point: Point3D, yawRadians: number, pitchRadians: number)
   };
 }
 
-function getInsetCanvasCorners(project: ProjectDocument): Point[] {
+function getInsetCanvasCorners(project: LayerRenderProject): Point[] {
   const left = project.canvas.inset;
   const right = project.canvas.width - project.canvas.inset;
   const top = project.canvas.inset;
@@ -1602,7 +1609,7 @@ function getPaletteVariationScore(asset: SourceAsset) {
 }
 
 function getManualSourceWeights(
-  project: ProjectDocument,
+  project: LayerRenderProject,
   assets: SourceAsset[],
 ) {
   const weights = assets.map((asset) =>
@@ -1665,7 +1672,7 @@ function buildSmoothWeightedCycle(assets: SourceAsset[], weights: number[]) {
 function pickOrderedWeightedAsset(
   assets: SourceAsset[],
   index: number,
-  project: ProjectDocument,
+  project: LayerRenderProject,
 ) {
   const cycle = buildSmoothWeightedCycle(assets, getManualSourceWeights(project, assets));
   return cycle[index % cycle.length]!;
@@ -1676,7 +1683,7 @@ function assetByStrategy(
   assets: SourceAsset[],
   index: number,
   rng: ReturnType<typeof mulberry32>,
-  project: ProjectDocument,
+  project: LayerRenderProject,
 ) {
   if (assets.length === 0) {
     throw new Error("No source assets available.");
@@ -1753,7 +1760,7 @@ function assetByStrategy(
   return pickRandomWeightedAsset(assets, getManualSourceWeights(project, assets), rng);
 }
 
-function reflectSlices(slices: RenderSlice[], project: ProjectDocument) {
+function reflectSlices(slices: RenderSlice[], project: LayerRenderProject) {
   const { symmetryMode, symmetryCopies } = project.layout;
   if (symmetryMode === "none") return slices;
 
@@ -1969,7 +1976,7 @@ function applyCropZoom(crop: NormalizedRect, bounds: NormalizedRect, zoom: numbe
 }
 
 function getAtlasDimensions(
-  project: ProjectDocument,
+  project: LayerRenderProject,
   asset: SourceAsset,
   sliceCount: number,
 ) {
@@ -2012,7 +2019,7 @@ function expandStripClipRect(clipRect: RenderRect, amount: number) {
 
 function assignDistributedCrops(
   slices: RenderSlice[],
-  project: ProjectDocument,
+  project: LayerRenderProject,
   assets: SourceAsset[],
 ) {
   if (project.sourceMapping.cropDistribution !== "distributed") {
@@ -2099,7 +2106,7 @@ function assignDistributedCrops(
 
 function alignDistributedStripSlicesToCanvas(
   slices: RenderSlice[],
-  project: ProjectDocument,
+  project: LayerRenderProject,
 ) {
   if (
     project.layout.family !== "strips" ||
@@ -2122,7 +2129,7 @@ function alignDistributedStripSlicesToCanvas(
   }));
 }
 
-function hideRandomSlices(slices: RenderSlice[], project: ProjectDocument) {
+function hideRandomSlices(slices: RenderSlice[], project: LayerRenderProject) {
   const hideCount = Math.round(
     slices.length * clamp(project.layout.hidePercentage, 0, 1),
   );
@@ -2145,7 +2152,7 @@ function hideRandomSlices(slices: RenderSlice[], project: ProjectDocument) {
   return slices.filter((slice) => !hiddenSliceIds.has(slice.id));
 }
 
-function applyLetterbox(slices: RenderSlice[], project: ProjectDocument) {
+function applyLetterbox(slices: RenderSlice[], project: LayerRenderProject) {
   const amount = clamp(project.layout.letterbox, 0, 1);
   if (amount <= 0) return slices;
 
@@ -2203,7 +2210,7 @@ function applyLetterbox(slices: RenderSlice[], project: ProjectDocument) {
 
 function getWedgeSweepRadians(
   shape: ConcreteGeometryShape,
-  project: ProjectDocument,
+  project: LayerRenderProject,
   rng: ReturnType<typeof mulberry32>,
 ) {
   if (shape !== "wedge" && shape !== "arc") return null;
@@ -2217,10 +2224,24 @@ function getWedgeSweepRadians(
   return (sweepDegrees * Math.PI) / 180;
 }
 
-export function buildRenderSlices(project: ProjectDocument, assets: SourceAsset[]) {
+export function buildRenderSlices(
+  input: ProjectDocument | LayerRenderProject,
+  assets: SourceAsset[],
+) {
   if (assets.length === 0) {
     return [];
   }
+
+  const normalizedProject =
+    "layers" in input
+      ? normalizeProjectDocument(syncLegacyProjectFieldsToSelectedLayer(input))
+      : null;
+  const project = normalizedProject
+    ? createLayerRenderProject(
+        normalizedProject,
+        getSelectedLayer(normalizedProject) ?? normalizedProject.layers.at(-1)!,
+      )
+    : input;
 
   const layoutCells = layoutRegistry[project.layout.family]({ project, assets });
   const rng = mulberry32(project.activeSeed);

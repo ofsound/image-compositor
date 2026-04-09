@@ -1,11 +1,13 @@
 import type {
   CanvasSettings,
-  CropDistribution,
   CompositingSettings,
+  CompositorLayer,
+  CropDistribution,
   EffectSettings,
   ExportSettings,
   GeneratorPreset,
   LayoutSettings,
+  LayerRenderProject,
   ProjectDocument,
   ProjectSnapshot,
   ProjectVersion,
@@ -19,12 +21,73 @@ type LegacyEffectSettings = Partial<EffectSettings> & {
   mirror?: boolean;
 };
 
+type LegacyProjectLike = {
+  canvas?: Partial<CanvasSettings> & { inset?: number };
+  sourceIds?: string[];
+  layout?: Partial<LayoutSettings>;
+  sourceMapping?: Partial<SourceMappingSettings>;
+  effects?: Partial<EffectSettings>;
+  compositing?: Partial<CompositingSettings>;
+  activeSeed?: number;
+  presets?: GeneratorPreset[];
+  passes?: RenderPass[];
+  layers?: unknown;
+  selectedLayerId?: string | null;
+};
+
+type LegacySnapshotLike = LegacyProjectLike & {
+  export?: Partial<ExportSettings>;
+};
+
+type LegacyDocumentLike = LegacySnapshotLike & Pick<
+  ProjectDocument,
+  "id" | "title" | "currentVersionId" | "deletedAt" | "createdAt" | "updatedAt"
+>;
+
+function getSelectedLayerIndexFromSnapshot(snapshot: {
+  layers: CompositorLayer[];
+  selectedLayerId: string | null;
+}) {
+  const selectedIndex = snapshot.layers.findIndex(
+    (layer) => layer.id === snapshot.selectedLayerId,
+  );
+  return selectedIndex >= 0 ? selectedIndex : Math.max(snapshot.layers.length - 1, 0);
+}
+
+export function getSelectedLayer<T extends { layers: CompositorLayer[]; selectedLayerId: string | null }>(
+  value: T,
+) {
+  return value.layers[getSelectedLayerIndexFromSnapshot(value)] ?? null;
+}
+
+export function createLayerRenderProject(
+  project: Pick<ProjectDocument, "canvas">,
+  layer: CompositorLayer,
+): LayerRenderProject {
+  return {
+    canvas: {
+      ...structuredClone(project.canvas),
+      inset: layer.inset,
+    },
+    sourceIds: structuredClone(layer.sourceIds),
+    layout: structuredClone(layer.layout),
+    sourceMapping: structuredClone(layer.sourceMapping),
+    effects: structuredClone(layer.effects),
+    compositing: structuredClone(layer.compositing),
+    activeSeed: layer.activeSeed,
+    presets: structuredClone(layer.presets),
+    passes: structuredClone(layer.passes),
+  };
+}
+
+export const DEFAULT_LAYER_INSET = 48;
+
 export const DEFAULT_CANVAS: CanvasSettings = {
   width: 3000,
   height: 3000,
   background: "#f5efe4",
   backgroundAlpha: 0,
-  inset: 48,
+  inset: DEFAULT_LAYER_INSET,
 };
 
 export function normalizeCanvasSettings(
@@ -296,38 +359,273 @@ export function normalizeSourceMapping(
     strategy: sourceMapping?.strategy ?? DEFAULT_SOURCE_MAPPING.strategy,
     sourceBias: sourceMapping?.sourceBias ?? DEFAULT_SOURCE_MAPPING.sourceBias,
     sourceWeights: normalizeSourceWeights(sourceMapping?.sourceWeights),
-    preserveAspect: sourceMapping?.preserveAspect ?? DEFAULT_SOURCE_MAPPING.preserveAspect,
-    cropDistribution: sourceMapping?.cropDistribution ?? fallbackCropDistribution,
+    preserveAspect:
+      sourceMapping?.preserveAspect ?? DEFAULT_SOURCE_MAPPING.preserveAspect,
+    cropDistribution:
+      sourceMapping?.cropDistribution ?? fallbackCropDistribution,
     cropZoom: sourceMapping?.cropZoom ?? DEFAULT_SOURCE_MAPPING.cropZoom,
-    luminanceSort: sourceMapping?.luminanceSort ?? DEFAULT_SOURCE_MAPPING.luminanceSort,
-    paletteEmphasis: sourceMapping?.paletteEmphasis ?? DEFAULT_SOURCE_MAPPING.paletteEmphasis,
+    luminanceSort:
+      sourceMapping?.luminanceSort ?? DEFAULT_SOURCE_MAPPING.luminanceSort,
+    paletteEmphasis:
+      sourceMapping?.paletteEmphasis ?? DEFAULT_SOURCE_MAPPING.paletteEmphasis,
   };
+}
+
+function normalizeCompositingSettings(
+  compositing: Partial<CompositingSettings> | undefined,
+): CompositingSettings {
+  return {
+    blendMode: compositing?.blendMode ?? DEFAULT_COMPOSITING.blendMode,
+    opacity: compositing?.opacity ?? DEFAULT_COMPOSITING.opacity,
+    overlap: compositing?.overlap ?? DEFAULT_COMPOSITING.overlap,
+    shadow: compositing?.shadow ?? DEFAULT_COMPOSITING.shadow,
+    feather: compositing?.feather ?? DEFAULT_COMPOSITING.feather,
+  };
+}
+
+function normalizeLayerPasses(
+  passes: RenderPass[] | undefined,
+): RenderPass[] {
+  return structuredClone(passes ?? DEFAULT_PASSES);
+}
+
+function normalizeLayerPresets(
+  presets: GeneratorPreset[] | undefined,
+): GeneratorPreset[] {
+  return structuredClone(presets ?? DEFAULT_PRESETS);
+}
+
+export function normalizeCompositorLayer(
+  layer: Partial<CompositorLayer> | undefined,
+  fallbackCropDistribution: CropDistribution = "center",
+  fallbackName = "Layer 1",
+): CompositorLayer {
+  return {
+    id: layer?.id ?? makeId("layer"),
+    name: layer?.name?.trim() || fallbackName,
+    visible: layer?.visible ?? true,
+    inset: layer?.inset ?? DEFAULT_LAYER_INSET,
+    sourceIds: structuredClone(layer?.sourceIds ?? []),
+    layout: normalizeLayoutSettings(layer?.layout),
+    sourceMapping: normalizeSourceMapping(
+      layer?.sourceMapping,
+      fallbackCropDistribution,
+    ),
+    effects: normalizeEffectSettings(layer?.effects),
+    compositing: normalizeCompositingSettings(layer?.compositing),
+    activeSeed: layer?.activeSeed ?? 187310,
+    presets: normalizeLayerPresets(layer?.presets),
+    passes: normalizeLayerPasses(layer?.passes),
+  };
+}
+
+export function createCompositorLayer(
+  input: Partial<CompositorLayer> = {},
+): CompositorLayer {
+  return normalizeCompositorLayer(input, "distributed", input.name ?? "Layer 1");
+}
+
+function createLegacyLayer(
+  value: LegacyProjectLike,
+  fallbackCropDistribution: CropDistribution,
+): CompositorLayer {
+  return normalizeCompositorLayer(
+    {
+      name: "Layer 1",
+      visible: true,
+      inset: value.canvas?.inset ?? DEFAULT_LAYER_INSET,
+      sourceIds: value.sourceIds ?? [],
+      layout: value.layout,
+      sourceMapping: value.sourceMapping,
+      effects: value.effects,
+      compositing: value.compositing,
+      activeSeed: value.activeSeed,
+      presets: value.presets,
+      passes: value.passes,
+    } as Partial<CompositorLayer>,
+    fallbackCropDistribution,
+    "Layer 1",
+  );
+}
+
+function normalizeLayers(
+  value: LegacyProjectLike,
+  fallbackCropDistribution: CropDistribution,
+): { layers: CompositorLayer[]; selectedLayerId: string | null } {
+  const rawLayers = Array.isArray(value.layers)
+    ? value.layers
+    : [createLegacyLayer(value, fallbackCropDistribution)];
+  const layers = rawLayers.map((layer, index) =>
+    normalizeCompositorLayer(
+      layer as Partial<CompositorLayer>,
+      fallbackCropDistribution,
+      `Layer ${index + 1}`,
+    ),
+  );
+  const selectedLayerId =
+    layers.find((layer) => layer.id === value.selectedLayerId)?.id ??
+    layers.at(-1)?.id ??
+    null;
+
+  return { layers, selectedLayerId };
+}
+
+export function syncLegacyProjectFieldsToSelectedLayer<T extends ProjectSnapshot>(
+  snapshot: T,
+): T {
+  const selectedLayerIndex = getSelectedLayerIndexFromSnapshot(snapshot);
+  const selectedLayer = snapshot.layers[selectedLayerIndex];
+  if (!selectedLayer) {
+    return snapshot;
+  }
+
+  const nextSelectedLayer: CompositorLayer = {
+    ...selectedLayer,
+    inset: snapshot.canvas.inset ?? selectedLayer.inset,
+    sourceIds: structuredClone(snapshot.sourceIds ?? selectedLayer.sourceIds),
+    layout: structuredClone(snapshot.layout ?? selectedLayer.layout),
+    sourceMapping: structuredClone(
+      snapshot.sourceMapping ?? selectedLayer.sourceMapping,
+    ),
+    effects: structuredClone(snapshot.effects ?? selectedLayer.effects),
+    compositing: structuredClone(
+      snapshot.compositing ?? selectedLayer.compositing,
+    ),
+    activeSeed: snapshot.activeSeed ?? selectedLayer.activeSeed,
+    presets: structuredClone(snapshot.presets ?? selectedLayer.presets),
+    passes: structuredClone(snapshot.passes ?? selectedLayer.passes),
+  };
+  const layers = snapshot.layers.map((layer, index) =>
+    index === selectedLayerIndex ? nextSelectedLayer : layer,
+  );
+
+  return {
+    ...snapshot,
+    layers,
+  };
+}
+
+function attachLegacySelectedLayerFields<T extends ProjectSnapshot>(
+  snapshot: T,
+): T {
+  const selectedLayer = getSelectedLayer(snapshot);
+
+  return {
+    ...snapshot,
+    canvas: {
+      ...structuredClone(snapshot.canvas),
+      inset: selectedLayer?.inset ?? DEFAULT_LAYER_INSET,
+    },
+    sourceIds: structuredClone(selectedLayer?.sourceIds ?? []),
+    layout: structuredClone(selectedLayer?.layout ?? DEFAULT_LAYOUT),
+    sourceMapping: structuredClone(
+      selectedLayer?.sourceMapping ?? DEFAULT_SOURCE_MAPPING,
+    ),
+    effects: structuredClone(selectedLayer?.effects ?? DEFAULT_EFFECTS),
+    compositing: structuredClone(
+      selectedLayer?.compositing ?? DEFAULT_COMPOSITING,
+    ),
+    activeSeed: selectedLayer?.activeSeed ?? 187310,
+    presets: structuredClone(selectedLayer?.presets ?? DEFAULT_PRESETS),
+    passes: structuredClone(selectedLayer?.passes ?? DEFAULT_PASSES),
+  };
+}
+
+function hasPartialLayoutOverrides(layout: Partial<LayoutSettings> | undefined) {
+  return (
+    !!layout &&
+    ("gutterHorizontal" in layout === false ||
+      "gutterVertical" in layout === false ||
+      "family" in layout === false)
+  );
+}
+
+function hasPartialSourceMappingOverrides(
+  sourceMapping: Partial<SourceMappingSettings> | undefined,
+) {
+  return (
+    !!sourceMapping &&
+    ("cropDistribution" in sourceMapping === false ||
+      "strategy" in sourceMapping === false)
+  );
+}
+
+function hasPartialEffectOverrides(effects: Partial<EffectSettings> | undefined) {
+  return !!effects && ("blur" in effects === false || "sharpen" in effects === false);
+}
+
+function hasPartialCompositingOverrides(
+  compositing: Partial<CompositingSettings> | undefined,
+) {
+  return (
+    !!compositing &&
+    ("blendMode" in compositing === false || "opacity" in compositing === false)
+  );
+}
+
+function hasLegacyRootOverrides(snapshot: LegacySnapshotLike) {
+  return (
+    Array.isArray(snapshot.layers) &&
+    (hasPartialLayoutOverrides(snapshot.layout) ||
+      hasPartialSourceMappingOverrides(snapshot.sourceMapping) ||
+      hasPartialEffectOverrides(snapshot.effects) ||
+      hasPartialCompositingOverrides(snapshot.compositing))
+  );
 }
 
 export function normalizeProjectSnapshot(
-  snapshot: ProjectSnapshot,
+  snapshot: ProjectSnapshot | LegacySnapshotLike,
   fallbackCropDistribution: CropDistribution = "center",
 ): ProjectSnapshot {
-  return {
-    ...snapshot,
-    canvas: normalizeCanvasSettings(snapshot.canvas),
+  const normalizedCanvas = normalizeCanvasSettings(snapshot.canvas);
+  const { layers, selectedLayerId } = normalizeLayers(
+    snapshot as ProjectSnapshot & LegacyProjectLike,
+    fallbackCropDistribution,
+  );
+  const normalizedSnapshot = {
+    canvas: normalizedCanvas,
+    export: {
+      format: snapshot.export?.format ?? DEFAULT_EXPORT.format,
+      quality: snapshot.export?.quality ?? DEFAULT_EXPORT.quality,
+      width: snapshot.export?.width ?? DEFAULT_EXPORT.width,
+      height: snapshot.export?.height ?? DEFAULT_EXPORT.height,
+      scale: snapshot.export?.scale ?? DEFAULT_EXPORT.scale,
+    },
+    layers,
+    selectedLayerId,
+    sourceIds: snapshot.sourceIds ?? [],
     layout: normalizeLayoutSettings(snapshot.layout),
-    sourceMapping: normalizeSourceMapping(snapshot.sourceMapping, fallbackCropDistribution),
+    sourceMapping: normalizeSourceMapping(
+      snapshot.sourceMapping,
+      fallbackCropDistribution,
+    ),
     effects: normalizeEffectSettings(snapshot.effects),
-  };
+    compositing: normalizeCompositingSettings(snapshot.compositing),
+    activeSeed: snapshot.activeSeed ?? 187310,
+    presets: snapshot.presets ?? DEFAULT_PRESETS,
+    passes: snapshot.passes ?? DEFAULT_PASSES,
+  } satisfies ProjectSnapshot;
+
+  return attachLegacySelectedLayerFields(
+    hasLegacyRootOverrides(snapshot)
+      ? syncLegacyProjectFieldsToSelectedLayer(normalizedSnapshot)
+      : normalizedSnapshot,
+  );
 }
 
 export function normalizeProjectDocument(
-  project: ProjectDocument,
+  project: ProjectDocument | LegacyDocumentLike,
   fallbackCropDistribution: CropDistribution = "center",
 ): ProjectDocument {
+  const normalizedSnapshot = normalizeProjectSnapshot(
+    project,
+    fallbackCropDistribution,
+  );
+
   return {
     ...project,
+    ...normalizedSnapshot,
     deletedAt: project.deletedAt ?? null,
-    canvas: normalizeCanvasSettings(project.canvas),
-    layout: normalizeLayoutSettings(project.layout),
-    sourceMapping: normalizeSourceMapping(project.sourceMapping, fallbackCropDistribution),
-    effects: normalizeEffectSettings(project.effects),
   };
 }
 
@@ -342,18 +640,17 @@ export function normalizeProjectVersion(
 }
 
 export function createSnapshot(): ProjectSnapshot {
-  return {
-    sourceIds: [],
+  const layer = createCompositorLayer({
+    name: "Layer 1",
+    visible: true,
+  });
+
+  return attachLegacySelectedLayerFields({
     canvas: structuredClone(DEFAULT_CANVAS),
-    layout: structuredClone(DEFAULT_LAYOUT),
-    sourceMapping: structuredClone(DEFAULT_SOURCE_MAPPING),
-    effects: structuredClone(DEFAULT_EFFECTS),
-    compositing: structuredClone(DEFAULT_COMPOSITING),
     export: structuredClone(DEFAULT_EXPORT),
-    activeSeed: 187310,
-    presets: structuredClone(DEFAULT_PRESETS),
-    passes: structuredClone(DEFAULT_PASSES),
-  };
+    layers: [layer],
+    selectedLayerId: layer.id,
+  } as ProjectSnapshot);
 }
 
 export function createProjectDocument(title = "Untitled Composition"): ProjectDocument {

@@ -214,6 +214,21 @@ export interface CompositingSettings {
   feather: number;
 }
 
+export interface CompositorLayer {
+  id: string;
+  name: string;
+  visible: boolean;
+  inset: number;
+  sourceIds: string[];
+  layout: LayoutSettings;
+  sourceMapping: SourceMappingSettings;
+  effects: EffectSettings;
+  compositing: CompositingSettings;
+  activeSeed: number;
+  presets: GeneratorPreset[];
+  passes: RenderPass[];
+}
+
 export interface ExportSettings {
   format: ExportFormat;
   quality: number;
@@ -238,13 +253,15 @@ export interface RenderPass {
 }
 
 export interface ProjectSnapshot {
-  sourceIds: string[];
   canvas: CanvasSettings;
+  export: ExportSettings;
+  layers: CompositorLayer[];
+  selectedLayerId: string | null;
+  sourceIds: string[];
   layout: LayoutSettings;
   sourceMapping: SourceMappingSettings;
   effects: EffectSettings;
   compositing: CompositingSettings;
-  export: ExportSettings;
   activeSeed: number;
   presets: GeneratorPreset[];
   passes: RenderPass[];
@@ -269,7 +286,7 @@ export interface ProjectVersion {
 }
 
 export interface ProjectBundleManifest {
-  version: 1;
+  version: 1 | 2;
   projectId: string;
   exportedAt: string;
   assetIds: string[];
@@ -301,6 +318,18 @@ export interface RenderAsset {
 export interface RenderedPreviewSnapshot {
   project: ProjectDocument;
   assetIds: string[];
+}
+
+export interface LayerRenderProject {
+  canvas: CanvasSettings & { inset: number };
+  sourceIds: string[];
+  layout: LayoutSettings;
+  sourceMapping: SourceMappingSettings;
+  effects: EffectSettings;
+  compositing: CompositingSettings;
+  activeSeed: number;
+  presets: GeneratorPreset[];
+  passes: RenderPass[];
 }
 
 export interface RenderRect {

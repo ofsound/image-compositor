@@ -2,11 +2,25 @@ import JSZip from "jszip";
 import { describe, expect, it } from "vitest";
 
 import {
+  getSelectedLayer,
   normalizeProjectDocument,
   normalizeProjectSnapshot,
 } from "@/lib/project-defaults";
+import { createProjectEditorView } from "@/lib/project-editor-view";
 import { createImportCopy, loadProjectBundle } from "@/lib/serializer";
 import type { ImportedProjectBundle } from "@/types/project";
+
+function getProjectView(project: ImportedProjectBundle["projectDoc"]) {
+  return createProjectEditorView(project);
+}
+
+function getVersionSnapshotLayer(snapshot: ImportedProjectBundle["versionDocs"][number]["snapshot"]) {
+  const layer = getSelectedLayer(snapshot);
+  if (!layer) {
+    throw new Error("Expected a selected layer.");
+  }
+  return layer;
+}
 
 const bundle: ImportedProjectBundle = {
   manifest: {
@@ -139,7 +153,7 @@ const bundle: ImportedProjectBundle = {
     activeSeed: 1,
     presets: [],
     passes: [],
-  }),
+  } as Parameters<typeof normalizeProjectDocument>[0]),
   versionDocs: [
     {
       id: "version_original",
@@ -264,7 +278,7 @@ const bundle: ImportedProjectBundle = {
         activeSeed: 1,
         presets: [],
         passes: [],
-      }),
+      } as Parameters<typeof normalizeProjectSnapshot>[0]),
     },
   ],
   assetDocs: [
@@ -306,19 +320,19 @@ describe("createImportCopy", () => {
     expect(copy.projectDoc.deletedAt).toBeNull();
     expect(copy.assetDocs[0]?.projectId).toBe(copy.projectDoc.id);
     expect(copy.assetDocs[0]?.id).not.toBe(bundle.assetDocs[0]?.id);
-    expect(copy.projectDoc.sourceIds).toEqual([copy.assetDocs[0]?.id]);
+    expect(getProjectView(copy.projectDoc).sourceIds).toEqual([copy.assetDocs[0]?.id]);
     expect(copy.versionDocs[0]?.id).not.toBe(bundle.versionDocs[0]?.id);
     expect(copy.versionDocs[0]?.projectId).toBe(copy.projectDoc.id);
-    expect(copy.versionDocs[0]?.snapshot.sourceIds).toEqual([copy.assetDocs[0]?.id]);
-    expect(copy.projectDoc.sourceMapping.sourceWeights).toEqual({
+    expect(copy.versionDocs[0] && getVersionSnapshotLayer(copy.versionDocs[0].snapshot).sourceIds).toEqual([copy.assetDocs[0]?.id]);
+    expect(getProjectView(copy.projectDoc).sourceMapping.sourceWeights).toEqual({
       [copy.assetDocs[0]!.id]: 2.25,
     });
-    expect(copy.versionDocs[0]?.snapshot.sourceMapping.sourceWeights).toEqual({
+    expect(copy.versionDocs[0] && getVersionSnapshotLayer(copy.versionDocs[0].snapshot).sourceMapping.sourceWeights).toEqual({
       [copy.assetDocs[0]!.id]: 2.25,
     });
-    expect(copy.projectDoc.finish).toEqual(bundle.projectDoc.finish);
-    expect(copy.versionDocs[0]?.snapshot.finish).toEqual(
-      bundle.versionDocs[0]?.snapshot.finish,
+    expect(getProjectView(copy.projectDoc).finish).toEqual(getProjectView(bundle.projectDoc).finish);
+    expect(copy.versionDocs[0] && getVersionSnapshotLayer(copy.versionDocs[0].snapshot).finish).toEqual(
+      bundle.versionDocs[0] && getVersionSnapshotLayer(bundle.versionDocs[0].snapshot).finish,
     );
     expect(copy.projectDoc.currentVersionId).toBe(copy.versionDocs[0]?.id);
     expect(Object.keys(copy.assetBlobs)).toEqual([
@@ -359,17 +373,17 @@ describe("createImportCopy", () => {
         ...bundle.manifest,
         assetIds: ["asset_gradient"],
       },
-      projectDoc: {
+      projectDoc: normalizeProjectDocument({
         ...bundle.projectDoc,
         sourceIds: ["asset_gradient"],
-      },
+      } as Parameters<typeof normalizeProjectDocument>[0]),
       versionDocs: [
         {
           ...bundle.versionDocs[0]!,
-          snapshot: {
+          snapshot: normalizeProjectSnapshot({
             ...bundle.versionDocs[0]!.snapshot,
             sourceIds: ["asset_gradient"],
-          },
+          } as Parameters<typeof normalizeProjectSnapshot>[0]),
         },
       ],
       assetBlobs: {},
@@ -403,7 +417,7 @@ describe("createImportCopy", () => {
       conicSpan: 360,
       conicRepeat: false,
     });
-    expect(copy.projectDoc.sourceIds).toEqual([copy.assetDocs[0]?.id]);
+    expect(getProjectView(copy.projectDoc).sourceIds).toEqual([copy.assetDocs[0]?.id]);
   });
 
   it("preserves perlin source metadata when copying imported bundles", () => {
@@ -429,17 +443,17 @@ describe("createImportCopy", () => {
         ...bundle.manifest,
         assetIds: ["asset_perlin"],
       },
-      projectDoc: {
+      projectDoc: normalizeProjectDocument({
         ...bundle.projectDoc,
         sourceIds: ["asset_perlin"],
-      },
+      } as Parameters<typeof normalizeProjectDocument>[0]),
       versionDocs: [
         {
           ...bundle.versionDocs[0]!,
-          snapshot: {
+          snapshot: normalizeProjectSnapshot({
             ...bundle.versionDocs[0]!.snapshot,
             sourceIds: ["asset_perlin"],
-          },
+          } as Parameters<typeof normalizeProjectSnapshot>[0]),
         },
       ],
       assetBlobs: {},
@@ -466,7 +480,7 @@ describe("createImportCopy", () => {
       distortion: 0.2,
       seed: 42,
     });
-    expect(copy.projectDoc.sourceIds).toEqual([copy.assetDocs[0]?.id]);
+    expect(getProjectView(copy.projectDoc).sourceIds).toEqual([copy.assetDocs[0]?.id]);
   });
 });
 
@@ -517,8 +531,8 @@ describe("loadProjectBundle", () => {
 
     const loaded = await loadProjectBundle(await zip.generateAsync({ type: "blob" }));
 
-    expect(loaded.projectDoc.sourceMapping.cropDistribution).toBe("center");
-    expect(loaded.versionDocs[0]?.snapshot.sourceMapping.cropDistribution).toBe("center");
+    expect(getProjectView(loaded.projectDoc).sourceMapping.cropDistribution).toBe("center");
+    expect(loaded.versionDocs[0] && getVersionSnapshotLayer(loaded.versionDocs[0].snapshot).sourceMapping.cropDistribution).toBe("center");
   });
 
   it("normalizes legacy assets without kind to image sources", async () => {

@@ -2,10 +2,12 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   createProjectDocument,
+  getSelectedLayer,
   normalizeLayoutSettings,
   normalizeProjectDocument,
   normalizeProjectSnapshot,
 } from "@/lib/project-defaults";
+import { createProjectEditorView } from "@/lib/project-editor-view";
 import {
   exportProjectImage,
   renderProjectLayerToCanvas,
@@ -13,6 +15,10 @@ import {
 } from "@/lib/render";
 import { buildBitmapMap } from "@/lib/render";
 import type { SourceAsset } from "@/types/project";
+
+function createProjectView(title: string) {
+  return createProjectEditorView(createProjectDocument(title));
+}
 
 function createMockContext() {
   const drawImageCompositeOperations: string[] = [];
@@ -198,25 +204,25 @@ describe("renderProjectToCanvas", () => {
   });
 
   it("defaults missing rect corner radius values to zero during normalization", () => {
-    const project = createProjectDocument("Normalize Radius");
+    const project = createProjectView("Normalize Radius");
     const snapshot = structuredClone(project);
 
     delete (project.layout as Partial<typeof project.layout>).rectCornerRadius;
     delete (snapshot.layout as Partial<typeof snapshot.layout>).rectCornerRadius;
 
-    expect(normalizeProjectDocument(project).layout.rectCornerRadius).toBe(0);
-    expect(normalizeProjectSnapshot(snapshot).layout.rectCornerRadius).toBe(0);
+    expect(createProjectEditorView(normalizeProjectDocument(project)).layout.rectCornerRadius).toBe(0);
+    expect(getSelectedLayer(normalizeProjectSnapshot(snapshot))?.layout.rectCornerRadius).toBe(0);
     expect(normalizeLayoutSettings(undefined).rectCornerRadius).toBe(0);
   });
 
   it("creates new projects with a square rect corner radius default", () => {
-    const project = createProjectDocument("Square Default");
+    const project = createProjectView("Square Default");
 
     expect(project.layout.rectCornerRadius).toBe(0);
   });
 
   it("renders a single layer without compositing the full stack", async () => {
-    const project = createProjectDocument("Single Layer");
+    const project = createProjectView("Single Layer");
     project.layout.family = "grid";
     project.layout.columns = 1;
     project.layout.rows = 1;
@@ -251,7 +257,7 @@ describe("renderProjectToCanvas", () => {
   });
 
   it("clears the target canvas when rendering a transparent layer preview", async () => {
-    const project = createProjectDocument("Transparent Layer");
+    const project = createProjectView("Transparent Layer");
     project.layout.family = "grid";
     project.layout.columns = 1;
     project.layout.rows = 1;
@@ -283,7 +289,7 @@ describe("renderProjectToCanvas", () => {
   });
 
   it("preserves layer compositing and finish settings in isolated layer previews", async () => {
-    const project = createProjectDocument("Layer Finish");
+    const project = createProjectView("Layer Finish");
     project.layout.family = "grid";
     project.layout.columns = 1;
     project.layout.rows = 1;
@@ -330,7 +336,7 @@ describe("renderProjectToCanvas", () => {
   });
 
   it("uses the configured rect corner radius scale", async () => {
-    const project = createProjectDocument("Rect Radius");
+    const project = createProjectView("Rect Radius");
     project.layout.family = "grid";
     project.layout.columns = 1;
     project.layout.rows = 1;
@@ -365,7 +371,7 @@ describe("renderProjectToCanvas", () => {
   });
 
   it("keeps non-rect shapes unaffected by the rect corner radius setting", async () => {
-    const project = createProjectDocument("Triangle Radius");
+    const project = createProjectView("Triangle Radius");
     project.layout.family = "grid";
     project.layout.columns = 1;
     project.layout.rows = 1;
@@ -399,7 +405,7 @@ describe("renderProjectToCanvas", () => {
   });
 
   it("renders organic blob slices from custom clip paths", async () => {
-    const project = createProjectDocument("Organic Render");
+    const project = createProjectView("Organic Render");
     project.layout.family = "organic";
     project.layout.shapeMode = "blob";
     project.layout.density = 0.05;
@@ -433,7 +439,7 @@ describe("renderProjectToCanvas", () => {
   });
 
   it("warps 3d slices through projected card quads", async () => {
-    const project = createProjectDocument("3D Warp Render");
+    const project = createProjectView("3D Warp Render");
     project.layout.family = "3d";
     project.layout.shapeMode = "rect";
     project.layout.symmetryMode = "none";
@@ -479,7 +485,7 @@ describe("renderProjectToCanvas", () => {
   });
 
   it("renders interlock slices as rotated triangle paths clipped to the inset area", async () => {
-    const project = createProjectDocument("Interlock Render");
+    const project = createProjectView("Interlock Render");
     project.layout.family = "grid";
     project.layout.columns = 2;
     project.layout.rows = 1;
@@ -521,7 +527,7 @@ describe("renderProjectToCanvas", () => {
   });
 
   it("renders wedge sweeps from the configured wedge angle", async () => {
-    const project = createProjectDocument("Wedge Render");
+    const project = createProjectView("Wedge Render");
     project.layout.family = "grid";
     project.layout.columns = 1;
     project.layout.rows = 1;
@@ -558,7 +564,7 @@ describe("renderProjectToCanvas", () => {
   });
 
   it("uses the hollow ratio for ring geometry", async () => {
-    const project = createProjectDocument("Ring Hollow Ratio");
+    const project = createProjectView("Ring Hollow Ratio");
     project.layout.family = "grid";
     project.layout.columns = 1;
     project.layout.rows = 1;
@@ -593,7 +599,7 @@ describe("renderProjectToCanvas", () => {
   });
 
   it("renders arc geometry as a hollow open sweep", async () => {
-    const project = createProjectDocument("Arc Render");
+    const project = createProjectView("Arc Render");
     project.layout.family = "grid";
     project.layout.columns = 1;
     project.layout.rows = 1;
@@ -635,7 +641,7 @@ describe("renderProjectToCanvas", () => {
   });
 
   it("renders a full-circle wedge cleanly at 360 degrees", async () => {
-    const project = createProjectDocument("Wedge Full Circle Render");
+    const project = createProjectView("Wedge Full Circle Render");
     project.layout.family = "grid";
     project.layout.columns = 1;
     project.layout.rows = 1;
@@ -676,7 +682,7 @@ describe("renderProjectToCanvas", () => {
   });
 
   it("can skip the background pass for transparent export rendering", async () => {
-    const project = createProjectDocument("Transparent Export");
+    const project = createProjectView("Transparent Export");
     project.canvas.width = 64;
     project.canvas.height = 48;
     project.effects.sharpen = 0;
@@ -701,7 +707,7 @@ describe("renderProjectToCanvas", () => {
   });
 
   it("keeps the background pass for default rendering", async () => {
-    const project = createProjectDocument("Opaque Render");
+    const project = createProjectView("Opaque Render");
     project.canvas.width = 64;
     project.canvas.height = 48;
     project.effects.sharpen = 0;
@@ -720,7 +726,7 @@ describe("renderProjectToCanvas", () => {
   });
 
   it("uses centered crops when crop distribution is center", async () => {
-    const project = createProjectDocument("Centered Crop");
+    const project = createProjectView("Centered Crop");
     project.layout.family = "grid";
     project.layout.columns = 2;
     project.layout.rows = 2;
@@ -758,7 +764,7 @@ describe("renderProjectToCanvas", () => {
   });
 
   it("uses distributed source crops when crop distribution is enabled", async () => {
-    const project = createProjectDocument("Distributed Crop");
+    const project = createProjectView("Distributed Crop");
     project.layout.family = "grid";
     project.layout.columns = 2;
     project.layout.rows = 2;
@@ -796,7 +802,7 @@ describe("renderProjectToCanvas", () => {
   });
 
   it("renders kaleidoscope clones from a frozen source canvas with configured transforms", async () => {
-    const project = createProjectDocument("Kaleidoscope Render");
+    const project = createProjectView("Kaleidoscope Render");
     project.effects.sharpen = 0;
     project.effects.kaleidoscopeSegments = 3;
     project.effects.kaleidoscopeCenterX = 0.25;
@@ -851,7 +857,7 @@ describe("renderProjectToCanvas", () => {
   });
 
   it("applies the configured blend mode when compositing kaleidoscope layers", async () => {
-    const project = createProjectDocument("Kaleidoscope Blend Mode");
+    const project = createProjectView("Kaleidoscope Blend Mode");
     project.effects.sharpen = 0;
     project.effects.kaleidoscopeSegments = 3;
     project.effects.kaleidoscopeOpacity = 0.5;
@@ -907,7 +913,7 @@ describe("renderProjectToCanvas", () => {
   });
 
   it("composites non-kaleidoscope multiply layers through the offscreen layer path", async () => {
-    const project = createProjectDocument("Slice Blend Mode");
+    const project = createProjectView("Slice Blend Mode");
     project.effects.sharpen = 0;
     project.effects.kaleidoscopeSegments = 1;
     project.layout.family = "grid";
@@ -954,7 +960,7 @@ describe("renderProjectToCanvas", () => {
   });
 
   it("keeps default finish layers on the direct render path", async () => {
-    const project = createProjectDocument("Direct Finish Path");
+    const project = createProjectView("Direct Finish Path");
     project.effects.sharpen = 0;
     project.effects.kaleidoscopeSegments = 1;
     project.layout.family = "grid";
@@ -991,7 +997,7 @@ describe("renderProjectToCanvas", () => {
   });
 
   it("applies finish color adjustments and drop shadow during layer compositing", async () => {
-    const project = createProjectDocument("Layer Finish");
+    const project = createProjectView("Layer Finish");
     project.effects.sharpen = 0;
     project.effects.kaleidoscopeSegments = 1;
     project.layout.family = "grid";
@@ -1060,7 +1066,7 @@ describe("renderProjectToCanvas", () => {
   });
 
   it("preserves blend mode and opacity when finish effects force offscreen compositing", async () => {
-    const project = createProjectDocument("Finish Blend");
+    const project = createProjectView("Finish Blend");
     project.effects.sharpen = 0;
     project.effects.kaleidoscopeSegments = 1;
     project.layout.family = "grid";
@@ -1117,7 +1123,7 @@ describe("renderProjectToCanvas", () => {
   });
 
   it("uses the configured kaleidoscope mirror mode when scaling clones", async () => {
-    const project = createProjectDocument("Kaleidoscope Mirror Mode");
+    const project = createProjectView("Kaleidoscope Mirror Mode");
     project.effects.sharpen = 0;
     project.effects.kaleidoscopeSegments = 3;
     project.effects.kaleidoscopeMirrorMode = "mirror-all";
@@ -1149,7 +1155,7 @@ describe("renderProjectToCanvas", () => {
   });
 
   it("does not wipe the canvas background when kaleidoscope opacity is 100%", async () => {
-    const project = createProjectDocument("Kaleidoscope Opaque");
+    const project = createProjectView("Kaleidoscope Opaque");
     project.effects.sharpen = 0;
     project.effects.kaleidoscopeSegments = 3;
     project.effects.kaleidoscopeOpacity = 1;
@@ -1196,7 +1202,7 @@ describe("renderProjectToCanvas", () => {
   });
 
   it("keeps single-image distributed strips on the full canvas image placement", async () => {
-    const project = createProjectDocument("Distributed Strips");
+    const project = createProjectView("Distributed Strips");
     project.layout.family = "strips";
     project.layout.density = 0;
     project.layout.randomness = 0;
@@ -1242,7 +1248,7 @@ describe("renderProjectToCanvas", () => {
   });
 
   it("renders horizontal strips from the strip angle control without rotating source crops", async () => {
-    const project = createProjectDocument("Horizontal Strips");
+    const project = createProjectView("Horizontal Strips");
     project.layout.family = "strips";
     project.layout.stripAngle = 90;
     project.layout.density = 0;
@@ -1290,7 +1296,7 @@ describe("renderProjectToCanvas", () => {
   });
 
   it("keeps full-canvas source placement for intermediate strip angles", async () => {
-    const project = createProjectDocument("Diagonal Strips");
+    const project = createProjectView("Diagonal Strips");
     project.layout.family = "strips";
     project.layout.stripAngle = 135;
     project.layout.density = 0;
@@ -1341,7 +1347,7 @@ describe("renderProjectToCanvas", () => {
 
 describe("exportProjectImage", () => {
   it("exports transparent png projects as image/png blobs", async () => {
-    const project = createProjectDocument("Transparent PNG");
+    const project = createProjectView("Transparent PNG");
     project.canvas.width = 1800;
     project.canvas.height = 1200;
     project.export.format = "image/png-transparent";
@@ -1395,7 +1401,7 @@ describe("exportProjectImage", () => {
   });
 
   it("applies the configured background alpha to the scene render", async () => {
-    const project = createProjectDocument("Background Alpha");
+    const project = createProjectView("Background Alpha");
     project.canvas.background = "#123456";
     project.canvas.backgroundAlpha = 0.35;
     project.effects.sharpen = 0;

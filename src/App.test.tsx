@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as assetLib from "@/lib/assets";
 import { createProjectDocument } from "@/lib/project-defaults";
+import { createProjectEditorView } from "@/lib/project-editor-view";
 import { renderLayerThumbnailUrls } from "@/lib/render-service";
 import App, {
   coerceShapeModeForFamily,
@@ -91,7 +92,7 @@ function createStoreState(overrides?: {
   enabledSourceIds?: string[];
   sourceWeights?: Record<string, number>;
 }) {
-  const project = createProjectDocument("Slider Spec");
+  const project = createProjectEditorView(createProjectDocument("Slider Spec"));
 
   if (overrides?.family) {
     project.layout.family = overrides.family;
@@ -575,7 +576,7 @@ describe("App conditional sliders", () => {
     const [[update]] = state.updateProject.mock.calls;
     expect(update).toBeTypeOf("function");
 
-    const nextProject = update(structuredClone(state.projects[0]!));
+    const nextProject = createProjectEditorView(update(structuredClone(state.projects[0]!)));
     expect(nextProject.layout.density).toBe(4);
   });
 
@@ -597,7 +598,7 @@ describe("App conditional sliders", () => {
     expect(state.updateProject).toHaveBeenCalledTimes(1);
 
     const [[update]] = state.updateProject.mock.calls;
-    const nextProject = update(structuredClone(state.projects[0]!));
+    const nextProject = createProjectEditorView(update(structuredClone(state.projects[0]!)));
     expect(nextProject.layout.organicVariation).toBe(1);
   });
 
@@ -855,7 +856,7 @@ describe("App conditional sliders", () => {
     expect(state.updateProject).toHaveBeenCalledTimes(1);
 
     const [[update]] = state.updateProject.mock.calls;
-    const nextProject = update(structuredClone(state.projects[0]!));
+    const nextProject = createProjectEditorView(update(structuredClone(state.projects[0]!)));
     expect(nextProject.layout.organicVariation).toBe(4096);
   });
 
@@ -895,7 +896,7 @@ describe("App conditional sliders", () => {
     expect(state.updateProject).toHaveBeenCalledTimes(1);
 
     const [[update]] = state.updateProject.mock.calls;
-    const nextProject = update(structuredClone(state.projects[0]!));
+    const nextProject = createProjectEditorView(update(structuredClone(state.projects[0]!)));
     expect(nextProject.sourceMapping.sourceWeights).toEqual({
       asset_a: 4,
     });

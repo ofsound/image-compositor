@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { buildRenderSlices } from "@/lib/generator-registry";
 import { createProjectDocument } from "@/lib/project-defaults";
+import { createProjectEditorView } from "@/lib/project-editor-view";
 import type { SourceAsset } from "@/types/project";
 
 const assets: SourceAsset[] = [
@@ -90,7 +91,11 @@ function projectPoint(x: number, y: number, angleDegrees: number) {
   return x * Math.cos(radians) + y * Math.sin(radians);
 }
 
-function getInsetProjectionRange(project: ReturnType<typeof createProjectDocument>, angleDegrees: number) {
+function createProjectView(title: string) {
+  return createProjectEditorView(createProjectDocument(title));
+}
+
+function getInsetProjectionRange(project: ReturnType<typeof createProjectView>, angleDegrees: number) {
   const left = project.canvas.inset;
   const right = project.canvas.width - project.canvas.inset;
   const top = project.canvas.inset;
@@ -109,7 +114,7 @@ function getInsetProjectionRange(project: ReturnType<typeof createProjectDocumen
 }
 
 function getStripIntervals(
-  project: ReturnType<typeof createProjectDocument>,
+  project: ReturnType<typeof createProjectView>,
   angleDegrees: number,
 ) {
   const slices = buildRenderSlices(project, [assets[0]!]);
@@ -217,7 +222,7 @@ function getQuadEdgeSymmetryDelta(
 
 describe("buildRenderSlices", () => {
   it("builds deterministic slices for a seeded project", () => {
-    const project = createProjectDocument("Determinism");
+    const project = createProjectView("Determinism");
     project.sourceIds = assets.map((asset) => asset.id);
     project.layout.family = "blocks";
     project.layout.symmetryMode = "mirror-x";
@@ -230,7 +235,7 @@ describe("buildRenderSlices", () => {
   });
 
   it("uses the configured symmetry center as the mirror pivot", () => {
-    const project = createProjectDocument("Symmetry Center");
+    const project = createProjectView("Symmetry Center");
     project.sourceIds = [assets[0]!.id];
     project.layout.family = "grid";
     project.layout.columns = 1;
@@ -248,7 +253,7 @@ describe("buildRenderSlices", () => {
   });
 
   it("applies symmetry angle offset to radial clones", () => {
-    const project = createProjectDocument("Symmetry Angle Offset");
+    const project = createProjectView("Symmetry Angle Offset");
     project.sourceIds = [assets[0]!.id];
     project.layout.family = "grid";
     project.layout.columns = 1;
@@ -268,7 +273,7 @@ describe("buildRenderSlices", () => {
   });
 
   it("adds deterministic clone drift without moving the base slice", () => {
-    const project = createProjectDocument("Symmetry Drift");
+    const project = createProjectView("Symmetry Drift");
     project.sourceIds = [assets[0]!.id];
     project.layout.family = "grid";
     project.layout.columns = 1;
@@ -291,7 +296,7 @@ describe("buildRenderSlices", () => {
   });
 
   it("increases block slice count as block depth rises", () => {
-    const project = createProjectDocument("Block Depth");
+    const project = createProjectView("Block Depth");
     project.sourceIds = [assets[0]!.id];
     project.layout.family = "blocks";
     project.layout.symmetryMode = "none";
@@ -307,7 +312,7 @@ describe("buildRenderSlices", () => {
   });
 
   it("stops block subdivision earlier as the minimum block size increases", () => {
-    const project = createProjectDocument("Block Min Size");
+    const project = createProjectView("Block Min Size");
     project.sourceIds = [assets[0]!.id];
     project.layout.family = "blocks";
     project.layout.symmetryMode = "none";
@@ -327,7 +332,7 @@ describe("buildRenderSlices", () => {
   });
 
   it("centers first-level block splits when split randomness is zero", () => {
-    const project = createProjectDocument("Centered Blocks");
+    const project = createProjectView("Centered Blocks");
     project.sourceIds = [assets[0]!.id];
     project.layout.family = "blocks";
     project.layout.symmetryMode = "none";
@@ -348,7 +353,7 @@ describe("buildRenderSlices", () => {
   });
 
   it("favors vertical block splits as block split bias rises", () => {
-    const project = createProjectDocument("Block Bias");
+    const project = createProjectView("Block Bias");
     project.sourceIds = [assets[0]!.id];
     project.layout.family = "blocks";
     project.layout.symmetryMode = "none";
@@ -367,7 +372,7 @@ describe("buildRenderSlices", () => {
   });
 
   it("keeps all rectangles within a sensible padded canvas range", () => {
-    const project = createProjectDocument("Bounds");
+    const project = createProjectView("Bounds");
     project.sourceIds = assets.map((asset) => asset.id);
     project.layout.family = "grid";
     project.layout.symmetryMode = "none";
@@ -384,7 +389,7 @@ describe("buildRenderSlices", () => {
   });
 
   it("applies horizontal and vertical grid gutters independently", () => {
-    const project = createProjectDocument("Grid Axis Gutters");
+    const project = createProjectView("Grid Axis Gutters");
     project.sourceIds = [assets[0]!.id];
     project.layout.family = "grid";
     project.layout.columns = 1;
@@ -403,7 +408,7 @@ describe("buildRenderSlices", () => {
   });
 
   it("uses radial segment and ring counts to determine the base slice count", () => {
-    const project = createProjectDocument("Radial Count");
+    const project = createProjectView("Radial Count");
     project.sourceIds = [assets[0]!.id];
     project.layout.family = "radial";
     project.layout.symmetryMode = "none";
@@ -416,7 +421,7 @@ describe("buildRenderSlices", () => {
   });
 
   it("keeps the canvas center outside every radial slice when inner radius is positive", () => {
-    const project = createProjectDocument("Radial Hole");
+    const project = createProjectView("Radial Hole");
     project.sourceIds = [assets[0]!.id];
     project.layout.family = "radial";
     project.layout.symmetryMode = "none";
@@ -443,7 +448,7 @@ describe("buildRenderSlices", () => {
   });
 
   it("rotates the radial lattice deterministically with angle offset", () => {
-    const project = createProjectDocument("Radial Offset");
+    const project = createProjectView("Radial Offset");
     project.sourceIds = [assets[0]!.id];
     project.layout.family = "radial";
     project.layout.symmetryMode = "none";
@@ -469,7 +474,7 @@ describe("buildRenderSlices", () => {
   });
 
   it("offsets each successive ring by the configured ring phase step", () => {
-    const project = createProjectDocument("Radial Ring Phase");
+    const project = createProjectView("Radial Ring Phase");
     project.sourceIds = [assets[0]!.id];
     project.layout.family = "radial";
     project.layout.symmetryMode = "none";
@@ -491,7 +496,7 @@ describe("buildRenderSlices", () => {
   });
 
   it("builds deterministic organic blob slices from the attractor field", () => {
-    const project = createProjectDocument("Organic Determinism");
+    const project = createProjectView("Organic Determinism");
     project.sourceIds = [assets[0]!.id];
     project.layout.family = "organic";
     project.layout.shapeMode = "blob";
@@ -507,7 +512,7 @@ describe("buildRenderSlices", () => {
   });
 
   it("increases organic slice count as density rises", () => {
-    const project = createProjectDocument("Organic Density");
+    const project = createProjectView("Organic Density");
     project.sourceIds = [assets[0]!.id];
     project.layout.family = "organic";
     project.layout.shapeMode = "blob";
@@ -523,7 +528,7 @@ describe("buildRenderSlices", () => {
   });
 
   it("re-seeds the organic distribution when the variation slider changes", () => {
-    const project = createProjectDocument("Organic Variation");
+    const project = createProjectView("Organic Variation");
     project.sourceIds = [assets[0]!.id];
     project.layout.family = "organic";
     project.layout.shapeMode = "blob";
@@ -542,7 +547,7 @@ describe("buildRenderSlices", () => {
   });
 
   it("keeps organic blob paths inside the inset canvas bounds", () => {
-    const project = createProjectDocument("Organic Bounds");
+    const project = createProjectView("Organic Bounds");
     project.sourceIds = [assets[0]!.id];
     project.layout.family = "organic";
     project.layout.shapeMode = "blob";
@@ -568,7 +573,7 @@ describe("buildRenderSlices", () => {
   });
 
   it("builds deterministic 3d slices for a seeded structure", () => {
-    const project = createProjectDocument("3D Determinism");
+    const project = createProjectView("3D Determinism");
     project.sourceIds = [assets[0]!.id];
     project.layout.family = "3d";
     project.layout.shapeMode = "rect";
@@ -584,7 +589,7 @@ describe("buildRenderSlices", () => {
   });
 
   it("changes the 3d arrangement across structure modes", () => {
-    const project = createProjectDocument("3D Structures");
+    const project = createProjectView("3D Structures");
     project.sourceIds = [assets[0]!.id];
     project.layout.family = "3d";
     project.layout.shapeMode = "rect";
@@ -605,7 +610,7 @@ describe("buildRenderSlices", () => {
   });
 
   it("re-seeds the 3d arrangement when distribution changes", () => {
-    const project = createProjectDocument("3D Distribution");
+    const project = createProjectView("3D Distribution");
     project.sourceIds = [assets[0]!.id];
     project.layout.family = "3d";
     project.layout.shapeMode = "rect";
@@ -621,7 +626,7 @@ describe("buildRenderSlices", () => {
   });
 
   it("assigns more fog to farther 3d slices", () => {
-    const project = createProjectDocument("3D Fog");
+    const project = createProjectView("3D Fog");
     project.sourceIds = [assets[0]!.id];
     project.layout.family = "3d";
     project.layout.shapeMode = "rect";
@@ -636,7 +641,7 @@ describe("buildRenderSlices", () => {
   });
 
   it("applies scale jitter to 3d card size in projected quads", () => {
-    const project = createProjectDocument("3D Scale Jitter");
+    const project = createProjectView("3D Scale Jitter");
     project.sourceIds = [assets[0]!.id];
     project.layout.family = "3d";
     project.layout.shapeMode = "rect";
@@ -666,7 +671,7 @@ describe("buildRenderSlices", () => {
   });
 
   it("applies rotation jitter as in-plane 3d card twist", () => {
-    const project = createProjectDocument("3D Rotation Jitter");
+    const project = createProjectView("3D Rotation Jitter");
     project.sourceIds = [assets[0]!.id];
     project.layout.family = "3d";
     project.layout.shapeMode = "rect";
@@ -700,7 +705,7 @@ describe("buildRenderSlices", () => {
   });
 
   it("applies distortion as perspective skew in 3d quads", () => {
-    const project = createProjectDocument("3D Distortion");
+    const project = createProjectView("3D Distortion");
     project.sourceIds = [assets[0]!.id];
     project.layout.family = "3d";
     project.layout.shapeMode = "rect";
@@ -730,7 +735,7 @@ describe("buildRenderSlices", () => {
   });
 
   it("increases strip count as density rises while staying deterministic", () => {
-    const project = createProjectDocument("Dense Strips");
+    const project = createProjectView("Dense Strips");
     project.sourceIds = [assets[0]!.id];
     project.layout.family = "strips";
     project.layout.symmetryMode = "none";
@@ -748,7 +753,7 @@ describe("buildRenderSlices", () => {
   });
 
   it("assigns unique distributed crops for a single-image 5x5 grid", () => {
-    const project = createProjectDocument("Distributed Grid");
+    const project = createProjectView("Distributed Grid");
     project.sourceIds = [assets[0]!.id];
     project.layout.family = "grid";
     project.layout.columns = 5;
@@ -764,7 +769,7 @@ describe("buildRenderSlices", () => {
   });
 
   it("builds staggered interlock grids with alternating triangle rotation", () => {
-    const project = createProjectDocument("Interlock Grid");
+    const project = createProjectView("Interlock Grid");
     project.sourceIds = [assets[0]!.id];
     project.layout.family = "grid";
     project.layout.shapeMode = "interlock";
@@ -812,7 +817,7 @@ describe("buildRenderSlices", () => {
   });
 
   it("draws single-image distributed strips against a full-canvas image rect", () => {
-    const project = createProjectDocument("Distributed Strips");
+    const project = createProjectView("Distributed Strips");
     project.sourceIds = [assets[0]!.id];
     project.layout.family = "strips";
     project.layout.density = 0;
@@ -838,7 +843,7 @@ describe("buildRenderSlices", () => {
   });
 
   it("supports horizontal strips through the strip angle control", () => {
-    const project = createProjectDocument("Horizontal Strips");
+    const project = createProjectView("Horizontal Strips");
     project.sourceIds = [assets[0]!.id];
     project.layout.family = "strips";
     project.layout.stripAngle = 90;
@@ -858,7 +863,7 @@ describe("buildRenderSlices", () => {
   });
 
   it("keeps multi-source distributed strips aligned to the full canvas without zoomed crops", () => {
-    const project = createProjectDocument("Multi-source Strips");
+    const project = createProjectView("Multi-source Strips");
     project.sourceIds = assets.map((asset) => asset.id);
     project.layout.family = "strips";
     project.layout.density = 0;
@@ -888,7 +893,7 @@ describe("buildRenderSlices", () => {
 
   it("covers the full inset canvas projection at representative strip angles", () => {
     for (const angle of [0, 21, 55, 90, 135]) {
-      const project = createProjectDocument(`Coverage ${angle}`);
+      const project = createProjectView(`Coverage ${angle}`);
       project.sourceIds = [assets[0]!.id];
       project.layout.family = "strips";
       project.layout.stripAngle = angle;
@@ -909,7 +914,7 @@ describe("buildRenderSlices", () => {
   });
 
   it("keeps the configured perpendicular gap between adjacent strips at intermediate angles", () => {
-    const project = createProjectDocument("Gap Accuracy");
+    const project = createProjectView("Gap Accuracy");
     project.sourceIds = [assets[0]!.id];
     project.layout.family = "strips";
     project.layout.stripAngle = 55;
@@ -929,7 +934,7 @@ describe("buildRenderSlices", () => {
   });
 
   it("clamps large strip gutters while preserving edge-to-edge coverage", () => {
-    const project = createProjectDocument("Clamped Gap");
+    const project = createProjectView("Clamped Gap");
     project.sourceIds = [assets[0]!.id];
     project.layout.family = "strips";
     project.layout.stripAngle = 135;
@@ -950,7 +955,7 @@ describe("buildRenderSlices", () => {
   });
 
   it("expands visible strip thickness when overlap increases even with zero gutter", () => {
-    const project = createProjectDocument("Strip Overlap");
+    const project = createProjectView("Strip Overlap");
     project.sourceIds = [assets[0]!.id];
     project.layout.family = "strips";
     project.layout.stripAngle = 0;
@@ -975,7 +980,7 @@ describe("buildRenderSlices", () => {
   });
 
   it("keeps sequential assignment while distributing unique crops per asset", () => {
-    const project = createProjectDocument("Sequential Crops");
+    const project = createProjectView("Sequential Crops");
     project.sourceIds = assets.map((asset) => asset.id);
     project.layout.family = "grid";
     project.layout.columns = 4;
@@ -1016,7 +1021,7 @@ describe("buildRenderSlices", () => {
   });
 
   it("biases sequential assignment toward higher manual source weights", () => {
-    const project = createProjectDocument("Sequential Source Mix");
+    const project = createProjectView("Sequential Source Mix");
     project.sourceIds = assets.map((asset) => asset.id);
     project.layout.family = "grid";
     project.layout.columns = 4;
@@ -1043,7 +1048,7 @@ describe("buildRenderSlices", () => {
   });
 
   it("keeps palette assignment while distributing unique crops per asset", () => {
-    const project = createProjectDocument("Palette Crops");
+    const project = createProjectView("Palette Crops");
     project.sourceIds = assets.map((asset) => asset.id);
     project.layout.family = "grid";
     project.layout.columns = 3;
@@ -1073,7 +1078,7 @@ describe("buildRenderSlices", () => {
   });
 
   it("lets manual source weights mute random assignment without disabling the source", () => {
-    const project = createProjectDocument("Random Source Mix");
+    const project = createProjectView("Random Source Mix");
     project.sourceIds = assets.map((asset) => asset.id);
     project.layout.family = "grid";
     project.layout.columns = 4;
@@ -1091,7 +1096,7 @@ describe("buildRenderSlices", () => {
   });
 
   it("preserves source order when palette emphasis is zero", () => {
-    const project = createProjectDocument("Palette Emphasis Source Order");
+    const project = createProjectView("Palette Emphasis Source Order");
     project.sourceIds = paletteBlendAssets.map((asset) => asset.id);
     project.layout.family = "grid";
     project.layout.columns = 3;
@@ -1111,7 +1116,7 @@ describe("buildRenderSlices", () => {
   });
 
   it("fully sorts by palette variation when palette emphasis is one", () => {
-    const project = createProjectDocument("Palette Emphasis Palette Order");
+    const project = createProjectView("Palette Emphasis Palette Order");
     project.sourceIds = paletteBlendAssets.map((asset) => asset.id);
     project.layout.family = "grid";
     project.layout.columns = 3;
@@ -1131,7 +1136,7 @@ describe("buildRenderSlices", () => {
   });
 
   it("interpolates palette order between the source and palette-ranked endpoints", () => {
-    const project = createProjectDocument("Palette Emphasis Intermediate");
+    const project = createProjectView("Palette Emphasis Intermediate");
     project.sourceIds = paletteBlendAssets.map((asset) => asset.id);
     project.layout.family = "grid";
     project.layout.columns = 3;
@@ -1151,7 +1156,7 @@ describe("buildRenderSlices", () => {
   });
 
   it("keeps equal palette scores in source order", () => {
-    const project = createProjectDocument("Palette Emphasis Stable Ties");
+    const project = createProjectView("Palette Emphasis Stable Ties");
     project.sourceIds = equalPaletteAssets.map((asset) => asset.id);
     project.layout.family = "grid";
     project.layout.columns = 3;
@@ -1171,7 +1176,7 @@ describe("buildRenderSlices", () => {
   });
 
   it("gives symmetry clones distinct crop windows", () => {
-    const project = createProjectDocument("Symmetry Crops");
+    const project = createProjectView("Symmetry Crops");
     project.sourceIds = [assets[0]!.id];
     project.layout.family = "grid";
     project.layout.columns = 2;
@@ -1189,7 +1194,7 @@ describe("buildRenderSlices", () => {
   });
 
   it("hides a percentage of the fully transformed object set", () => {
-    const project = createProjectDocument("Hidden Objects");
+    const project = createProjectView("Hidden Objects");
     project.sourceIds = [assets[0]!.id];
     project.layout.family = "grid";
     project.layout.columns = 2;
@@ -1206,7 +1211,7 @@ describe("buildRenderSlices", () => {
   });
 
   it("keeps slice geometry unchanged when letterbox is zero", () => {
-    const project = createProjectDocument("Letterbox Off");
+    const project = createProjectView("Letterbox Off");
     project.sourceIds = [assets[0]!.id];
     project.layout.family = "grid";
     project.layout.columns = 2;
@@ -1223,7 +1228,7 @@ describe("buildRenderSlices", () => {
   });
 
   it("moves objects inward and scales them down when letterbox is applied", () => {
-    const project = createProjectDocument("Letterbox Inward");
+    const project = createProjectView("Letterbox Inward");
     project.sourceIds = [assets[0]!.id];
     project.layout.family = "grid";
     project.layout.columns = 2;
@@ -1261,7 +1266,7 @@ describe("buildRenderSlices", () => {
   });
 
   it("moves strips inward and scales their visible and source geometry when letterbox is applied", () => {
-    const project = createProjectDocument("Strip Letterbox");
+    const project = createProjectView("Strip Letterbox");
     project.sourceIds = [assets[0]!.id];
     project.layout.family = "strips";
     project.layout.stripAngle = 64;
@@ -1310,7 +1315,7 @@ describe("buildRenderSlices", () => {
   });
 
   it("keeps nonzero object sizes at full letterbox", () => {
-    const project = createProjectDocument("Letterbox Max");
+    const project = createProjectView("Letterbox Max");
     project.sourceIds = [assets[0]!.id];
     project.layout.family = "grid";
     project.layout.columns = 2;
@@ -1327,7 +1332,7 @@ describe("buildRenderSlices", () => {
   });
 
   it("hides objects after letterbox has been applied", () => {
-    const project = createProjectDocument("Letterbox Then Hide");
+    const project = createProjectView("Letterbox Then Hide");
     project.sourceIds = [assets[0]!.id];
     project.layout.family = "grid";
     project.layout.columns = 2;
@@ -1347,7 +1352,7 @@ describe("buildRenderSlices", () => {
   });
 
   it("uses wedge angle deterministically for wedge slices", () => {
-    const project = createProjectDocument("Wedge Sweep");
+    const project = createProjectView("Wedge Sweep");
     project.sourceIds = [assets[0]!.id];
     project.layout.family = "grid";
     project.layout.columns = 2;
@@ -1366,7 +1371,7 @@ describe("buildRenderSlices", () => {
   });
 
   it("keeps wedge jitter additive and clamped per wedge", () => {
-    const project = createProjectDocument("Wedge Jitter");
+    const project = createProjectView("Wedge Jitter");
     project.sourceIds = [assets[0]!.id];
     project.layout.family = "grid";
     project.layout.columns = 2;
@@ -1385,7 +1390,7 @@ describe("buildRenderSlices", () => {
   });
 
   it("applies wedge controls only to wedge slices in mixed mode", () => {
-    const project = createProjectDocument("Mixed Wedges");
+    const project = createProjectView("Mixed Wedges");
     project.sourceIds = [assets[0]!.id];
     project.layout.family = "grid";
     project.layout.columns = 2;
@@ -1406,7 +1411,7 @@ describe("buildRenderSlices", () => {
   });
 
   it("cycles through mixed geometry shapes in radial layouts", () => {
-    const project = createProjectDocument("Radial Mixed");
+    const project = createProjectView("Radial Mixed");
     project.sourceIds = [assets[0]!.id];
     project.layout.family = "radial";
     project.layout.symmetryMode = "none";
@@ -1422,7 +1427,7 @@ describe("buildRenderSlices", () => {
   });
 
   it("applies wedge controls only to wedge slices in radial mixed mode", () => {
-    const project = createProjectDocument("Radial Mixed Wedges");
+    const project = createProjectView("Radial Mixed Wedges");
     project.sourceIds = [assets[0]!.id];
     project.layout.family = "radial";
     project.layout.symmetryMode = "none";
@@ -1444,7 +1449,7 @@ describe("buildRenderSlices", () => {
   });
 
   it("keeps radial wedge layouts wedge-only", () => {
-    const project = createProjectDocument("Radial Wedge Only");
+    const project = createProjectView("Radial Wedge Only");
     project.sourceIds = [assets[0]!.id];
     project.layout.family = "radial";
     project.layout.symmetryMode = "none";
@@ -1458,7 +1463,7 @@ describe("buildRenderSlices", () => {
   });
 
   it("keeps a visible sliver at zero wedge angle", () => {
-    const project = createProjectDocument("Wedge Sliver");
+    const project = createProjectView("Wedge Sliver");
     project.sourceIds = [assets[0]!.id];
     project.layout.family = "grid";
     project.layout.columns = 1;
@@ -1473,7 +1478,7 @@ describe("buildRenderSlices", () => {
   });
 
   it("clamps wedge sweeps to a full circle", () => {
-    const project = createProjectDocument("Wedge Full Circle");
+    const project = createProjectView("Wedge Full Circle");
     project.sourceIds = [assets[0]!.id];
     project.layout.family = "grid";
     project.layout.columns = 1;
@@ -1488,7 +1493,7 @@ describe("buildRenderSlices", () => {
   });
 
   it("keeps radial child rotation at zero when rotation mode is none", () => {
-    const project = createProjectDocument("Radial No Rotation");
+    const project = createProjectView("Radial No Rotation");
     project.sourceIds = [assets[0]!.id];
     project.layout.family = "radial";
     project.layout.symmetryMode = "none";
@@ -1503,7 +1508,7 @@ describe("buildRenderSlices", () => {
   });
 
   it("uses midpoint-based outward and tangent radial child rotations", () => {
-    const project = createProjectDocument("Radial Rotation Modes");
+    const project = createProjectView("Radial Rotation Modes");
     project.sourceIds = [assets[0]!.id];
     project.layout.family = "radial";
     project.layout.symmetryMode = "none";
@@ -1528,7 +1533,7 @@ describe("buildRenderSlices", () => {
   });
 
   it("keeps rotation jitter additive on top of the radial base rotation", () => {
-    const project = createProjectDocument("Radial Rotation Jitter");
+    const project = createProjectView("Radial Rotation Jitter");
     project.sourceIds = [assets[0]!.id];
     project.layout.family = "radial";
     project.layout.symmetryMode = "none";
@@ -1555,7 +1560,7 @@ describe("buildRenderSlices", () => {
   });
 
   it("keeps non-3d rotation, scale, and distortion on the 2d transform path", () => {
-    const project = createProjectDocument("2D Effect Regression");
+    const project = createProjectView("2D Effect Regression");
     project.sourceIds = [assets[0]!.id];
     project.layout.family = "grid";
     project.layout.shapeMode = "rect";
@@ -1576,7 +1581,7 @@ describe("buildRenderSlices", () => {
   });
 
   it("builds deterministic flow slices for a seeded project", () => {
-    const project = createProjectDocument("Flow Determinism");
+    const project = createProjectView("Flow Determinism");
     project.sourceIds = [assets[0]!.id];
     project.layout.family = "flow";
     project.layout.shapeMode = "rect";
@@ -1592,7 +1597,7 @@ describe("buildRenderSlices", () => {
   });
 
   it("increases flow heading diversity as curvature rises", () => {
-    const project = createProjectDocument("Flow Curvature");
+    const project = createProjectView("Flow Curvature");
     project.sourceIds = [assets[0]!.id];
     project.layout.family = "flow";
     project.layout.shapeMode = "rect";
@@ -1610,7 +1615,7 @@ describe("buildRenderSlices", () => {
   });
 
   it("increases flow heading divergence as coherence falls", () => {
-    const project = createProjectDocument("Flow Coherence");
+    const project = createProjectView("Flow Coherence");
     project.sourceIds = [assets[0]!.id];
     project.layout.family = "flow";
     project.layout.shapeMode = "rect";
@@ -1628,7 +1633,7 @@ describe("buildRenderSlices", () => {
   });
 
   it("adds branching slices as flow branch rate rises", () => {
-    const project = createProjectDocument("Flow Branching");
+    const project = createProjectView("Flow Branching");
     project.sourceIds = [assets[0]!.id];
     project.layout.family = "flow";
     project.layout.shapeMode = "rect";
@@ -1647,7 +1652,7 @@ describe("buildRenderSlices", () => {
   });
 
   it("changes flow slice widths with taper while preserving placement", () => {
-    const project = createProjectDocument("Flow Taper");
+    const project = createProjectView("Flow Taper");
     project.sourceIds = [assets[0]!.id];
     project.layout.family = "flow";
     project.layout.shapeMode = "rect";

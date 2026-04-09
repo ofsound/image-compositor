@@ -1,4 +1,5 @@
 import { normalizeSourceAsset } from "@/lib/assets";
+import type { PreparedAssetRecord } from "@/lib/assets";
 import { db } from "@/lib/db";
 import type { KVRecord } from "@/lib/db";
 import {
@@ -99,6 +100,196 @@ export async function putProjectVersion(version: ProjectVersion) {
 
 export async function putProjectVersions(versions: ProjectVersion[]) {
   await db.versions.bulkPut(versions.map((version) => serializeProjectVersion(version)));
+}
+
+function getAssetBlobPaths(
+  asset: Pick<SourceAsset, "originalPath" | "normalizedPath" | "previewPath">,
+) {
+  return [asset.originalPath, asset.normalizedPath, asset.previewPath];
+}
+
+function getPreparedAssetIds(assets: PreparedAssetRecord[], deletedAssets: SourceAsset[]) {
+  return [...new Set([
+    ...assets.map(({ asset }) => asset.id),
+    ...deletedAssets.map((asset) => asset.id),
+  ])];
+}
+
+function getPreparedAssetBlobPaths(assets: PreparedAssetRecord[], deletedAssets: SourceAsset[]) {
+  return [
+    ...assets.flatMap(({ asset }) => getAssetBlobPaths(asset)),
+    ...deletedAssets.flatMap((asset) => getAssetBlobPaths(asset)),
+  ];
+}
+
+async function writePreparedAssetBlobs(assets: PreparedAssetRecord[]) {
+  await Promise.all(
+    assets.flatMap(({ asset, blobs }) => [
+      blobs.original ? writeBlob(asset.originalPath, blobs.original) : Promise.resolve(),
+      blobs.normalized ? writeBlob(asset.normalizedPath, blobs.normalized) : Promise.resolve(),
+      blobs.preview ? writeBlob(asset.previewPath, blobs.preview) : Promise.resolve(),
+    ]),
+  );
+}
+
+async function deleteAssetBlobs(assets: SourceAsset[]) {
+  await Promise.all(
+    assets.flatMap((asset) =>
+      getAssetBlobPaths(asset).map((path) => deleteBlob(path)),
+    ),
+  );
+}
+
+async function restoreAssetRows(previousAssets: Array<SourceAsset | undefined>, assetIds: string[]) {
+  if (assetIds.length === 0) {
+    return;
+  }
+
+  await db.assets.bulkDelete(assetIds);
+  const restorableAssets = previousAssets.filter(
+    (asset): asset is SourceAsset => Boolean(asset),
+  );
+  if (restorableAssets.length > 0) {
+    await db.assets.bulkPut(restorableAssets);
+  }
+}
+
+async function restoreProjectRow(projectId: string, previousProject?: ProjectDocument) {
+  if (previousProject) {
+    await db.projects.put(previousProject);
+    return;
+  }
+
+  await db.projects.delete(projectId);
+}
+
+async function restoreActiveProjectId(previousActiveProjectId?: KVRecord) {
+  if (previousActiveProjectId) {
+    await db.kv.put(previousActiveProjectId);
+    return;
+  }
+
+  await db.kv.delete(ACTIVE_PROJECT_KEY);
+}
+
+async function persistAssetMutationAtomically(options: {
+  projectDoc: ProjectDocument;
+  putAssets?: PreparedAssetRecord[];
+  deleteAssets?: SourceAsset[];
+  activeProjectId?: string | null;
+}) {
+  const putAssets = options.putAssets ?? [];
+  const deleteAssets = options.deleteAssets ?? [];
+  const assetIds = getPreparedAssetIds(putAssets, deleteAssets);
+  const [previousProject, previousAssets, previousActiveProjectId] = await Promise.all([
+    db.projects.get(options.projectDoc.id),
+    Promise.all(assetIds.map(async (assetId) => db.assets.get(assetId))),
+    options.activeProjectId === undefined ? Promise.resolve(undefined) : db.kv.get(ACTIVE_PROJECT_KEY),
+  ]);
+
+  const blobSnapshot = await snapshotBlobPaths(
+    getPreparedAssetBlobPaths(putAssets, deleteAssets),
+  );
+
+  try {
+    await Promise.all([
+      writePreparedAssetBlobs(putAssets),
+      deleteAssetBlobs(deleteAssets),
+    ]);
+
+    if (options.activeProjectId === undefined) {
+      await db.transaction("rw", db.projects, db.assets, async () => {
+        await db.projects.put(serializeProjectDocument(options.projectDoc));
+        if (deleteAssets.length > 0) {
+          await db.assets.bulkDelete(deleteAssets.map((asset) => asset.id));
+        }
+        if (putAssets.length > 0) {
+          await db.assets.bulkPut(putAssets.map(({ asset }) => asset));
+        }
+      });
+    } else {
+      await db.transaction("rw", db.projects, db.assets, db.kv, async () => {
+        await db.projects.put(serializeProjectDocument(options.projectDoc));
+        if (deleteAssets.length > 0) {
+          await db.assets.bulkDelete(deleteAssets.map((asset) => asset.id));
+        }
+        if (putAssets.length > 0) {
+          await db.assets.bulkPut(putAssets.map(({ asset }) => asset));
+        }
+        if (options.activeProjectId) {
+          await db.kv.put({ key: ACTIVE_PROJECT_KEY, value: options.activeProjectId });
+        } else {
+          await db.kv.delete(ACTIVE_PROJECT_KEY);
+        }
+      });
+    }
+  } catch (error) {
+    await restoreBlobSnapshot(blobSnapshot);
+
+    if (options.activeProjectId === undefined) {
+      await db.transaction("rw", db.projects, db.assets, async () => {
+        await restoreProjectRow(options.projectDoc.id, previousProject);
+        await restoreAssetRows(previousAssets, assetIds);
+      });
+    } else {
+      await db.transaction("rw", db.projects, db.assets, db.kv, async () => {
+        await restoreProjectRow(options.projectDoc.id, previousProject);
+        await restoreAssetRows(previousAssets, assetIds);
+        await restoreActiveProjectId(previousActiveProjectId);
+      });
+    }
+
+    throw error;
+  }
+}
+
+export async function captureAssetSnapshot(asset: SourceAsset): Promise<PreparedAssetRecord> {
+  const [original, normalized, preview] = await Promise.all([
+    readBlob(asset.originalPath),
+    readBlob(asset.normalizedPath),
+    readBlob(asset.previewPath),
+  ]);
+
+  return {
+    asset: structuredClone(asset),
+    blobs: {
+      original,
+      normalized,
+      preview,
+    },
+  };
+}
+
+export async function persistAssetCreationsAtomically(options: {
+  projectDoc: ProjectDocument;
+  assets: PreparedAssetRecord[];
+  activeProjectId?: string | null;
+}) {
+  await persistAssetMutationAtomically({
+    projectDoc: options.projectDoc,
+    putAssets: options.assets,
+    activeProjectId: options.activeProjectId,
+  });
+}
+
+export async function persistAssetUpdatesAtomically(options: {
+  projectDoc: ProjectDocument;
+  assets: PreparedAssetRecord[];
+}) {
+  await persistAssetMutationAtomically({
+    projectDoc: options.projectDoc,
+    putAssets: options.assets,
+  });
+}
+
+export async function deleteAssetsAtomically(options: {
+  projectDoc: ProjectDocument;
+  assets: SourceAsset[];
+}) {
+  await persistAssetMutationAtomically({
+    projectDoc: options.projectDoc,
+    deleteAssets: options.assets,
+  });
 }
 
 export async function deleteProjectDataAtomically(projectId: string) {

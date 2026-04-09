@@ -323,16 +323,6 @@ export interface ProjectSnapshot {
   export: ExportSettings;
   layers: CompositorLayer[];
   selectedLayerId: string | null;
-  // Compatibility projection of the selected layer. Canonical data lives in `layers`.
-  sourceIds: string[];
-  layout: LayoutSettings;
-  sourceMapping: SourceMappingSettings;
-  effects: EffectSettings;
-  compositing: CompositingSettings;
-  finish: FinishSettings;
-  activeSeed: number;
-  presets: GeneratorPreset[];
-  passes: RenderPass[];
 }
 
 export interface ProjectDocument extends ProjectSnapshot {

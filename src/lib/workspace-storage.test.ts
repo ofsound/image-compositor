@@ -6,6 +6,8 @@ const state = vi.hoisted(() => ({
   versions: [] as Record<string, unknown>[],
   kvRecord: undefined as { key: string; value: string } | undefined,
   blobs: new Map<string, Blob>(),
+  failAssetBulkDelete: false,
+  failAssetBulkPut: false,
   failProjectDelete: false,
   failProjectPut: false,
 }));
@@ -46,6 +48,10 @@ const db = vi.hoisted(() => ({
       state.assets.find((asset) => asset.id === id),
     ),
     bulkPut: vi.fn(async (assets: Record<string, unknown>[]) => {
+      if (state.failAssetBulkPut) {
+        throw new Error("asset bulkPut failed");
+      }
+
       for (const asset of assets) {
         state.assets = [
           ...state.assets.filter((entry) => entry.id !== asset.id),
@@ -54,6 +60,10 @@ const db = vi.hoisted(() => ({
       }
     }),
     bulkDelete: vi.fn(async (ids: string[]) => {
+      if (state.failAssetBulkDelete) {
+        throw new Error("asset bulkDelete failed");
+      }
+
       const idSet = new Set(ids);
       state.assets = state.assets.filter((asset) => !idSet.has(String(asset.id)));
     }),
@@ -129,6 +139,9 @@ import {
   serializeProjectDocument,
 } from "@/lib/project-defaults";
 import {
+  deleteAssetsAtomically,
+  persistAssetCreationsAtomically,
+  persistAssetUpdatesAtomically,
   deleteProjectDataAtomically,
   persistImportedProjectBundleAtomically,
 } from "@/lib/workspace-storage";
@@ -155,6 +168,17 @@ function createImageAsset(projectId: string, id = "asset_1"): SourceAsset {
   };
 }
 
+function createPreparedAssetRecord(asset: SourceAsset, label = asset.id) {
+  return {
+    asset,
+    blobs: {
+      original: new Blob([`${label}-original`]),
+      normalized: new Blob([`${label}-normalized`]),
+      preview: new Blob([`${label}-preview`]),
+    },
+  };
+}
+
 function createVersion(projectId: string, snapshot = createProjectDocument("Snapshot")): ProjectVersion {
   return {
     id: "version_1",
@@ -173,6 +197,8 @@ describe("workspace storage", () => {
     state.versions = [];
     state.kvRecord = undefined;
     state.blobs = new Map();
+    state.failAssetBulkDelete = false;
+    state.failAssetBulkPut = false;
     state.failProjectDelete = false;
     state.failProjectPut = false;
     vi.clearAllMocks();
@@ -202,6 +228,129 @@ describe("workspace storage", () => {
     expect(await state.blobs.get(asset.originalPath)?.text()).toBe("original");
     expect(await state.blobs.get(version.thumbnailPath!)?.text()).toBe("thumb");
     expect(writeBlob).toHaveBeenCalled();
+  });
+
+  it("rolls back created assets when project persistence fails after blob writes", async () => {
+    const project = createProjectDocument("Import Target");
+    const existingAsset = createImageAsset(project.id, "asset_existing");
+    const importedAsset = createImageAsset(project.id, "asset_imported");
+
+    state.project = serializeProjectDocument(project) as unknown as Record<string, unknown>;
+    state.assets = [existingAsset] as unknown as Record<string, unknown>[];
+    state.blobs.set(existingAsset.originalPath, new Blob(["existing-original"]));
+    state.blobs.set(existingAsset.normalizedPath, new Blob(["existing-normalized"]));
+    state.blobs.set(existingAsset.previewPath, new Blob(["existing-preview"]));
+    state.failProjectPut = true;
+
+    const updatedProject = {
+      ...project,
+      updatedAt: "2026-04-10T00:00:00.000Z",
+    };
+
+    await expect(
+      persistAssetCreationsAtomically({
+        projectDoc: updatedProject,
+        assets: [createPreparedAssetRecord(importedAsset, "imported")],
+      }),
+    ).rejects.toThrow("project put failed");
+
+    expect(state.project).toEqual(serializeProjectDocument(project));
+    expect(state.assets).toEqual([existingAsset]);
+    expect(state.blobs.has(importedAsset.originalPath)).toBe(false);
+    expect(await state.blobs.get(existingAsset.originalPath)?.text()).toBe(
+      "existing-original",
+    );
+  });
+
+  it("restores prior blobs and asset rows when generated source updates fail", async () => {
+    const project = createProjectDocument("Generated");
+    const existingAsset = createImageAsset(project.id, "asset_generated");
+    const updatedAsset = {
+      ...existingAsset,
+      name: "Updated Asset",
+      averageColor: "#445566",
+    };
+
+    state.project = serializeProjectDocument(project) as unknown as Record<string, unknown>;
+    state.assets = [existingAsset] as unknown as Record<string, unknown>[];
+    state.blobs.set(existingAsset.originalPath, new Blob(["old-original"]));
+    state.blobs.set(existingAsset.normalizedPath, new Blob(["old-normalized"]));
+    state.blobs.set(existingAsset.previewPath, new Blob(["old-preview"]));
+    state.failProjectPut = true;
+
+    await expect(
+      persistAssetUpdatesAtomically({
+        projectDoc: {
+          ...project,
+          updatedAt: "2026-04-10T00:00:00.000Z",
+        },
+        assets: [createPreparedAssetRecord(updatedAsset, "updated")],
+      }),
+    ).rejects.toThrow("project put failed");
+
+    expect(state.project).toEqual(serializeProjectDocument(project));
+    expect(state.assets).toEqual([existingAsset]);
+    expect(await state.blobs.get(existingAsset.originalPath)?.text()).toBe("old-original");
+    expect(await state.blobs.get(existingAsset.normalizedPath)?.text()).toBe("old-normalized");
+    expect(await state.blobs.get(existingAsset.previewPath)?.text()).toBe("old-preview");
+  });
+
+  it("restores deleted blobs and asset rows when asset removal fails", async () => {
+    const project = createProjectDocument("Delete Asset");
+    const asset = createImageAsset(project.id, "asset_delete");
+
+    state.project = serializeProjectDocument(project) as unknown as Record<string, unknown>;
+    state.assets = [asset] as unknown as Record<string, unknown>[];
+    state.blobs.set(asset.originalPath, new Blob(["original"]));
+    state.blobs.set(asset.normalizedPath, new Blob(["normalized"]));
+    state.blobs.set(asset.previewPath, new Blob(["preview"]));
+    state.failAssetBulkDelete = true;
+
+    await expect(
+      deleteAssetsAtomically({
+        projectDoc: {
+          ...project,
+          updatedAt: "2026-04-10T00:00:00.000Z",
+        },
+        assets: [asset],
+      }),
+    ).rejects.toThrow("asset bulkDelete failed");
+
+    expect(state.project).toEqual(serializeProjectDocument(project));
+    expect(state.assets).toEqual([asset]);
+    expect(await state.blobs.get(asset.originalPath)?.text()).toBe("original");
+    expect(await state.blobs.get(asset.normalizedPath)?.text()).toBe("normalized");
+    expect(await state.blobs.get(asset.previewPath)?.text()).toBe("preview");
+  });
+
+  it("restores active project state when duplicate-project persistence fails", async () => {
+    const sourceProject = createProjectDocument("Source");
+    const duplicatedProject = createProjectDocument("Copy");
+    duplicatedProject.id = "project_copy";
+    const existingAsset = createImageAsset(sourceProject.id, "asset_source");
+    const duplicatedAsset = createImageAsset(duplicatedProject.id, "asset_copy");
+
+    state.project = serializeProjectDocument(sourceProject) as unknown as Record<string, unknown>;
+    state.assets = [existingAsset] as unknown as Record<string, unknown>[];
+    state.kvRecord = { key: "activeProjectId", value: sourceProject.id };
+    state.blobs.set(existingAsset.originalPath, new Blob(["source-original"]));
+    state.failProjectPut = true;
+
+    await expect(
+      persistAssetCreationsAtomically({
+        projectDoc: duplicatedProject,
+        assets: [createPreparedAssetRecord(duplicatedAsset, "duplicate")],
+        activeProjectId: duplicatedProject.id,
+      }),
+    ).rejects.toThrow("project put failed");
+
+    expect(state.project).toEqual(serializeProjectDocument(sourceProject));
+    expect(state.assets).toEqual([existingAsset]);
+    expect(state.kvRecord).toEqual({
+      key: "activeProjectId",
+      value: sourceProject.id,
+    });
+    expect(state.blobs.has(duplicatedAsset.originalPath)).toBe(false);
   });
 
   it("rolls imported bundles back when persistence fails mid-transaction", async () => {

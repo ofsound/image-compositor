@@ -2,7 +2,6 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@/lib/opfs", () => ({
   readBlob: vi.fn(),
-  writeBlob: vi.fn(async () => undefined),
 }));
 
 import {
@@ -12,7 +11,6 @@ import {
   renderGeneratedSourceToCanvas,
   updateGeneratedSourceAsset,
 } from "@/lib/assets";
-import { writeBlob } from "@/lib/opfs";
 import type { SourceAsset } from "@/types/project";
 
 function createCanvasMocks() {
@@ -188,7 +186,6 @@ describe("normalizeSourceAsset", () => {
 describe("generated sources", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
-    vi.mocked(writeBlob).mockClear();
   });
 
   it("creates a solid source with generated blobs and metadata", async () => {
@@ -199,7 +196,7 @@ describe("generated sources", () => {
       .mockReturnValueOnce(previewCanvas as never);
 
     try {
-      const asset = await createGeneratedSourceAsset(
+      const prepared = await createGeneratedSourceAsset(
         {
           kind: "solid",
           name: "",
@@ -208,6 +205,7 @@ describe("generated sources", () => {
         "project_test",
         { width: 1800, height: 1200 },
       );
+      const asset = prepared.asset;
 
       expect(asset.kind).toBe("solid");
       if (asset.kind !== "solid") {
@@ -217,7 +215,6 @@ describe("generated sources", () => {
       expect(asset.width).toBe(1800);
       expect(asset.height).toBe(1200);
       expect(asset.name).toBe("Solid #112233");
-      expect(writeBlob).toHaveBeenCalledTimes(3);
     } finally {
       createElementSpy.mockRestore();
     }
@@ -265,7 +262,7 @@ describe("generated sources", () => {
     };
 
     try {
-      const updated = await updateGeneratedSourceAsset(asset, {
+      const updatedRecord = await updateGeneratedSourceAsset(asset, {
         name: "Skyline",
         mode: "linear",
         from: "#334455",
@@ -281,6 +278,7 @@ describe("generated sources", () => {
         conicSpan: 360,
         conicRepeat: false,
       });
+      const updated = updatedRecord.asset;
 
       expect(updated.id).toBe(asset.id);
       expect(updated.kind).toBe("gradient");
@@ -308,7 +306,6 @@ describe("generated sources", () => {
       expect(linearGradient.addColorStop).toHaveBeenNthCalledWith(1, 0, "#334455");
       expect(linearGradient.addColorStop).toHaveBeenNthCalledWith(2, 0.25, "#778899");
       expect(linearGradient.addColorStop).toHaveBeenNthCalledWith(3, 1, "#ddeeff");
-      expect(writeBlob).toHaveBeenCalledTimes(3);
     } finally {
       createElementSpy.mockRestore();
     }
@@ -323,7 +320,7 @@ describe("generated sources", () => {
       .mockReturnValueOnce(previewCanvas as never);
 
     try {
-      const asset = await createGeneratedSourceAsset(
+      const prepared = await createGeneratedSourceAsset(
         {
           kind: "gradient",
           name: "",
@@ -346,6 +343,7 @@ describe("generated sources", () => {
         "project_test",
         { width: 1800, height: 1200 },
       );
+      const asset = prepared.asset;
 
       expect(asset.kind).toBe("gradient");
       expect(primaryContext.createRadialGradient).toHaveBeenCalledTimes(1);
@@ -373,7 +371,7 @@ describe("generated sources", () => {
       .mockReturnValueOnce(previewCanvas as never);
 
     try {
-      const asset = await createGeneratedSourceAsset(
+      const prepared = await createGeneratedSourceAsset(
         {
           kind: "perlin",
           name: "",
@@ -389,6 +387,7 @@ describe("generated sources", () => {
         "project_test",
         { width: 64, height: 48 },
       );
+      const asset = prepared.asset;
 
       expect(asset.kind).toBe("perlin");
       if (asset.kind !== "perlin") {
@@ -405,7 +404,6 @@ describe("generated sources", () => {
       expect(asset.name).toBe("Perlin #225577");
       expect(primaryContext.createImageData).toHaveBeenCalledWith(64, 48);
       expect(primaryContext.putImageData).toHaveBeenCalledTimes(1);
-      expect(writeBlob).toHaveBeenCalledTimes(3);
     } finally {
       createElementSpy.mockRestore();
     }
@@ -419,7 +417,7 @@ describe("generated sources", () => {
       .mockReturnValueOnce(previewCanvas as never);
 
     try {
-      const asset = await createGeneratedSourceAsset(
+      const prepared = await createGeneratedSourceAsset(
         {
           kind: "cellular",
           name: "",
@@ -435,6 +433,7 @@ describe("generated sources", () => {
         "project_test",
         { width: 64, height: 48 },
       );
+      const asset = prepared.asset;
 
       expect(asset.kind).toBe("cellular");
       if (asset.kind !== "cellular") {
@@ -451,7 +450,6 @@ describe("generated sources", () => {
       expect(asset.name).toBe("Cellular #6655CC");
       expect(primaryContext.createImageData).toHaveBeenCalledWith(64, 48);
       expect(primaryContext.putImageData).toHaveBeenCalledTimes(1);
-      expect(writeBlob).toHaveBeenCalledTimes(3);
     } finally {
       createElementSpy.mockRestore();
     }
@@ -467,7 +465,7 @@ describe("generated sources", () => {
       .mockReturnValueOnce(previewCanvas as never);
 
     try {
-      const reaction = await createGeneratedSourceAsset(
+      const reactionPrepared = await createGeneratedSourceAsset(
         {
           kind: "reaction",
           name: "",
@@ -483,7 +481,7 @@ describe("generated sources", () => {
         "project_test",
         { width: 64, height: 48 },
       );
-      const waves = await createGeneratedSourceAsset(
+      const wavesPrepared = await createGeneratedSourceAsset(
         {
           kind: "waves",
           name: "",
@@ -499,12 +497,13 @@ describe("generated sources", () => {
         "project_test",
         { width: 64, height: 48 },
       );
+      const reaction = reactionPrepared.asset;
+      const waves = wavesPrepared.asset;
 
       expect(reaction.kind).toBe("reaction");
       expect(waves.kind).toBe("waves");
       expect(reaction.name).toBe("Reaction #CC5533");
       expect(waves.name).toBe("Waves #2299BB");
-      expect(writeBlob).toHaveBeenCalledTimes(6);
     } finally {
       createElementSpy.mockRestore();
     }
@@ -544,7 +543,7 @@ describe("generated sources", () => {
       };
 
     try {
-      const updated = await updateGeneratedSourceAsset(asset, {
+      const updatedRecord = await updateGeneratedSourceAsset(asset, {
         name: "Lagoon",
         color: "#1188aa",
         scale: 0.8,
@@ -553,6 +552,7 @@ describe("generated sources", () => {
         distortion: 0.15,
         seed: 314159,
       });
+      const updated = updatedRecord.asset;
 
       expect(updated.id).toBe(asset.id);
       expect(updated.kind).toBe("perlin");
@@ -569,7 +569,6 @@ describe("generated sources", () => {
         seed: 314159,
       });
       expect(primaryContext.putImageData).toHaveBeenCalledTimes(1);
-      expect(writeBlob).toHaveBeenCalledTimes(3);
     } finally {
       createElementSpy.mockRestore();
     }
@@ -652,7 +651,7 @@ describe("generated sources", () => {
     };
 
     try {
-      const nextCellular = await updateGeneratedSourceAsset(cellular, {
+      const nextCellularRecord = await updateGeneratedSourceAsset(cellular, {
         name: "Cellular Next",
         color: "#6655cc",
         scale: 0.7,
@@ -661,7 +660,7 @@ describe("generated sources", () => {
         contrast: 0.6,
         seed: 9,
       });
-      const nextReaction = await updateGeneratedSourceAsset(reaction, {
+      const nextReactionRecord = await updateGeneratedSourceAsset(reaction, {
         name: "Reaction Next",
         color: "#cc5533",
         scale: 0.8,
@@ -670,7 +669,7 @@ describe("generated sources", () => {
         distortion: 0.45,
         seed: 8,
       });
-      const nextWaves = await updateGeneratedSourceAsset(waves, {
+      const nextWavesRecord = await updateGeneratedSourceAsset(waves, {
         name: "Waves Next",
         color: "#2299bb",
         scale: 0.8,
@@ -679,6 +678,9 @@ describe("generated sources", () => {
         distortion: 0.45,
         seed: 7,
       });
+      const nextCellular = nextCellularRecord.asset;
+      const nextReaction = nextReactionRecord.asset;
+      const nextWaves = nextWavesRecord.asset;
 
       expect(nextCellular.id).toBe(cellular.id);
       expect(nextReaction.id).toBe(reaction.id);
@@ -686,7 +688,6 @@ describe("generated sources", () => {
       expect(nextCellular.kind).toBe("cellular");
       expect(nextReaction.kind).toBe("reaction");
       expect(nextWaves.kind).toBe("waves");
-      expect(writeBlob).toHaveBeenCalledTimes(9);
     } finally {
       createElementSpy.mockRestore();
     }

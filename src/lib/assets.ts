@@ -1,6 +1,6 @@
 import { luminanceFromRgb, normalizeHexColor, rgbToHex } from "@/lib/color";
 import { makeId } from "@/lib/id";
-import { readBlob, writeBlob } from "@/lib/opfs";
+import { readBlob } from "@/lib/opfs";
 import { clamp, lerp } from "@/lib/utils";
 import type {
   CellularSourceRecipe,
@@ -131,6 +131,17 @@ export type GeneratedSourceInput =
   | { kind: "cellular"; name?: string; recipe: CellularSourceInput }
   | { kind: "reaction"; name?: string; recipe: ReactionSourceInput }
   | { kind: "waves"; name?: string; recipe: WaveSourceInput };
+
+export interface AssetBlobPayloads {
+  original: Blob | null;
+  normalized: Blob | null;
+  preview: Blob | null;
+}
+
+export interface PreparedAssetRecord {
+  asset: SourceAsset;
+  blobs: AssetBlobPayloads;
+}
 
 type LegacySourceAsset = Omit<SourceAsset, "kind"> & {
   kind?: SourceKind | "noise";
@@ -1558,7 +1569,7 @@ export function getAssetStoragePaths(assetId: string, originalFileName: string) 
   };
 }
 
-async function persistAssetPayload(
+function buildAssetPayload(
   assetId: string,
   originalFileName: string,
   payload: ProcessedAssetPayload,
@@ -1568,16 +1579,15 @@ async function persistAssetPayload(
     originalFileName,
   );
 
-  await Promise.all([
-    writeBlob(originalPath, payload.blob),
-    writeBlob(normalizedPath, payload.normalizedBlob),
-    writeBlob(previewPath, payload.previewBlob),
-  ]);
-
   return {
     originalPath,
     normalizedPath,
     previewPath,
+    blobs: {
+      original: payload.blob,
+      normalized: payload.normalizedBlob,
+      preview: payload.previewBlob,
+    } satisfies AssetBlobPayloads,
   };
 }
 
@@ -1587,32 +1597,33 @@ export async function persistProcessedAsset(
   projectId: string,
 ) {
   const assetId = makeId("asset");
-  const { originalPath, normalizedPath, previewPath } = await persistAssetPayload(
+  const { originalPath, normalizedPath, previewPath, blobs } = buildAssetPayload(
     assetId,
     file.name,
     payload,
   );
 
-  const asset: SourceAsset = {
-    id: assetId,
-    kind: "image",
-    projectId,
-    name: file.name.replace(/\.[^.]+$/, ""),
-    originalFileName: file.name,
-    mimeType: payload.mimeType,
-    width: payload.width,
-    height: payload.height,
-    orientation: payload.orientation,
-    originalPath,
-    normalizedPath,
-    previewPath,
-    averageColor: payload.averageColor,
-    palette: payload.palette,
-    luminance: payload.luminance,
-    createdAt: new Date().toISOString(),
-  };
-
-  return asset;
+  return {
+    asset: normalizeSourceAsset({
+      id: assetId,
+      kind: "image",
+      projectId,
+      name: file.name.replace(/\.[^.]+$/, ""),
+      originalFileName: file.name,
+      mimeType: payload.mimeType,
+      width: payload.width,
+      height: payload.height,
+      orientation: payload.orientation,
+      originalPath,
+      normalizedPath,
+      previewPath,
+      averageColor: payload.averageColor,
+      palette: payload.palette,
+      luminance: payload.luminance,
+      createdAt: new Date().toISOString(),
+    }),
+    blobs,
+  } satisfies PreparedAssetRecord;
 }
 
 export async function createGeneratedSourceAsset(
@@ -1628,31 +1639,34 @@ export async function createGeneratedSourceAsset(
     size.height,
   );
   const originalFileName = buildGeneratedOriginalFileName(normalizedSource.kind, assetId);
-  const { originalPath, normalizedPath, previewPath } = await persistAssetPayload(
+  const { originalPath, normalizedPath, previewPath, blobs } = buildAssetPayload(
     assetId,
     originalFileName,
     payload,
   );
 
-  return normalizeSourceAsset({
-    id: assetId,
-    kind: normalizedSource.kind,
-    projectId,
-    name: buildGeneratedSourceName(normalizedSource),
-    originalFileName,
-    mimeType: payload.mimeType,
-    width: payload.width,
-    height: payload.height,
-    orientation: payload.orientation,
-    originalPath,
-    normalizedPath,
-    previewPath,
-    averageColor: payload.averageColor,
-    palette: payload.palette,
-    luminance: payload.luminance,
-    createdAt: new Date().toISOString(),
-    recipe: normalizedSource.recipe,
-  });
+  return {
+    asset: normalizeSourceAsset({
+      id: assetId,
+      kind: normalizedSource.kind,
+      projectId,
+      name: buildGeneratedSourceName(normalizedSource),
+      originalFileName,
+      mimeType: payload.mimeType,
+      width: payload.width,
+      height: payload.height,
+      orientation: payload.orientation,
+      originalPath,
+      normalizedPath,
+      previewPath,
+      averageColor: payload.averageColor,
+      palette: payload.palette,
+      luminance: payload.luminance,
+      createdAt: new Date().toISOString(),
+      recipe: normalizedSource.recipe,
+    }),
+    blobs,
+  } satisfies PreparedAssetRecord;
 }
 
 export async function updateGeneratedSourceAsset(
@@ -1713,21 +1727,22 @@ export async function updateGeneratedSourceAsset(
     asset.height,
   );
 
-  await Promise.all([
-    writeBlob(asset.originalPath, payload.blob),
-    writeBlob(asset.normalizedPath, payload.normalizedBlob),
-    writeBlob(asset.previewPath, payload.previewBlob),
-  ]);
-
-  return normalizeSourceAsset({
-    ...asset,
-    name: buildGeneratedSourceName(normalizedSource),
-    mimeType: payload.mimeType,
-    averageColor: payload.averageColor,
-    palette: payload.palette,
-    luminance: payload.luminance,
-    recipe: normalizedSource.recipe,
-  });
+  return {
+    asset: normalizeSourceAsset({
+      ...asset,
+      name: buildGeneratedSourceName(normalizedSource),
+      mimeType: payload.mimeType,
+      averageColor: payload.averageColor,
+      palette: payload.palette,
+      luminance: payload.luminance,
+      recipe: normalizedSource.recipe,
+    }),
+    blobs: {
+      original: payload.blob,
+      normalized: payload.normalizedBlob,
+      preview: payload.previewBlob,
+    },
+  } satisfies PreparedAssetRecord;
 }
 
 export async function duplicateSourceAsset(asset: SourceAsset, projectId: string) {
@@ -1747,22 +1762,23 @@ export async function duplicateSourceAsset(asset: SourceAsset, projectId: string
     readBlob(asset.previewPath),
   ]);
 
-  await Promise.all([
-    original ? writeBlob(originalPath, original) : Promise.resolve(),
-    normalized ? writeBlob(normalizedPath, normalized) : Promise.resolve(),
-    preview ? writeBlob(previewPath, preview) : Promise.resolve(),
-  ]);
-
-  return normalizeSourceAsset({
-    ...asset,
-    id: assetId,
-    projectId,
-    originalFileName,
-    originalPath,
-    normalizedPath,
-    previewPath,
-    createdAt: new Date().toISOString(),
-  });
+  return {
+    asset: normalizeSourceAsset({
+      ...asset,
+      id: assetId,
+      projectId,
+      originalFileName,
+      originalPath,
+      normalizedPath,
+      previewPath,
+      createdAt: new Date().toISOString(),
+    }),
+    blobs: {
+      original,
+      normalized,
+      preview,
+    },
+  } satisfies PreparedAssetRecord;
 }
 
 export function clampCanvasDimension(value: number, fallback: number) {

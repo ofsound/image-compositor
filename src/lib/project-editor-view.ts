@@ -4,26 +4,34 @@ import {
   normalizeProjectDocument,
 } from "@/lib/project-defaults";
 import type {
+  CanvasSettings,
+  CompositingSettings,
   CompositorLayer,
+  EffectSettings,
+  FinishSettings,
+  GeneratorPreset,
+  LayoutSettings,
   ProjectDocument,
-  ProjectSnapshot,
+  RenderPass,
+  SourceMappingSettings,
 } from "@/types/project";
 
-type SelectedLayerEditorFields = Pick<
-  ProjectSnapshot,
-  | "sourceIds"
-  | "layout"
-  | "sourceMapping"
-  | "effects"
-  | "compositing"
-  | "finish"
-  | "activeSeed"
-  | "presets"
-  | "passes"
->;
+type SelectedLayerEditorFields = {
+  sourceIds: string[];
+  layout: LayoutSettings;
+  sourceMapping: SourceMappingSettings;
+  effects: EffectSettings;
+  compositing: CompositingSettings;
+  finish: FinishSettings;
+  activeSeed: number;
+  presets: GeneratorPreset[];
+  passes: RenderPass[];
+};
 
 export type ProjectEditorView = Omit<ProjectDocument, keyof SelectedLayerEditorFields> &
-  SelectedLayerEditorFields;
+  SelectedLayerEditorFields & {
+    canvas: CanvasSettings;
+  };
 
 function createEditorLayer(layer: CompositorLayer) {
   return {
@@ -48,6 +56,10 @@ export function createProjectEditorView(project: ProjectDocument): ProjectEditor
 
   return {
     ...project,
+    canvas: {
+      ...structuredClone(project.canvas),
+      inset: selectedLayer.inset,
+    },
     ...createEditorLayer(selectedLayer),
   };
 }
@@ -81,7 +93,11 @@ export function applyProjectEditorView(
 ): ProjectDocument {
   const baseProject = normalizeProjectDocument({
     ...project,
-    ...view,
+    canvas: {
+      ...structuredClone(view.canvas),
+      inset: project.canvas.inset,
+    },
+    export: structuredClone(view.export),
     layers: structuredClone(view.layers),
     selectedLayerId: view.selectedLayerId,
   });

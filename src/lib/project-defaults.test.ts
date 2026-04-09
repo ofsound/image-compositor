@@ -5,12 +5,30 @@ import {
   normalizeProjectDocument,
   serializeProjectDocument,
   normalizeProjectVersion,
+  getSelectedLayer,
 } from "@/lib/project-defaults";
+import { createProjectEditorView } from "@/lib/project-editor-view";
 import type { ProjectDocument, ProjectVersion } from "@/types/project";
+
+function createProjectView(title: string) {
+  return createProjectEditorView(createProjectDocument(title));
+}
+
+function normalizeProjectView(project: Parameters<typeof normalizeProjectDocument>[0]) {
+  return createProjectEditorView(normalizeProjectDocument(project));
+}
+
+function getSnapshotLayer(snapshot: ProjectVersion["snapshot"]) {
+  const layer = getSelectedLayer(snapshot);
+  if (!layer) {
+    throw new Error("Expected a selected layer.");
+  }
+  return layer;
+}
 
 describe("createProjectDocument", () => {
   it("creates a fully-populated local-first project document", () => {
-    const project = createProjectDocument("Study");
+    const project = createProjectView("Study");
 
     expect(project.title).toBe("Study");
     expect(project.id.startsWith("project_")).toBe(true);
@@ -77,7 +95,7 @@ describe("createProjectDocument", () => {
   });
 
   it("normalizes legacy projects without crop distribution to centered mode", () => {
-    const project = createProjectDocument("Legacy");
+    const project = createProjectView("Legacy");
     const legacyProject = {
       ...project,
       sourceMapping: {
@@ -90,11 +108,11 @@ describe("createProjectDocument", () => {
       },
     } as unknown as ProjectDocument;
 
-    expect(normalizeProjectDocument(legacyProject).sourceMapping.cropDistribution).toBe("center");
+    expect(normalizeProjectView(legacyProject).sourceMapping.cropDistribution).toBe("center");
   });
 
   it("moves legacy root settings into the selected layer and serializes canonically", () => {
-    const project = createProjectDocument("Legacy Canonical");
+    const project = createProjectView("Legacy Canonical");
     const legacyProject = {
       ...project,
       sourceIds: ["asset_legacy"],
@@ -104,7 +122,7 @@ describe("createProjectDocument", () => {
       },
     } as unknown as ProjectDocument;
 
-    const normalized = normalizeProjectDocument(legacyProject);
+    const normalized = normalizeProjectView(legacyProject);
     const serialized = serializeProjectDocument(normalized);
 
     expect(normalized.layers[0]?.sourceIds).toEqual(["asset_legacy"]);
@@ -116,7 +134,7 @@ describe("createProjectDocument", () => {
   });
 
   it("migrates legacy compositing shadow values into the new finish shadow settings", () => {
-    const project = createProjectDocument("Legacy Shadow");
+    const project = createProjectView("Legacy Shadow");
     const legacyProject = {
       ...project,
       finish: undefined,
@@ -129,7 +147,7 @@ describe("createProjectDocument", () => {
       },
     } as unknown as ProjectDocument;
 
-    const normalized = normalizeProjectDocument(legacyProject);
+    const normalized = normalizeProjectView(legacyProject);
 
     expect(normalized.finish.shadowOffsetX).toBe(0);
     expect(normalized.finish.shadowOffsetY).toBe(24);
@@ -139,7 +157,7 @@ describe("createProjectDocument", () => {
   });
 
   it("normalizes legacy projects without background alpha to transparent", () => {
-    const project = createProjectDocument("Legacy Background");
+    const project = createProjectView("Legacy Background");
     const legacyProject = {
       ...project,
       canvas: {
@@ -154,7 +172,7 @@ describe("createProjectDocument", () => {
   });
 
   it("normalizes legacy projects without letterbox to zero", () => {
-    const project = createProjectDocument("Legacy Letterbox");
+    const project = createProjectView("Legacy Letterbox");
     const legacyProject = {
       ...project,
       layout: {
@@ -180,11 +198,11 @@ describe("createProjectDocument", () => {
       },
     } as unknown as ProjectDocument;
 
-    expect(normalizeProjectDocument(legacyProject).layout.letterbox).toBe(0);
+    expect(normalizeProjectView(legacyProject).layout.letterbox).toBe(0);
   });
 
   it("normalizes legacy projects without organic variation to zero", () => {
-    const project = createProjectDocument("Legacy Organic Variation");
+    const project = createProjectView("Legacy Organic Variation");
     const legacyProject = {
       ...project,
       layout: {
@@ -213,11 +231,11 @@ describe("createProjectDocument", () => {
       },
     } as unknown as ProjectDocument;
 
-    expect(normalizeProjectDocument(legacyProject).layout.organicVariation).toBe(0);
+    expect(normalizeProjectView(legacyProject).layout.organicVariation).toBe(0);
   });
 
   it("normalizes legacy projects without flow and hollow controls to defaults", () => {
-    const project = createProjectDocument("Legacy Flow");
+    const project = createProjectView("Legacy Flow");
     const legacyProject = {
       ...project,
       layout: {
@@ -264,7 +282,7 @@ describe("createProjectDocument", () => {
       },
     } as unknown as ProjectDocument;
 
-    const normalized = normalizeProjectDocument(legacyProject).layout;
+    const normalized = normalizeProjectView(legacyProject).layout;
     expect(normalized.hollowRatio).toBe(0.48);
     expect(normalized.flowCurvature).toBe(0.44);
     expect(normalized.flowCoherence).toBe(0.72);
@@ -273,7 +291,7 @@ describe("createProjectDocument", () => {
   });
 
   it("normalizes legacy projects without 3d controls to defaults", () => {
-    const project = createProjectDocument("Legacy 3D");
+    const project = createProjectView("Legacy 3D");
     const legacyProject = {
       ...project,
       layout: {
@@ -307,7 +325,7 @@ describe("createProjectDocument", () => {
       },
     } as unknown as ProjectDocument;
 
-    const normalized = normalizeProjectDocument(legacyProject).layout;
+    const normalized = normalizeProjectView(legacyProject).layout;
     expect(normalized.threeDStructure).toBe("sphere");
     expect(normalized.threeDDistribution).toBe(0);
     expect(normalized.threeDDepth).toBe(0.6);
@@ -322,7 +340,7 @@ describe("createProjectDocument", () => {
   });
 
   it("normalizes legacy projects without grid gutter axes from the single gutter", () => {
-    const project = createProjectDocument("Legacy Grid Gutter");
+    const project = createProjectView("Legacy Grid Gutter");
     const legacyProject = {
       ...project,
       layout: {
@@ -355,13 +373,13 @@ describe("createProjectDocument", () => {
       },
     } as unknown as ProjectDocument;
 
-    const normalized = normalizeProjectDocument(legacyProject).layout;
+    const normalized = normalizeProjectView(legacyProject).layout;
     expect(normalized.gutterHorizontal).toBe(22);
     expect(normalized.gutterVertical).toBe(22);
   });
 
   it("normalizes legacy projects without strip angle to zero degrees", () => {
-    const project = createProjectDocument("Legacy Strips Angle");
+    const project = createProjectView("Legacy Strips Angle");
     const legacyProject = {
       ...project,
       layout: {
@@ -389,11 +407,11 @@ describe("createProjectDocument", () => {
       },
     } as unknown as ProjectDocument;
 
-    expect(normalizeProjectDocument(legacyProject).layout.stripAngle).toBe(0);
+    expect(normalizeProjectView(legacyProject).layout.stripAngle).toBe(0);
   });
 
   it("normalizes legacy projects without wedge controls to defaults", () => {
-    const project = createProjectDocument("Legacy Wedge");
+    const project = createProjectView("Legacy Wedge");
     const legacyProject = {
       ...project,
       layout: {
@@ -420,12 +438,12 @@ describe("createProjectDocument", () => {
       },
     } as unknown as ProjectDocument;
 
-    expect(normalizeProjectDocument(legacyProject).layout.wedgeAngle).toBe(120);
-    expect(normalizeProjectDocument(legacyProject).layout.wedgeJitter).toBe(0);
+    expect(normalizeProjectView(legacyProject).layout.wedgeAngle).toBe(120);
+    expect(normalizeProjectView(legacyProject).layout.wedgeJitter).toBe(0);
   });
 
   it("normalizes legacy projects without radial controls to defaults", () => {
-    const project = createProjectDocument("Legacy Radial");
+    const project = createProjectView("Legacy Radial");
     const legacyProject = {
       ...project,
       layout: {
@@ -454,7 +472,7 @@ describe("createProjectDocument", () => {
       },
     } as unknown as ProjectDocument;
 
-    const normalized = normalizeProjectDocument(legacyProject).layout;
+    const normalized = normalizeProjectView(legacyProject).layout;
     expect(normalized.radialAngleOffset).toBe(0);
     expect(normalized.radialRingPhaseStep).toBe(0);
     expect(normalized.radialInnerRadius).toBe(0);
@@ -462,7 +480,7 @@ describe("createProjectDocument", () => {
   });
 
   it("normalizes legacy projects without kaleidoscope controls to defaults", () => {
-    const project = createProjectDocument("Legacy Kaleidoscope");
+    const project = createProjectView("Legacy Kaleidoscope");
     const legacyProject = {
       ...project,
       effects: {
@@ -477,7 +495,7 @@ describe("createProjectDocument", () => {
       },
     } as unknown as ProjectDocument;
 
-    const normalized = normalizeProjectDocument(legacyProject).effects;
+    const normalized = normalizeProjectView(legacyProject).effects;
     expect(normalized.kaleidoscopeCenterX).toBe(0.5);
     expect(normalized.kaleidoscopeCenterY).toBe(0.5);
     expect(normalized.kaleidoscopeAngleOffset).toBe(0);
@@ -488,7 +506,7 @@ describe("createProjectDocument", () => {
   });
 
   it("normalizes legacy projects without block controls to defaults", () => {
-    const project = createProjectDocument("Legacy Blocks");
+    const project = createProjectView("Legacy Blocks");
     const legacyProject = {
       ...project,
       layout: {
@@ -514,13 +532,13 @@ describe("createProjectDocument", () => {
       },
     } as unknown as ProjectDocument;
 
-    expect(normalizeProjectDocument(legacyProject).layout.blockSplitRandomness).toBe(0.5);
-    expect(normalizeProjectDocument(legacyProject).layout.blockMinSize).toBe(140);
-    expect(normalizeProjectDocument(legacyProject).layout.blockSplitBias).toBe(0.5);
+    expect(normalizeProjectView(legacyProject).layout.blockSplitRandomness).toBe(0.5);
+    expect(normalizeProjectView(legacyProject).layout.blockMinSize).toBe(140);
+    expect(normalizeProjectView(legacyProject).layout.blockSplitBias).toBe(0.5);
   });
 
   it("normalizes legacy version snapshots without crop distribution to centered mode", () => {
-    const project = createProjectDocument("Legacy Version");
+    const project = createProjectView("Legacy Version");
     const legacyVersion = {
       id: "version_legacy",
       projectId: project.id,
@@ -548,13 +566,13 @@ describe("createProjectDocument", () => {
       },
     } as unknown as ProjectVersion;
 
-    expect(normalizeProjectVersion(legacyVersion).snapshot.sourceMapping.cropDistribution).toBe(
+    expect(getSnapshotLayer(normalizeProjectVersion(legacyVersion).snapshot).sourceMapping.cropDistribution).toBe(
       "center",
     );
   });
 
   it("normalizes legacy version snapshots without wedge controls to defaults", () => {
-    const project = createProjectDocument("Legacy Wedge Version");
+    const project = createProjectView("Legacy Wedge Version");
     const legacyVersion = {
       id: "version_legacy_wedge",
       projectId: project.id,
@@ -596,12 +614,12 @@ describe("createProjectDocument", () => {
       },
     } as unknown as ProjectVersion;
 
-    expect(normalizeProjectVersion(legacyVersion).snapshot.layout.wedgeAngle).toBe(120);
-    expect(normalizeProjectVersion(legacyVersion).snapshot.layout.wedgeJitter).toBe(0);
+    expect(getSnapshotLayer(normalizeProjectVersion(legacyVersion).snapshot).layout.wedgeAngle).toBe(120);
+    expect(getSnapshotLayer(normalizeProjectVersion(legacyVersion).snapshot).layout.wedgeJitter).toBe(0);
   });
 
   it("normalizes legacy version snapshots without grid gutter axes from the single gutter", () => {
-    const project = createProjectDocument("Legacy Grid Gutter Version");
+    const project = createProjectView("Legacy Grid Gutter Version");
     const legacyVersion = {
       id: "version_legacy_grid_gutter",
       projectId: project.id,
@@ -649,13 +667,13 @@ describe("createProjectDocument", () => {
       },
     } as unknown as ProjectVersion;
 
-    const normalized = normalizeProjectVersion(legacyVersion).snapshot.layout;
+    const normalized = getSnapshotLayer(normalizeProjectVersion(legacyVersion).snapshot).layout;
     expect(normalized.gutterHorizontal).toBe(18);
     expect(normalized.gutterVertical).toBe(18);
   });
 
   it("normalizes legacy version snapshots without radial controls to defaults", () => {
-    const project = createProjectDocument("Legacy Radial Version");
+    const project = createProjectView("Legacy Radial Version");
     const legacyVersion = {
       id: "version_legacy_radial",
       projectId: project.id,
@@ -699,7 +717,7 @@ describe("createProjectDocument", () => {
       },
     } as unknown as ProjectVersion;
 
-    const normalized = normalizeProjectVersion(legacyVersion).snapshot.layout;
+    const normalized = getSnapshotLayer(normalizeProjectVersion(legacyVersion).snapshot).layout;
     expect(normalized.radialAngleOffset).toBe(0);
     expect(normalized.radialRingPhaseStep).toBe(0);
     expect(normalized.radialInnerRadius).toBe(0);
@@ -707,7 +725,7 @@ describe("createProjectDocument", () => {
   });
 
   it("normalizes legacy version snapshots without kaleidoscope controls to defaults", () => {
-    const project = createProjectDocument("Legacy Kaleidoscope Version");
+    const project = createProjectView("Legacy Kaleidoscope Version");
     const legacyVersion = {
       id: "version_legacy_kaleidoscope",
       projectId: project.id,
@@ -737,7 +755,7 @@ describe("createProjectDocument", () => {
       },
     } as unknown as ProjectVersion;
 
-    const normalized = normalizeProjectVersion(legacyVersion).snapshot.effects;
+    const normalized = getSnapshotLayer(normalizeProjectVersion(legacyVersion).snapshot).effects;
     expect(normalized.kaleidoscopeCenterX).toBe(0.5);
     expect(normalized.kaleidoscopeCenterY).toBe(0.5);
     expect(normalized.kaleidoscopeAngleOffset).toBe(0);
@@ -748,7 +766,7 @@ describe("createProjectDocument", () => {
   });
 
   it("normalizes legacy version snapshots without strip angle to zero degrees", () => {
-    const project = createProjectDocument("Legacy Strips Angle Version");
+    const project = createProjectView("Legacy Strips Angle Version");
     const legacyVersion = {
       id: "version_legacy_strip_angle",
       projectId: project.id,
@@ -791,11 +809,11 @@ describe("createProjectDocument", () => {
       },
     } as unknown as ProjectVersion;
 
-    expect(normalizeProjectVersion(legacyVersion).snapshot.layout.stripAngle).toBe(0);
+    expect(getSnapshotLayer(normalizeProjectVersion(legacyVersion).snapshot).layout.stripAngle).toBe(0);
   });
 
   it("normalizes legacy version snapshots without block controls to defaults", () => {
-    const project = createProjectDocument("Legacy Block Version");
+    const project = createProjectView("Legacy Block Version");
     const legacyVersion = {
       id: "version_legacy_blocks",
       projectId: project.id,
@@ -836,10 +854,10 @@ describe("createProjectDocument", () => {
       },
     } as unknown as ProjectVersion;
 
-    expect(normalizeProjectVersion(legacyVersion).snapshot.layout.blockSplitRandomness).toBe(
+    expect(getSnapshotLayer(normalizeProjectVersion(legacyVersion).snapshot).layout.blockSplitRandomness).toBe(
       0.5,
     );
-    expect(normalizeProjectVersion(legacyVersion).snapshot.layout.blockMinSize).toBe(140);
-    expect(normalizeProjectVersion(legacyVersion).snapshot.layout.blockSplitBias).toBe(0.5);
+    expect(getSnapshotLayer(normalizeProjectVersion(legacyVersion).snapshot).layout.blockMinSize).toBe(140);
+    expect(getSnapshotLayer(normalizeProjectVersion(legacyVersion).snapshot).layout.blockSplitBias).toBe(0.5);
   });
 });

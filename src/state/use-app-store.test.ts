@@ -2,13 +2,18 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const {
   db,
+  captureAssetSnapshot,
   createGeneratedSourceAsset,
+  deleteAssetsAtomically,
+  persistAssetCreationsAtomically,
+  persistAssetUpdatesAtomically,
+  loadWorkspaceSnapshotData,
+  persistActiveProjectId,
   persistProcessedAsset,
   processImageFile,
-  deleteBlob,
-  readBlob,
+  putProjectDocument,
+  putProjectVersion,
   updateGeneratedSourceAsset,
-  writeBlob,
 } = vi.hoisted(() => ({
   db: {
     assets: {
@@ -44,13 +49,23 @@ const {
       get: vi.fn(async () => undefined),
     },
   },
+  captureAssetSnapshot: vi.fn(),
   createGeneratedSourceAsset: vi.fn(),
+  deleteAssetsAtomically: vi.fn(async () => undefined),
+  loadWorkspaceSnapshotData: vi.fn(async () => ({
+    projects: [],
+    assets: [],
+    versions: [],
+    activeProjectId: null,
+  })),
+  persistActiveProjectId: vi.fn(async () => undefined),
+  persistAssetCreationsAtomically: vi.fn(async () => undefined),
+  persistAssetUpdatesAtomically: vi.fn(async () => undefined),
   persistProcessedAsset: vi.fn(),
   processImageFile: vi.fn(),
-  deleteBlob: vi.fn<() => Promise<void>>(async () => undefined),
-  readBlob: vi.fn<(path: string) => Promise<Blob | null>>(async () => null),
+  putProjectDocument: vi.fn(async () => undefined),
+  putProjectVersion: vi.fn(async () => undefined),
   updateGeneratedSourceAsset: vi.fn(),
-  writeBlob: vi.fn<(path: string, blob: Blob) => Promise<void>>(async () => undefined),
 }));
 
 vi.mock("@/lib/assets", () => ({
@@ -64,13 +79,23 @@ vi.mock("@/lib/assets", () => ({
 vi.mock("@/lib/db", () => ({ db }));
 vi.mock("@/lib/download", () => ({ downloadBlob: vi.fn() }));
 vi.mock("@/lib/image-worker-client", () => ({ processImageFile }));
-vi.mock("@/lib/opfs", () => ({ deleteBlob, readBlob, writeBlob }));
 vi.mock("@/lib/render", () => ({ exportProjectImage: vi.fn() }));
 vi.mock("@/lib/serializer", () => ({
   createImportCopy: vi.fn(),
   exportProjectBundle: vi.fn(),
   loadProjectBundle: vi.fn(),
   persistImportedProjectBundle: vi.fn(),
+}));
+vi.mock("@/lib/workspace-storage", () => ({
+  captureAssetSnapshot,
+  deleteAssetsAtomically,
+  deleteProjectDataAtomically: vi.fn(async () => undefined),
+  loadWorkspaceSnapshotData,
+  persistActiveProjectId,
+  persistAssetCreationsAtomically,
+  persistAssetUpdatesAtomically,
+  putProjectDocument,
+  putProjectVersion,
 }));
 
 import {
@@ -79,6 +104,7 @@ import {
   normalizeProjectDocument,
   serializeProjectDocument,
 } from "@/lib/project-defaults";
+import { createProjectEditorView } from "@/lib/project-editor-view";
 import { useAppStore } from "@/state/use-app-store";
 import type {
   CellularSourceAsset,
@@ -105,6 +131,11 @@ function resetStore() {
     canRedo: false,
   });
   return project;
+}
+
+function getActiveProjectView() {
+  const project = useAppStore.getState().projects[0];
+  return project ? createProjectEditorView(project) : null;
 }
 
 function createSolidAsset(projectId: string): SourceAsset {
@@ -149,6 +180,17 @@ function createImageAsset(projectId: string, id: string): SourceAsset {
     palette: ["#112233"],
     luminance: 0.25,
     createdAt: "2026-04-05T00:00:00.000Z",
+  };
+}
+
+function createPreparedAssetRecord(asset: SourceAsset, label = asset.id) {
+  return {
+    asset,
+    blobs: {
+      original: new Blob([`${label}-original`]),
+      normalized: new Blob([`${label}-normalized`]),
+      preview: new Blob([`${label}-preview`]),
+    },
   };
 }
 
@@ -357,17 +399,17 @@ describe("useAppStore history", () => {
   });
 
   it("undoes and redoes project snapshot changes", async () => {
-    const initialProject = useAppStore.getState().projects[0]!;
+    const initialProject = getActiveProjectView()!;
 
-    await useAppStore.getState().updateProject((project) => ({
-      ...project,
+    await useAppStore.getState().updateSelectedLayer((layer) => ({
+      ...layer,
       layout: {
-        ...project.layout,
+        ...layer.layout,
         columns: initialProject.layout.columns + 2,
       },
     }));
 
-    expect(useAppStore.getState().projects[0]?.layout.columns).toBe(
+    expect(getActiveProjectView()?.layout.columns).toBe(
       initialProject.layout.columns + 2,
     );
     expect(useAppStore.getState().canUndo).toBe(true);
@@ -375,7 +417,7 @@ describe("useAppStore history", () => {
 
     await useAppStore.getState().undo();
 
-    expect(useAppStore.getState().projects[0]?.layout.columns).toBe(
+    expect(getActiveProjectView()?.layout.columns).toBe(
       initialProject.layout.columns,
     );
     expect(useAppStore.getState().canUndo).toBe(false);
@@ -383,7 +425,7 @@ describe("useAppStore history", () => {
 
     await useAppStore.getState().redo();
 
-    expect(useAppStore.getState().projects[0]?.layout.columns).toBe(
+    expect(getActiveProjectView()?.layout.columns).toBe(
       initialProject.layout.columns + 2,
     );
     expect(useAppStore.getState().canUndo).toBe(true);
@@ -391,12 +433,12 @@ describe("useAppStore history", () => {
   });
 
   it("clears redo history after a divergent project edit", async () => {
-    const initialProject = useAppStore.getState().projects[0]!;
+    const initialProject = getActiveProjectView()!;
 
-    await useAppStore.getState().updateProject((project) => ({
-      ...project,
+    await useAppStore.getState().updateSelectedLayer((layer) => ({
+      ...layer,
       layout: {
-        ...project.layout,
+        ...layer.layout,
         rows: initialProject.layout.rows + 1,
       },
     }));
@@ -404,16 +446,16 @@ describe("useAppStore history", () => {
 
     expect(useAppStore.getState().canRedo).toBe(true);
 
-    await useAppStore.getState().updateProject((project) => ({
-      ...project,
+    await useAppStore.getState().updateSelectedLayer((layer) => ({
+      ...layer,
       layout: {
-        ...project.layout,
+        ...layer.layout,
         gutter: initialProject.layout.gutter + 4,
       },
     }));
 
-    expect(useAppStore.getState().projects[0]?.layout.rows).toBe(initialProject.layout.rows);
-    expect(useAppStore.getState().projects[0]?.layout.gutter).toBe(
+    expect(getActiveProjectView()?.layout.rows).toBe(initialProject.layout.rows);
+    expect(getActiveProjectView()?.layout.gutter).toBe(
       initialProject.layout.gutter + 4,
     );
     expect(useAppStore.getState().canRedo).toBe(false);
@@ -544,14 +586,42 @@ describe("useAppStore history", () => {
     await useAppStore.getState().deleteLayer(selectedLayer.id);
 
     const updatedProject = useAppStore.getState().projects[0]!;
-    expect(updatedProject.layers).toEqual([retainedLayer]);
+    expect(updatedProject.layers).toHaveLength(1);
+    expect(updatedProject.layers[0]).toEqual(
+      expect.objectContaining({
+        id: retainedLayer.id,
+        sourceIds: retainedLayer.sourceIds,
+        layout: expect.objectContaining({
+          columns: retainedLayer.layout.columns,
+          rows: retainedLayer.layout.rows,
+        }),
+        sourceMapping: expect.objectContaining({
+          strategy: retainedLayer.sourceMapping.strategy,
+          sourceWeights: retainedLayer.sourceMapping.sourceWeights,
+        }),
+        effects: expect.objectContaining({
+          blur: retainedLayer.effects.blur,
+          kaleidoscopeSegments: retainedLayer.effects.kaleidoscopeSegments,
+        }),
+        compositing: expect.objectContaining({
+          blendMode: retainedLayer.compositing.blendMode,
+          opacity: retainedLayer.compositing.opacity,
+        }),
+        finish: expect.objectContaining({
+          shadowOpacity: retainedLayer.finish.shadowOpacity,
+          brightness: retainedLayer.finish.brightness,
+        }),
+        activeSeed: retainedLayer.activeSeed,
+      }),
+    );
     expect(updatedProject.selectedLayerId).toBe(retainedLayer.id);
   });
 
   it("undoes and redoes added sources", async () => {
     const project = useAppStore.getState().projects[0]!;
     const asset = createSolidAsset(project.id);
-    createGeneratedSourceAsset.mockResolvedValue(asset);
+    const preparedAsset = createPreparedAssetRecord(asset);
+    createGeneratedSourceAsset.mockResolvedValue(preparedAsset);
 
     await useAppStore.getState().addSolidSource({
       name: "",
@@ -559,21 +629,29 @@ describe("useAppStore history", () => {
     });
 
     expect(useAppStore.getState().assets.map((entry) => entry.id)).toEqual([asset.id]);
-    expect(useAppStore.getState().projects[0]?.sourceIds).toEqual([asset.id]);
+    expect(getActiveProjectView()?.sourceIds).toEqual([asset.id]);
     expect(useAppStore.getState().canUndo).toBe(true);
 
     await useAppStore.getState().undo();
 
     expect(useAppStore.getState().assets).toHaveLength(0);
-    expect(useAppStore.getState().projects[0]?.sourceIds).toEqual([]);
-    expect(db.assets.bulkDelete).toHaveBeenCalledWith([asset.id]);
+    expect(getActiveProjectView()?.sourceIds).toEqual([]);
+    expect(deleteAssetsAtomically).toHaveBeenCalledWith(
+      expect.objectContaining({
+        assets: [asset],
+      }),
+    );
     expect(useAppStore.getState().canRedo).toBe(true);
 
     await useAppStore.getState().redo();
 
     expect(useAppStore.getState().assets.map((entry) => entry.id)).toEqual([asset.id]);
-    expect(useAppStore.getState().projects[0]?.sourceIds).toEqual([asset.id]);
-    expect(db.assets.bulkPut).toHaveBeenCalledWith([asset]);
+    expect(getActiveProjectView()?.sourceIds).toEqual([asset.id]);
+    expect(persistAssetCreationsAtomically).toHaveBeenCalledWith(
+      expect.objectContaining({
+        assets: [preparedAsset],
+      }),
+    );
     expect(useAppStore.getState().canRedo).toBe(false);
   });
 
@@ -590,35 +668,63 @@ describe("useAppStore history", () => {
         },
       ],
     }));
-
-    vi.mocked(readBlob)
-      .mockResolvedValueOnce(new Blob(["original"]))
-      .mockResolvedValueOnce(new Blob(["normalized"]))
-      .mockResolvedValueOnce(new Blob(["preview"]));
+    const preparedAsset = createPreparedAssetRecord(asset);
+    vi.mocked(captureAssetSnapshot).mockResolvedValueOnce(preparedAsset);
 
     await useAppStore.getState().removeSource(asset.id);
 
     expect(useAppStore.getState().assets).toHaveLength(0);
-    expect(useAppStore.getState().projects[0]?.sourceIds).toEqual([]);
-    expect(deleteBlob).toHaveBeenCalledTimes(3);
-    expect(db.assets.bulkDelete).toHaveBeenCalledWith([asset.id]);
+    expect(getActiveProjectView()?.sourceIds).toEqual([]);
+    expect(deleteAssetsAtomically).toHaveBeenCalledWith(
+      expect.objectContaining({
+        assets: [asset],
+      }),
+    );
     expect(useAppStore.getState().canUndo).toBe(true);
 
     await useAppStore.getState().undo();
 
     expect(useAppStore.getState().assets.map((entry) => entry.id)).toEqual([asset.id]);
-    expect(useAppStore.getState().projects[0]?.sourceIds).toEqual([asset.id]);
-    expect(writeBlob).toHaveBeenCalledTimes(3);
-    expect(db.assets.bulkPut).toHaveBeenCalledWith([asset]);
+    expect(getActiveProjectView()?.sourceIds).toEqual([asset.id]);
+    expect(persistAssetCreationsAtomically).toHaveBeenCalledWith(
+      expect.objectContaining({
+        assets: [preparedAsset],
+      }),
+    );
     expect(useAppStore.getState().canRedo).toBe(true);
 
     await useAppStore.getState().redo();
 
     expect(useAppStore.getState().assets).toHaveLength(0);
-    expect(useAppStore.getState().projects[0]?.sourceIds).toEqual([]);
-    expect(deleteBlob).toHaveBeenCalledTimes(6);
-    expect(db.assets.bulkDelete).toHaveBeenLastCalledWith([asset.id]);
+    expect(getActiveProjectView()?.sourceIds).toEqual([]);
+    expect(deleteAssetsAtomically).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        assets: [asset],
+      }),
+    );
     expect(useAppStore.getState().canRedo).toBe(false);
+  });
+
+  it("keeps source state unchanged when atomic removal fails", async () => {
+    const project = useAppStore.getState().projects[0]!;
+    const asset = createSolidAsset(project.id);
+    useAppStore.setState((state) => ({
+      ...state,
+      assets: [asset],
+      projects: [
+        {
+          ...project,
+          sourceIds: [asset.id],
+        },
+      ],
+    }));
+    vi.mocked(captureAssetSnapshot).mockResolvedValueOnce(createPreparedAssetRecord(asset));
+    vi.mocked(deleteAssetsAtomically).mockRejectedValueOnce(new Error("delete failed"));
+
+    await useAppStore.getState().removeSource(asset.id);
+
+    expect(useAppStore.getState().assets.map((entry) => entry.id)).toEqual([asset.id]);
+    expect(useAppStore.getState().status).toBe("Could not remove source: delete failed");
   });
 });
 
@@ -648,13 +754,13 @@ describe("useAppStore import progress", () => {
         progressSnapshots.push(
           JSON.stringify(useAppStore.getState().sourceImportProgress),
         );
-        return firstAsset;
+        return createPreparedAssetRecord(firstAsset);
       })
       .mockImplementationOnce(async () => {
         progressSnapshots.push(
           JSON.stringify(useAppStore.getState().sourceImportProgress),
         );
-        return secondAsset;
+        return createPreparedAssetRecord(secondAsset);
       });
 
     const importPromise = useAppStore.getState().importFiles(files);
@@ -687,10 +793,28 @@ describe("useAppStore import progress", () => {
     expect(useAppStore.getState().status).toBe("Import failed: decode failed");
   });
 
+  it("rolls back imported source state when atomic persistence fails", async () => {
+    const project = useAppStore.getState().projects[0]!;
+    const files = [new File(["a"], "a.jpg", { type: "image/jpeg" })];
+    const payload = { width: 10 } as never;
+    const asset = createImageAsset(project.id, "asset_image_fail");
+
+    vi.mocked(processImageFile).mockResolvedValueOnce(payload);
+    vi.mocked(persistProcessedAsset).mockResolvedValueOnce(createPreparedAssetRecord(asset));
+    vi.mocked(persistAssetCreationsAtomically).mockRejectedValueOnce(new Error("disk full"));
+
+    await useAppStore.getState().importFiles(files);
+
+    expect(useAppStore.getState().assets).toHaveLength(0);
+    expect(getActiveProjectView()?.sourceIds).toEqual([]);
+    expect(useAppStore.getState().sourceImportProgress).toBeNull();
+    expect(useAppStore.getState().status).toBe("Import failed: disk full");
+  });
+
   it("does not use source import progress for generated sources", async () => {
     const project = useAppStore.getState().projects[0]!;
     const asset = createSolidAsset(project.id);
-    createGeneratedSourceAsset.mockResolvedValue(asset);
+    createGeneratedSourceAsset.mockResolvedValue(createPreparedAssetRecord(asset));
 
     await useAppStore.getState().addSolidSource({
       name: "",
@@ -703,7 +827,7 @@ describe("useAppStore import progress", () => {
   it("adds perlin sources through the generated source pipeline", async () => {
     const project = useAppStore.getState().projects[0]!;
     const asset = createPerlinAsset(project.id);
-    createGeneratedSourceAsset.mockResolvedValue(asset);
+    createGeneratedSourceAsset.mockResolvedValue(createPreparedAssetRecord(asset));
 
     await useAppStore.getState().addPerlinSource({
       name: "",
@@ -724,14 +848,14 @@ describe("useAppStore import progress", () => {
       project.canvas,
     );
     expect(useAppStore.getState().assets.map((entry) => entry.id)).toEqual([asset.id]);
-    expect(useAppStore.getState().projects[0]?.sourceIds).toEqual([asset.id]);
+    expect(getActiveProjectView()?.sourceIds).toEqual([asset.id]);
     expect(useAppStore.getState().status).toBe("Perlin source added.");
   });
 
   it("adds cellular sources through the generated source pipeline", async () => {
     const project = useAppStore.getState().projects[0]!;
     const asset = createCellularAsset(project.id);
-    createGeneratedSourceAsset.mockResolvedValue(asset);
+    createGeneratedSourceAsset.mockResolvedValue(createPreparedAssetRecord(asset));
 
     await useAppStore.getState().addCellularSource({
       name: "",
@@ -757,7 +881,7 @@ describe("useAppStore import progress", () => {
   it("adds reaction sources through the generated source pipeline", async () => {
     const project = useAppStore.getState().projects[0]!;
     const asset = createReactionAsset(project.id);
-    createGeneratedSourceAsset.mockResolvedValue(asset);
+    createGeneratedSourceAsset.mockResolvedValue(createPreparedAssetRecord(asset));
 
     await useAppStore.getState().addReactionSource({
       name: "",
@@ -783,7 +907,7 @@ describe("useAppStore import progress", () => {
   it("adds waves sources through the generated source pipeline", async () => {
     const project = useAppStore.getState().projects[0]!;
     const asset = createWaveAsset(project.id);
-    createGeneratedSourceAsset.mockResolvedValue(asset);
+    createGeneratedSourceAsset.mockResolvedValue(createPreparedAssetRecord(asset));
 
     await useAppStore.getState().addWaveSource({
       name: "",
@@ -827,7 +951,8 @@ describe("useAppStore import progress", () => {
       assets: [asset],
       projects: [{ ...project, sourceIds: [asset.id] }],
     }));
-    vi.mocked(updateGeneratedSourceAsset).mockResolvedValueOnce(updatedAsset);
+    const updatedPreparedAsset = createPreparedAssetRecord(updatedAsset);
+    vi.mocked(updateGeneratedSourceAsset).mockResolvedValueOnce(updatedPreparedAsset);
 
     await useAppStore.getState().updateGeneratedSource(asset.id, {
       name: "Updated Gradient",
@@ -856,7 +981,11 @@ describe("useAppStore import progress", () => {
     );
     expect(useAppStore.getState().assets[0]?.id).toBe(asset.id);
     expect(useAppStore.getState().assets[0]).toEqual(updatedAsset);
-    expect(db.assets.put).toHaveBeenCalledWith(updatedAsset);
+    expect(persistAssetUpdatesAtomically).toHaveBeenCalledWith(
+      expect.objectContaining({
+        assets: [updatedPreparedAsset],
+      }),
+    );
   });
 
   it("updates generated perlin sources while keeping the asset id", async () => {
@@ -879,7 +1008,8 @@ describe("useAppStore import progress", () => {
       assets: [asset],
       projects: [{ ...project, sourceIds: [asset.id] }],
     }));
-    vi.mocked(updateGeneratedSourceAsset).mockResolvedValueOnce(updatedAsset);
+    const updatedPreparedAsset = createPreparedAssetRecord(updatedAsset);
+    vi.mocked(updateGeneratedSourceAsset).mockResolvedValueOnce(updatedPreparedAsset);
 
     await useAppStore.getState().updateGeneratedSource(asset.id, {
       name: "Updated Perlin",
@@ -903,6 +1033,49 @@ describe("useAppStore import progress", () => {
     );
     expect(useAppStore.getState().assets[0]?.id).toBe(asset.id);
     expect(useAppStore.getState().assets[0]).toEqual(updatedAsset);
+    expect(persistAssetUpdatesAtomically).toHaveBeenCalledWith(
+      expect.objectContaining({
+        assets: [updatedPreparedAsset],
+      }),
+    );
     expect(useAppStore.getState().status).toBe("Perlin source updated.");
+  });
+
+  it("keeps generated sources unchanged when atomic update persistence fails", async () => {
+    const project = useAppStore.getState().projects[0]!;
+    const asset = createPerlinAsset(project.id);
+    const updatedAsset: PerlinSourceAsset = {
+      ...asset,
+      name: "Updated Perlin",
+      recipe: {
+        ...asset.recipe,
+        scale: 0.9,
+      },
+    };
+
+    useAppStore.setState((state) => ({
+      ...state,
+      assets: [asset],
+      projects: [{ ...project, sourceIds: [asset.id] }],
+    }));
+    vi.mocked(updateGeneratedSourceAsset).mockResolvedValueOnce(
+      createPreparedAssetRecord(updatedAsset),
+    );
+    vi.mocked(persistAssetUpdatesAtomically).mockRejectedValueOnce(
+      new Error("persist failed"),
+    );
+
+    await useAppStore.getState().updateGeneratedSource(asset.id, {
+      name: "Updated Perlin",
+      color: "#0f766e",
+      scale: 0.9,
+      detail: asset.recipe.detail,
+      contrast: asset.recipe.contrast,
+      distortion: asset.recipe.distortion,
+      seed: asset.recipe.seed,
+    });
+
+    expect(useAppStore.getState().assets[0]).toEqual(asset);
+    expect(useAppStore.getState().status).toBe("Could not update source: persist failed");
   });
 });

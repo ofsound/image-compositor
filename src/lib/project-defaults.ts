@@ -50,29 +50,6 @@ type LegacyDocumentLike = LegacySnapshotLike & Pick<
   "id" | "title" | "currentVersionId" | "deletedAt" | "createdAt" | "updatedAt"
 >;
 
-type SelectedLayerProjectionKey =
-  | "sourceIds"
-  | "layout"
-  | "sourceMapping"
-  | "effects"
-  | "compositing"
-  | "finish"
-  | "activeSeed"
-  | "presets"
-  | "passes";
-
-const SELECTED_LAYER_PROJECTION_KEYS: SelectedLayerProjectionKey[] = [
-  "sourceIds",
-  "layout",
-  "sourceMapping",
-  "effects",
-  "compositing",
-  "finish",
-  "activeSeed",
-  "presets",
-  "passes",
-];
-
 function getSelectedLayerIndexFromSnapshot(snapshot: {
   layers: CompositorLayer[];
   selectedLayerId: string | null;
@@ -107,129 +84,6 @@ export function createLayerRenderProject(
     activeSeed: layer.activeSeed,
     presets: structuredClone(layer.presets),
     passes: structuredClone(layer.passes),
-  };
-}
-
-function getSelectedLayerProjectionValue(
-  snapshot: Pick<ProjectSnapshot, "layers" | "selectedLayerId">,
-  key: SelectedLayerProjectionKey,
-) {
-  const selectedLayer = getSelectedLayer(snapshot);
-
-  if (selectedLayer) {
-    return selectedLayer[key];
-  }
-
-  switch (key) {
-    case "sourceIds":
-      return [];
-    case "layout":
-      return DEFAULT_LAYOUT;
-    case "sourceMapping":
-      return DEFAULT_SOURCE_MAPPING;
-    case "effects":
-      return DEFAULT_EFFECTS;
-    case "compositing":
-      return DEFAULT_COMPOSITING;
-    case "finish":
-      return DEFAULT_FINISH;
-    case "activeSeed":
-      return 187310;
-    case "presets":
-      return DEFAULT_PRESETS;
-    case "passes":
-      return DEFAULT_PASSES;
-  }
-}
-
-function cloneSelectedLayerProjectionValue(
-  key: SelectedLayerProjectionKey,
-  value: ProjectSnapshot[SelectedLayerProjectionKey],
-) {
-  if (key === "activeSeed") {
-    return value;
-  }
-
-  return structuredClone(value);
-}
-
-function setSelectedLayerProjectionValue(
-  snapshot: ProjectSnapshot,
-  key: SelectedLayerProjectionKey,
-  value: ProjectSnapshot[SelectedLayerProjectionKey],
-) {
-  const selectedIndex = getSelectedLayerIndexFromSnapshot(snapshot);
-  const selectedLayer = snapshot.layers[selectedIndex];
-
-  if (!selectedLayer) {
-    return;
-  }
-
-  snapshot.layers = snapshot.layers.map((layer, index) =>
-    index === selectedIndex
-      ? ({
-          ...layer,
-          [key]: cloneSelectedLayerProjectionValue(key, value),
-        } as CompositorLayer)
-      : layer,
-  );
-}
-
-function setSelectedLayerInset(snapshot: ProjectSnapshot, inset: number) {
-  const selectedIndex = getSelectedLayerIndexFromSnapshot(snapshot);
-  const selectedLayer = snapshot.layers[selectedIndex];
-
-  if (!selectedLayer) {
-    return;
-  }
-
-  snapshot.layers = snapshot.layers.map((layer, index) =>
-    index === selectedIndex ? { ...layer, inset } : layer,
-  );
-}
-
-function attachSelectedLayerProjection<T extends ProjectSnapshot>(snapshot: T): T {
-  const target = snapshot as T & Record<string, unknown>;
-
-  for (const key of SELECTED_LAYER_PROJECTION_KEYS) {
-    Reflect.deleteProperty(target, key);
-    Object.defineProperty(target, key, {
-      enumerable: true,
-      configurable: true,
-      get() {
-        return getSelectedLayerProjectionValue(snapshot, key);
-      },
-      set(value: ProjectSnapshot[SelectedLayerProjectionKey]) {
-        setSelectedLayerProjectionValue(snapshot, key, value);
-      },
-    });
-  }
-
-  const canvas = snapshot.canvas as CanvasSettings & Record<string, unknown>;
-  Reflect.deleteProperty(canvas, "inset");
-  Object.defineProperty(canvas, "inset", {
-    enumerable: true,
-    configurable: true,
-    get() {
-      return getSelectedLayer(snapshot)?.inset ?? DEFAULT_LAYER_INSET;
-    },
-    set(value: number) {
-      setSelectedLayerInset(snapshot, value);
-    },
-  });
-
-  return snapshot;
-}
-
-function stripSelectedLayerProjection(snapshot: ProjectSnapshot) {
-  const canvas = structuredClone(snapshot.canvas) as Partial<CanvasSettings>;
-  delete canvas.inset;
-
-  return {
-    canvas: canvas as CanvasSettings,
-    export: structuredClone(snapshot.export),
-    layers: snapshot.layers.map((layer) => structuredClone(layer)),
-    selectedLayerId: snapshot.selectedLayerId,
   };
 }
 
@@ -671,6 +525,7 @@ function normalizeLayers(
 export function syncLegacyProjectFieldsToSelectedLayer<T extends ProjectSnapshot>(
   snapshot: T,
 ): T {
+  const legacySnapshot = snapshot as T & LegacyProjectLike;
   const selectedLayerIndex = getSelectedLayerIndexFromSnapshot(snapshot);
   const selectedLayer = snapshot.layers[selectedLayerIndex];
   if (!selectedLayer) {
@@ -679,20 +534,26 @@ export function syncLegacyProjectFieldsToSelectedLayer<T extends ProjectSnapshot
 
   const nextSelectedLayer: CompositorLayer = {
     ...selectedLayer,
-    inset: snapshot.canvas.inset ?? selectedLayer.inset,
-    sourceIds: structuredClone(snapshot.sourceIds ?? selectedLayer.sourceIds),
-    layout: structuredClone(snapshot.layout ?? selectedLayer.layout),
+    inset: legacySnapshot.canvas?.inset ?? selectedLayer.inset,
+    sourceIds: structuredClone(legacySnapshot.sourceIds ?? selectedLayer.sourceIds),
+    layout: structuredClone(
+      legacySnapshot.layout ?? selectedLayer.layout,
+    ) as CompositorLayer["layout"],
     sourceMapping: structuredClone(
-      snapshot.sourceMapping ?? selectedLayer.sourceMapping,
-    ),
-    effects: structuredClone(snapshot.effects ?? selectedLayer.effects),
+      legacySnapshot.sourceMapping ?? selectedLayer.sourceMapping,
+    ) as CompositorLayer["sourceMapping"],
+    effects: structuredClone(
+      legacySnapshot.effects ?? selectedLayer.effects,
+    ) as CompositorLayer["effects"],
     compositing: structuredClone(
-      snapshot.compositing ?? selectedLayer.compositing,
-    ),
-    finish: structuredClone(snapshot.finish ?? selectedLayer.finish),
-    activeSeed: snapshot.activeSeed ?? selectedLayer.activeSeed,
-    presets: structuredClone(snapshot.presets ?? selectedLayer.presets),
-    passes: structuredClone(snapshot.passes ?? selectedLayer.passes),
+      legacySnapshot.compositing ?? selectedLayer.compositing,
+    ) as CompositorLayer["compositing"],
+    finish: structuredClone(
+      legacySnapshot.finish ?? selectedLayer.finish,
+    ) as CompositorLayer["finish"],
+    activeSeed: legacySnapshot.activeSeed ?? selectedLayer.activeSeed,
+    presets: structuredClone(legacySnapshot.presets ?? selectedLayer.presets),
+    passes: structuredClone(legacySnapshot.passes ?? selectedLayer.passes),
   };
   const layers = snapshot.layers.map((layer, index) =>
     index === selectedLayerIndex ? nextSelectedLayer : layer,
@@ -704,15 +565,7 @@ export function syncLegacyProjectFieldsToSelectedLayer<T extends ProjectSnapshot
   };
 }
 
-function attachLegacySelectedLayerFields<T extends ProjectSnapshot>(
-  snapshot: T,
-): T {
-  return attachSelectedLayerProjection(snapshot);
-}
-
 function hasLegacyRootOverrides(snapshot: LegacySnapshotLike) {
-  const canvas = snapshot.canvas;
-
   return (
     ("sourceIds" in snapshot && snapshot.sourceIds !== undefined) ||
     ("layout" in snapshot && snapshot.layout !== undefined) ||
@@ -722,8 +575,7 @@ function hasLegacyRootOverrides(snapshot: LegacySnapshotLike) {
     ("finish" in snapshot && snapshot.finish !== undefined) ||
     ("activeSeed" in snapshot && snapshot.activeSeed !== undefined) ||
     ("presets" in snapshot && snapshot.presets !== undefined) ||
-    ("passes" in snapshot && snapshot.passes !== undefined) ||
-    (!!canvas && "inset" in canvas)
+    ("passes" in snapshot && snapshot.passes !== undefined)
   );
 }
 
@@ -755,10 +607,10 @@ export function normalizeProjectSnapshot(
     const selectedLayer = normalizedSnapshot.layers[selectedLayerIndex];
 
     if (!selectedLayer) {
-      return attachLegacySelectedLayerFields(normalizedSnapshot);
+      return normalizedSnapshot;
     }
 
-    return attachLegacySelectedLayerFields({
+    return {
       ...normalizedSnapshot,
       layers: normalizedSnapshot.layers.map((layer, index) =>
         index === selectedLayerIndex
@@ -777,12 +629,10 @@ export function normalizeProjectSnapshot(
             }
           : layer,
       ),
-    });
+    };
   }
 
-  return attachLegacySelectedLayerFields(
-    normalizedSnapshot,
-  );
+  return normalizedSnapshot;
 }
 
 export function normalizeProjectDocument(
@@ -794,11 +644,11 @@ export function normalizeProjectDocument(
     fallbackCropDistribution,
   );
 
-  return attachSelectedLayerProjection({
+  return {
     ...project,
     ...normalizedSnapshot,
     deletedAt: project.deletedAt ?? null,
-  } as ProjectDocument);
+  } as ProjectDocument;
 }
 
 export function normalizeProjectVersion(
@@ -812,12 +662,17 @@ export function normalizeProjectVersion(
 }
 
 export function serializeProjectSnapshot(snapshot: ProjectSnapshot): ProjectSnapshot {
-  return stripSelectedLayerProjection(snapshot) as ProjectSnapshot;
+  return {
+    canvas: structuredClone(snapshot.canvas),
+    export: structuredClone(snapshot.export),
+    layers: snapshot.layers.map((layer) => structuredClone(layer)),
+    selectedLayerId: snapshot.selectedLayerId,
+  };
 }
 
 export function serializeProjectDocument(project: ProjectDocument): ProjectDocument {
   return {
-    ...stripSelectedLayerProjection(project),
+    ...serializeProjectSnapshot(project),
     id: project.id,
     title: project.title,
     currentVersionId: project.currentVersionId,
@@ -840,12 +695,12 @@ export function createSnapshot(): ProjectSnapshot {
     visible: true,
   });
 
-  return attachSelectedLayerProjection({
+  return {
     canvas: structuredClone(DEFAULT_CANVAS),
     export: structuredClone(DEFAULT_EXPORT),
     layers: [layer],
     selectedLayerId: layer.id,
-  } as ProjectSnapshot);
+  };
 }
 
 export function createProjectDocument(title = "Untitled Composition"): ProjectDocument {

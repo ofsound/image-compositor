@@ -2232,16 +2232,18 @@ export function buildRenderSlices(
     return [];
   }
 
-  const normalizedProject =
-    "layers" in input
-      ? normalizeProjectDocument(syncLegacyProjectFieldsToSelectedLayer(input))
-      : null;
-  const project = normalizedProject
-    ? createLayerRenderProject(
-        normalizedProject,
-        getSelectedLayer(normalizedProject) ?? normalizedProject.layers.at(-1)!,
-      )
-    : input;
+  let project: LayerRenderProject;
+  if ("layers" in input) {
+    const normalizedProject = normalizeProjectDocument(
+      syncLegacyProjectFieldsToSelectedLayer(input),
+    );
+    project = createLayerRenderProject(
+      normalizedProject,
+      getSelectedLayer(normalizedProject) ?? normalizedProject.layers.at(-1)!,
+    );
+  } else {
+    project = input;
+  }
 
   const layoutCells = layoutRegistry[project.layout.family]({ project, assets });
   const rng = mulberry32(project.activeSeed);

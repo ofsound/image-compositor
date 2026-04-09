@@ -77,6 +77,9 @@ const bundle: ImportedProjectBundle = {
     sourceMapping: {
       strategy: "random",
       sourceBias: 0.5,
+      sourceWeights: {
+        asset_original: 2.25,
+      },
       preserveAspect: true,
       cropDistribution: "distributed",
       cropZoom: 1,
@@ -183,6 +186,9 @@ const bundle: ImportedProjectBundle = {
         sourceMapping: {
           strategy: "random",
           sourceBias: 0.5,
+          sourceWeights: {
+            asset_original: 2.25,
+          },
           preserveAspect: true,
           cropDistribution: "distributed",
           cropZoom: 1,
@@ -268,6 +274,12 @@ describe("createImportCopy", () => {
     expect(copy.versionDocs[0]?.id).not.toBe(bundle.versionDocs[0]?.id);
     expect(copy.versionDocs[0]?.projectId).toBe(copy.projectDoc.id);
     expect(copy.versionDocs[0]?.snapshot.sourceIds).toEqual([copy.assetDocs[0]?.id]);
+    expect(copy.projectDoc.sourceMapping.sourceWeights).toEqual({
+      [copy.assetDocs[0]!.id]: 2.25,
+    });
+    expect(copy.versionDocs[0]?.snapshot.sourceMapping.sourceWeights).toEqual({
+      [copy.assetDocs[0]!.id]: 2.25,
+    });
     expect(copy.projectDoc.currentVersionId).toBe(copy.versionDocs[0]?.id);
     expect(Object.keys(copy.assetBlobs)).toEqual([
       copy.assetDocs[0]?.originalPath,

@@ -16,6 +16,22 @@ import type {
   SourceAsset,
 } from "@/types/project";
 
+function remapSourceWeights(
+  sourceWeights: Record<string, number> | undefined,
+  sourceIdMap: Map<string, string>,
+) {
+  if (!sourceWeights) {
+    return {};
+  }
+
+  return Object.fromEntries(
+    Object.entries(sourceWeights).map(([sourceId, weight]) => [
+      sourceIdMap.get(sourceId) ?? sourceId,
+      weight,
+    ]),
+  );
+}
+
 export async function exportProjectBundle(
   project: ProjectDocument,
   versions: ProjectVersion[],
@@ -159,6 +175,13 @@ export function createImportCopy(bundle: ImportedProjectBundle) {
       snapshot: {
         ...structuredClone(version.snapshot),
         sourceIds: version.snapshot.sourceIds.map((sourceId) => sourceIdMap.get(sourceId) ?? sourceId),
+        sourceMapping: {
+          ...structuredClone(version.snapshot.sourceMapping),
+          sourceWeights: remapSourceWeights(
+            version.snapshot.sourceMapping.sourceWeights,
+            sourceIdMap,
+          ),
+        },
       },
     } satisfies ProjectVersion;
   });
@@ -168,6 +191,13 @@ export function createImportCopy(bundle: ImportedProjectBundle) {
     id: nextProjectId,
     title: `${bundle.projectDoc.title} Copy`,
     sourceIds: bundle.projectDoc.sourceIds.map((sourceId) => sourceIdMap.get(sourceId) ?? sourceId),
+    sourceMapping: {
+      ...structuredClone(bundle.projectDoc.sourceMapping),
+      sourceWeights: remapSourceWeights(
+        bundle.projectDoc.sourceMapping.sourceWeights,
+        sourceIdMap,
+      ),
+    },
     currentVersionId: bundle.projectDoc.currentVersionId
       ? (versionIdMap.get(bundle.projectDoc.currentVersionId) ?? null)
       : null,

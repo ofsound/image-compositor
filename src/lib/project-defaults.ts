@@ -13,6 +13,7 @@ import type {
   SourceMappingSettings,
 } from "@/types/project";
 import { makeId } from "@/lib/id";
+import { normalizeSourceWeights } from "@/lib/source-weights";
 
 type LegacyEffectSettings = Partial<EffectSettings> & {
   mirror?: boolean;
@@ -95,6 +96,7 @@ function normalizeStripAngle(layout: Partial<LayoutSettings> | undefined) {
 export const DEFAULT_SOURCE_MAPPING: SourceMappingSettings = {
   strategy: "palette",
   sourceBias: 0.62,
+  sourceWeights: {},
   preserveAspect: true,
   cropDistribution: "distributed",
   cropZoom: 1,
@@ -284,6 +286,7 @@ export function normalizeSourceMapping(
   return {
     strategy: sourceMapping?.strategy ?? DEFAULT_SOURCE_MAPPING.strategy,
     sourceBias: sourceMapping?.sourceBias ?? DEFAULT_SOURCE_MAPPING.sourceBias,
+    sourceWeights: normalizeSourceWeights(sourceMapping?.sourceWeights),
     preserveAspect: sourceMapping?.preserveAspect ?? DEFAULT_SOURCE_MAPPING.preserveAspect,
     cropDistribution: sourceMapping?.cropDistribution ?? fallbackCropDistribution,
     cropZoom: sourceMapping?.cropZoom ?? DEFAULT_SOURCE_MAPPING.cropZoom,

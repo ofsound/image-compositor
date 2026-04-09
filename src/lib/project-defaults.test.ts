@@ -16,6 +16,7 @@ describe("createProjectDocument", () => {
     expect(project.deletedAt).toBeNull();
     expect(project.sourceIds).toEqual([]);
     expect(project.sourceMapping.cropDistribution).toBe("distributed");
+    expect(project.sourceMapping.sourceWeights).toEqual({});
     expect(project.layout.blockDepth).toBe(3);
     expect(project.layout.blockSplitRandomness).toBe(0.5);
     expect(project.layout.blockMinSize).toBe(140);

@@ -177,6 +177,7 @@ export interface LayoutSettings {
 export interface SourceMappingSettings {
   strategy: SourceAssignmentStrategy;
   sourceBias: number;
+  sourceWeights: Record<string, number>;
   preserveAspect: boolean;
   cropDistribution: CropDistribution;
   cropZoom: number;

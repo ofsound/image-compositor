@@ -48,19 +48,19 @@ const paletteBlendAssets: SourceAsset[] = [
     ...assets[0]!,
     id: "asset_palette_mid",
     name: "Palette Mid",
-    palette: ["#112233", "#445566"],
+    palette: ["#24446a", "#2b5f88", "#3b78a3", "#4f8fba", "#6aa7d4"],
   },
   {
     ...assets[1]!,
     id: "asset_palette_low",
     name: "Palette Low",
-    palette: ["#ffeedd"],
+    palette: ["#444444", "#4a4a4a", "#505050", "#565656", "#5c5c5c"],
   },
   {
     ...assets[0]!,
     id: "asset_palette_high",
     name: "Palette High",
-    palette: ["#223344", "#556677", "#8899aa"],
+    palette: ["#ff0033", "#00d66b", "#0066ff", "#ffd400", "#7a00ff"],
   },
 ];
 
@@ -69,19 +69,19 @@ const equalPaletteAssets: SourceAsset[] = [
     ...assets[1]!,
     id: "asset_equal_first",
     name: "Equal First",
-    palette: ["#ffeedd", "#ccbbaa"],
+    palette: ["#112233", "#445566", "#778899"],
   },
   {
     ...assets[0]!,
     id: "asset_equal_second",
     name: "Equal Second",
-    palette: ["#112233", "#445566"],
+    palette: ["#778899", "#445566", "#112233"],
   },
   {
     ...assets[0]!,
     id: "asset_equal_third",
     name: "Equal Third",
-    palette: ["#112233"],
+    palette: ["#445566", "#112233", "#778899"],
   },
 ];
 
@@ -954,6 +954,33 @@ describe("buildRenderSlices", () => {
     }
   });
 
+  it("biases sequential assignment toward higher manual source weights", () => {
+    const project = createProjectDocument("Sequential Source Mix");
+    project.sourceIds = assets.map((asset) => asset.id);
+    project.layout.family = "grid";
+    project.layout.columns = 4;
+    project.layout.rows = 2;
+    project.layout.symmetryMode = "none";
+    project.sourceMapping.strategy = "sequential";
+    project.sourceMapping.sourceWeights = {
+      asset_a: 3,
+      asset_b: 1,
+    };
+
+    const slices = buildRenderSlices(project, assets);
+    const countByAssetId = Object.fromEntries(
+      [...new Set(slices.map((slice) => slice.assetId))].map((assetId) => [
+        assetId,
+        slices.filter((slice) => slice.assetId === assetId).length,
+      ]),
+    );
+
+    expect(countByAssetId).toEqual({
+      asset_a: 6,
+      asset_b: 2,
+    });
+  });
+
   it("keeps palette assignment while distributing unique crops per asset", () => {
     const project = createProjectDocument("Palette Crops");
     project.sourceIds = assets.map((asset) => asset.id);
@@ -984,6 +1011,24 @@ describe("buildRenderSlices", () => {
     }
   });
 
+  it("lets manual source weights mute random assignment without disabling the source", () => {
+    const project = createProjectDocument("Random Source Mix");
+    project.sourceIds = assets.map((asset) => asset.id);
+    project.layout.family = "grid";
+    project.layout.columns = 4;
+    project.layout.rows = 2;
+    project.layout.symmetryMode = "none";
+    project.sourceMapping.strategy = "random";
+    project.sourceMapping.sourceWeights = {
+      asset_a: 4,
+      asset_b: 0,
+    };
+
+    const slices = buildRenderSlices(project, assets);
+
+    expect(slices.every((slice) => slice.assetId === "asset_a")).toBe(true);
+  });
+
   it("preserves source order when palette emphasis is zero", () => {
     const project = createProjectDocument("Palette Emphasis Source Order");
     project.sourceIds = paletteBlendAssets.map((asset) => asset.id);
@@ -1004,7 +1049,7 @@ describe("buildRenderSlices", () => {
     ]).toEqual(["asset_palette_mid", "asset_palette_low", "asset_palette_high"]);
   });
 
-  it("fully sorts by palette size when palette emphasis is one", () => {
+  it("fully sorts by palette variation when palette emphasis is one", () => {
     const project = createProjectDocument("Palette Emphasis Palette Order");
     project.sourceIds = paletteBlendAssets.map((asset) => asset.id);
     project.layout.family = "grid";
@@ -1044,7 +1089,7 @@ describe("buildRenderSlices", () => {
     ]).toEqual(["asset_palette_mid", "asset_palette_high", "asset_palette_low"]);
   });
 
-  it("keeps equal palette sizes in source order", () => {
+  it("keeps equal palette scores in source order", () => {
     const project = createProjectDocument("Palette Emphasis Stable Ties");
     project.sourceIds = equalPaletteAssets.map((asset) => asset.id);
     project.layout.family = "grid";

@@ -1,6 +1,7 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import * as assetLib from "@/lib/assets";
 import { createProjectDocument } from "@/lib/project-defaults";
 import App, {
   coerceShapeModeForFamily,
@@ -17,6 +18,17 @@ vi.mock("@/lib/opfs", () => ({
   readBlob: vi.fn(async () => null),
 }));
 
+vi.mock("@/lib/assets", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/assets")>(
+    "@/lib/assets",
+  );
+
+  return {
+    ...actual,
+    renderGeneratedSourceToCanvas: vi.fn(),
+  };
+});
+
 vi.mock("@/components/app/preview-stage", () => ({
   PreviewStage: () => <div data-testid="preview-stage" />,
 }));
@@ -30,6 +42,9 @@ vi.mock("@/state/use-app-store", () => ({
 }));
 
 const mockedUseAppStore = vi.mocked(useAppStore);
+const renderGeneratedSourceToCanvasSpy = vi.mocked(
+  assetLib.renderGeneratedSourceToCanvas,
+);
 type AppStoreState = ReturnType<typeof useAppStore.getState>;
 type UpdateProject = AppStoreState["updateProject"];
 
@@ -57,6 +72,8 @@ function createStoreState(overrides?: {
     | "palette"
     | "symmetry";
   assets?: SourceAsset[];
+  enabledSourceIds?: string[];
+  sourceWeights?: Record<string, number>;
 }) {
   const project = createProjectDocument("Slider Spec");
 
@@ -92,7 +109,12 @@ function createStoreState(overrides?: {
     overrides?.assets?.map((asset) => ({ ...asset, projectId: project.id })) ??
     [];
   if (assets.length > 0) {
-    project.sourceIds = assets.map((asset) => asset.id);
+    project.sourceIds =
+      overrides?.enabledSourceIds ?? assets.map((asset) => asset.id);
+  }
+
+  if (overrides?.sourceWeights) {
+    project.sourceMapping.sourceWeights = overrides.sourceWeights;
   }
 
   const updateProject = vi.fn<UpdateProject>(async () => undefined);
@@ -143,12 +165,20 @@ function renderApp(overrides?: Parameters<typeof createStoreState>[0]) {
   render(<App />);
 }
 
-function createImageAsset(projectId: string): SourceAsset {
+function createImageAsset(
+  projectId: string,
+  overrides?: {
+    id?: string;
+    name?: string;
+    palette?: string[];
+    luminance?: number;
+  },
+): SourceAsset {
   return {
-    id: "asset_a",
+    id: overrides?.id ?? "asset_a",
     kind: "image",
     projectId,
-    name: "Asset A",
+    name: overrides?.name ?? "Asset A",
     originalFileName: "asset-a.jpg",
     mimeType: "image/jpeg",
     width: 1200,
@@ -158,8 +188,8 @@ function createImageAsset(projectId: string): SourceAsset {
     normalizedPath: "assets/normalized/asset-a.png",
     previewPath: "assets/previews/asset-a.webp",
     averageColor: "#112233",
-    palette: ["#112233"],
-    luminance: 0.25,
+    palette: overrides?.palette ?? ["#112233"],
+    luminance: overrides?.luminance ?? 0.25,
     createdAt: "2026-04-06T00:00:00.000Z",
   };
 }
@@ -234,6 +264,8 @@ function expectSliderHidden(label: string) {
 describe("App conditional sliders", () => {
   beforeEach(() => {
     mockedUseAppStore.mockReset();
+    renderGeneratedSourceToCanvasSpy.mockImplementation(() => undefined);
+    renderGeneratedSourceToCanvasSpy.mockClear();
   });
 
   it("hides layout sliders outside their supported families", () => {
@@ -611,11 +643,56 @@ describe("App conditional sliders", () => {
     const nextProject = update(structuredClone(state.projects[0]!));
     expect(nextProject.layout.organicVariation).toBe(4096);
   });
+
+  it("shows a side-by-side source mix area for enabled sources only", () => {
+    renderApp({
+      assets: [
+        createImageAsset("project_unused", { id: "asset_a", name: "Asset A" }),
+        createImageAsset("project_unused", { id: "asset_b", name: "Asset B" }),
+      ],
+      enabledSourceIds: ["asset_a"],
+      sourceWeights: {
+        asset_a: 2.5,
+        asset_b: 0.5,
+      },
+    });
+
+    expect(screen.getByText("Source Mix")).toBeInTheDocument();
+    expect(screen.getByLabelText("Asset A mix weight")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Asset B mix weight")).not.toBeInTheDocument();
+    expect(screen.getByText("2.5x")).toBeInTheDocument();
+  });
+
+  it("stores source mix slider changes in source mapping weights", () => {
+    const state = createStoreState({
+      assets: [
+        createImageAsset("project_unused", { id: "asset_a", name: "Asset A" }),
+        createImageAsset("project_unused", { id: "asset_b", name: "Asset B" }),
+      ],
+    });
+    mockedUseAppStore.mockReturnValue(state);
+
+    render(<App />);
+
+    fireEvent.keyDown(screen.getByLabelText("Asset A mix weight"), {
+      key: "End",
+    });
+
+    expect(state.updateProject).toHaveBeenCalledTimes(1);
+
+    const [[update]] = state.updateProject.mock.calls;
+    const nextProject = update(structuredClone(state.projects[0]!));
+    expect(nextProject.sourceMapping.sourceWeights).toEqual({
+      asset_a: 4,
+    });
+  });
 });
 
 describe("App gradient sources", () => {
   beforeEach(() => {
     mockedUseAppStore.mockReset();
+    renderGeneratedSourceToCanvasSpy.mockImplementation(() => undefined);
+    renderGeneratedSourceToCanvasSpy.mockClear();
   });
 
   it("opens the gradient dialog with linear defaults", async () => {
@@ -629,8 +706,13 @@ describe("App gradient sources", () => {
     expect(within(dialog).getByText("Mode")).toBeInTheDocument();
     expect(within(dialog).getByText("Linear")).toBeInTheDocument();
     expect(within(dialog).getByText("Direction")).toBeInTheDocument();
+    expect(within(dialog).getByTestId("source-editor-preview-layout")).toBeInTheDocument();
+    expect(within(dialog).getByTestId("source-editor-preview")).toBeInTheDocument();
     expect(within(dialog).queryByLabelText("Center X")).not.toBeInTheDocument();
     expect(within(dialog).queryByLabelText("Angle")).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(renderGeneratedSourceToCanvasSpy).toHaveBeenCalled(),
+    );
   });
 
   it("shows radial controls and repopulates them when editing a radial gradient", async () => {
@@ -655,6 +737,7 @@ describe("App gradient sources", () => {
     expect(
       within(dialog).getByLabelText("Enable midpoint color"),
     ).toBeInTheDocument();
+    expect(within(dialog).getByTestId("source-editor-preview")).toBeInTheDocument();
     expect(within(dialog).getAllByDisplayValue("#778899")).toHaveLength(2);
     expect(within(dialog).getByText("25%")).toBeInTheDocument();
     expect(within(dialog).getByText("75%")).toBeInTheDocument();
@@ -676,8 +759,51 @@ describe("App gradient sources", () => {
     expect(within(dialog).getByLabelText("Angle")).toBeInTheDocument();
     expect(within(dialog).getByLabelText("Span")).toBeInTheDocument();
     expect(within(dialog).getByLabelText("Repeat span")).toBeInTheDocument();
+    expect(within(dialog).getByTestId("source-editor-preview")).toBeInTheDocument();
     expect(within(dialog).queryByText("Direction")).not.toBeInTheDocument();
     expect(within(dialog).queryByLabelText("Outer Radius")).not.toBeInTheDocument();
+  });
+
+  it("sends normalized gradient preview recipes to the preview renderer", async () => {
+    const user = userEvent.setup();
+    renderApp();
+
+    await user.click(screen.getAllByText("Add Source")[0]!);
+    await user.click(screen.getByRole("tab", { name: "Gradient" }));
+    const dialog = screen.getByRole("dialog");
+
+    renderGeneratedSourceToCanvasSpy.mockClear();
+
+    const [modeTrigger] = within(dialog).getAllByRole("combobox");
+    await user.click(modeTrigger!);
+    await user.click(await screen.findByRole("option", { name: "Conic" }));
+    await user.click(within(dialog).getByLabelText("Enable midpoint color"));
+    fireEvent.change(within(dialog).getByLabelText("Start color"), {
+      target: { value: "#010203" },
+    });
+    fireEvent.change(within(dialog).getByLabelText("End color"), {
+      target: { value: "#aabbcc" },
+    });
+    fireEvent.change(within(dialog).getAllByDisplayValue("#94a3b8")[0]!, {
+      target: { value: "#445566" },
+    });
+    fireEvent.keyDown(within(dialog).getByLabelText("Center X"), { key: "Home" });
+    fireEvent.keyDown(within(dialog).getByLabelText("Center Y"), { key: "End" });
+
+    await waitFor(() =>
+      expect(renderGeneratedSourceToCanvasSpy.mock.calls.at(-1)?.[1]).toEqual(
+        expect.objectContaining({
+          kind: "gradient",
+          recipe: expect.objectContaining({
+            from: "#010203",
+            to: "#aabbcc",
+            viaColor: "#445566",
+            centerX: 0,
+            centerY: 1,
+          }),
+        }),
+      ),
+    );
   });
 
   it("submits normalized conic gradient recipes", async () => {
@@ -738,6 +864,9 @@ describe("App gradient sources", () => {
     await user.click(screen.getByRole("tab", { name: "Noise" }));
     const dialog = screen.getByRole("dialog");
 
+    expect(within(dialog).getByTestId("source-editor-preview-layout")).toBeInTheDocument();
+    expect(within(dialog).getByTestId("source-editor-preview")).toBeInTheDocument();
+
     fireEvent.change(within(dialog).getByLabelText("Base color"), {
       target: { value: "#224466" },
     });
@@ -758,6 +887,23 @@ describe("App gradient sources", () => {
         seed: expect.any(Number),
       }),
     );
+  });
+
+  it("keeps the preview hidden for image and solid tabs", async () => {
+    const user = userEvent.setup();
+    renderApp();
+
+    await user.click(screen.getAllByText("Add Source")[0]!);
+    let dialog = screen.getByRole("dialog");
+    expect(within(dialog).queryByTestId("source-editor-preview")).not.toBeInTheDocument();
+
+    await user.click(within(dialog).getByRole("tab", { name: "Solid" }));
+    dialog = screen.getByRole("dialog");
+
+    expect(within(dialog).queryByTestId("source-editor-preview")).not.toBeInTheDocument();
+    expect(
+      within(dialog).queryByTestId("source-editor-preview-layout"),
+    ).not.toBeInTheDocument();
   });
 
   it("repopulates the noise editor for existing noise assets", async () => {
@@ -782,15 +928,48 @@ describe("App gradient sources", () => {
     expect(within(dialog).getByLabelText("Detail")).toBeInTheDocument();
     expect(within(dialog).getByLabelText("Contrast")).toBeInTheDocument();
     expect(within(dialog).getByLabelText("Distortion")).toBeInTheDocument();
+    expect(within(dialog).getByTestId("source-editor-preview")).toBeInTheDocument();
     expect(
       within(dialog).getByRole("button", { name: /Regenerate/i }),
     ).toBeInTheDocument();
+  });
+
+  it("sends normalized noise preview recipes to the preview renderer", async () => {
+    const user = userEvent.setup();
+    renderApp();
+
+    await user.click(screen.getAllByText("Add Source")[0]!);
+    await user.click(screen.getByRole("tab", { name: "Noise" }));
+    const dialog = screen.getByRole("dialog");
+
+    renderGeneratedSourceToCanvasSpy.mockClear();
+
+    fireEvent.change(within(dialog).getByLabelText("Base color"), {
+      target: { value: "#224466" },
+    });
+    fireEvent.keyDown(within(dialog).getByLabelText("Scale"), { key: "End" });
+    fireEvent.keyDown(within(dialog).getByLabelText("Detail"), { key: "Home" });
+
+    await waitFor(() =>
+      expect(renderGeneratedSourceToCanvasSpy.mock.calls.at(-1)?.[1]).toEqual(
+        expect.objectContaining({
+          kind: "noise",
+          recipe: expect.objectContaining({
+            color: "#224466",
+            scale: 1,
+            detail: 0,
+          }),
+        }),
+      ),
+    );
   });
 });
 
 describe("App source import progress badge", () => {
   beforeEach(() => {
     mockedUseAppStore.mockReset();
+    renderGeneratedSourceToCanvasSpy.mockImplementation(() => undefined);
+    renderGeneratedSourceToCanvasSpy.mockClear();
   });
 
   it("hides the source processing badge by default", () => {

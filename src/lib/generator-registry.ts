@@ -11,6 +11,7 @@ import type {
   ThreeDStructureMode,
 } from "@/types/project";
 import { mulberry32 } from "@/lib/rng";
+import { getSourceWeight } from "@/lib/source-weights";
 import { clamp, lerp } from "@/lib/utils";
 
 interface GeneratorContext {
@@ -42,6 +43,12 @@ interface Point3D {
   x: number;
   y: number;
   z: number;
+}
+
+interface RgbColor {
+  r: number;
+  g: number;
+  b: number;
 }
 
 interface ThreeDAnchor {
@@ -1528,6 +1535,132 @@ function normalizeRank(index: number, total: number) {
   return index / (total - 1);
 }
 
+function parseHexColor(value: string): RgbColor | null {
+  const candidate = value.trim();
+  const normalized = candidate.startsWith("#") ? candidate.slice(1) : candidate;
+  const expanded =
+    normalized.length === 3
+      ? normalized
+          .split("")
+          .map((char) => `${char}${char}`)
+          .join("")
+      : normalized;
+
+  if (!/^[\da-fA-F]{6}$/.test(expanded)) {
+    return null;
+  }
+
+  return {
+    r: Number.parseInt(expanded.slice(0, 2), 16),
+    g: Number.parseInt(expanded.slice(2, 4), 16),
+    b: Number.parseInt(expanded.slice(4, 6), 16),
+  };
+}
+
+function getNormalizedColorDistance(a: RgbColor, b: RgbColor) {
+  const dr = a.r - b.r;
+  const dg = a.g - b.g;
+  const db = a.b - b.b;
+  return Math.sqrt((dr * dr + dg * dg + db * db) / (255 * 255 * 3));
+}
+
+function getPaletteVariationScore(asset: SourceAsset) {
+  const palette = [...new Set(asset.palette)]
+    .map(parseHexColor)
+    .filter((color): color is RgbColor => color !== null);
+
+  if (palette.length === 0) {
+    return 0;
+  }
+
+  let distanceTotal = 0;
+  let distancePairs = 0;
+  for (let index = 0; index < palette.length; index += 1) {
+    for (let compareIndex = index + 1; compareIndex < palette.length; compareIndex += 1) {
+      distanceTotal += getNormalizedColorDistance(
+        palette[index]!,
+        palette[compareIndex]!,
+      );
+      distancePairs += 1;
+    }
+  }
+
+  const swatchScore = normalizeRank(palette.length - 1, 5);
+  const variationScore = distancePairs === 0 ? 0 : distanceTotal / distancePairs;
+
+  return swatchScore * 0.35 + variationScore * 0.65;
+}
+
+function getManualSourceWeights(
+  project: ProjectDocument,
+  assets: SourceAsset[],
+) {
+  const weights = assets.map((asset) =>
+    getSourceWeight(project.sourceMapping.sourceWeights, asset.id),
+  );
+
+  return weights.some((weight) => weight > 0)
+    ? weights
+    : assets.map(() => 1);
+}
+
+function pickRandomWeightedAsset(
+  assets: SourceAsset[],
+  weights: number[],
+  rng: ReturnType<typeof mulberry32>,
+) {
+  const totalWeight = weights.reduce((sum, weight) => sum + Math.max(0, weight), 0);
+  if (totalWeight <= 0) {
+    return rng.pick(assets);
+  }
+
+  let cursor = rng.next() * totalWeight;
+  for (let weightIndex = 0; weightIndex < weights.length; weightIndex += 1) {
+    cursor -= Math.max(0, weights[weightIndex] ?? 0);
+    if (cursor <= 0) {
+      return assets[weightIndex]!;
+    }
+  }
+
+  return assets.at(-1)!;
+}
+
+function buildSmoothWeightedCycle(assets: SourceAsset[], weights: number[]) {
+  const integerWeights = weights.map((weight) =>
+    weight > 0 ? Math.max(1, Math.round(weight * 20)) : 0,
+  );
+  const totalWeight = integerWeights.reduce((sum, weight) => sum + weight, 0);
+  if (totalWeight <= 0) {
+    return assets;
+  }
+
+  const scores = integerWeights.map(() => 0);
+  const cycle: SourceAsset[] = [];
+
+  for (let slot = 0; slot < totalWeight; slot += 1) {
+    let nextIndex = 0;
+    for (let assetIndex = 0; assetIndex < integerWeights.length; assetIndex += 1) {
+      scores[assetIndex] = (scores[assetIndex] ?? 0) + integerWeights[assetIndex]!;
+      if (scores[assetIndex]! > scores[nextIndex]!) {
+        nextIndex = assetIndex;
+      }
+    }
+    scores[nextIndex] -= totalWeight;
+    cycle.push(assets[nextIndex]!);
+  }
+
+  return cycle;
+}
+
+function pickOrderedWeightedAsset(
+  assets: SourceAsset[],
+  index: number,
+  project: ProjectDocument,
+) {
+  const cycle = buildSmoothWeightedCycle(assets, getManualSourceWeights(project, assets));
+  return cycle[index % cycle.length]!;
+}
+
 function assetByStrategy(
   strategy: SourceAssignmentStrategy,
   assets: SourceAsset[],
@@ -1540,7 +1673,7 @@ function assetByStrategy(
   }
 
   if (strategy === "sequential") {
-    return assets[index % assets.length]!;
+    return pickOrderedWeightedAsset(assets, index, project);
   }
 
   if (strategy === "luminance") {
@@ -1549,15 +1682,19 @@ function assetByStrategy(
         ? a.luminance - b.luminance
         : b.luminance - a.luminance,
     );
-    return ordered[index % ordered.length]!;
+    return pickOrderedWeightedAsset(ordered, index, project);
   }
 
   if (strategy === "palette") {
     const baseIndexById = new Map(assets.map((asset, assetIndex) => [asset.id, assetIndex]));
+    const paletteScoreById = new Map(
+      assets.map((asset) => [asset.id, getPaletteVariationScore(asset)]),
+    );
     const paletteRanked = [...assets].sort((a, b) => {
-      const paletteDifference = b.palette.length - a.palette.length;
-      if (paletteDifference !== 0) {
-        return paletteDifference;
+      const scoreDifference =
+        (paletteScoreById.get(b.id) ?? 0) - (paletteScoreById.get(a.id) ?? 0);
+      if (Math.abs(scoreDifference) > Number.EPSILON) {
+        return scoreDifference;
       }
 
       return (baseIndexById.get(a.id) ?? 0) - (baseIndexById.get(b.id) ?? 0);
@@ -1581,26 +1718,29 @@ function assetByStrategy(
 
       return (baseIndexById.get(a.id) ?? 0) - (baseIndexById.get(b.id) ?? 0);
     });
-    return ordered[index % ordered.length]!;
+    return pickOrderedWeightedAsset(ordered, index, project);
   }
 
   if (strategy === "symmetry") {
-    return assets[index % Math.max(1, Math.ceil(assets.length / 2))]!;
+    return pickOrderedWeightedAsset(
+      assets.slice(0, Math.max(1, Math.ceil(assets.length / 2))),
+      index,
+      project,
+    );
   }
 
   if (strategy === "weighted") {
     const weights = assets.map((asset, assetIndex) =>
-      clamp(asset.palette.length * project.sourceMapping.sourceBias + (assetIndex + 1), 1, 100),
+      clamp(
+        asset.palette.length * project.sourceMapping.sourceBias + (assetIndex + 1),
+        1,
+        100,
+      ) * getSourceWeight(project.sourceMapping.sourceWeights, asset.id),
     );
-    const sum = weights.reduce((total, weight) => total + weight, 0);
-    let cursor = rng.next() * sum;
-    for (let weightIndex = 0; weightIndex < weights.length; weightIndex += 1) {
-      cursor -= weights[weightIndex]!;
-      if (cursor <= 0) return assets[weightIndex]!;
-    }
+    return pickRandomWeightedAsset(assets, weights, rng);
   }
 
-  return rng.pick(assets);
+  return pickRandomWeightedAsset(assets, getManualSourceWeights(project, assets), rng);
 }
 
 function reflectSlices(slices: RenderSlice[], project: ProjectDocument) {

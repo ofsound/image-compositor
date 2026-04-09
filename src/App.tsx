@@ -56,6 +56,7 @@ import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import {
   ACCEPTED_IMAGE_TYPES,
+  type GeneratedSourceInput,
   getDefaultGradientInput,
   getDefaultGradientDirection,
   getDefaultNoiseInput,
@@ -63,11 +64,16 @@ import {
   normalizeGradientInput,
   normalizeNoiseInput,
   normalizeSolidInput,
+  renderGeneratedSourceToCanvas,
 } from "@/lib/assets";
 import { normalizeHexColor } from "@/lib/color";
 import { lockExportDimensionsToCanvas } from "@/lib/export-sizing";
 import { readBlob } from "@/lib/opfs";
 import { toggleSourceId } from "@/lib/source-selection";
+import {
+  getSourceWeight,
+  setSourceWeight,
+} from "@/lib/source-weights";
 import { useAppStore } from "@/state/use-app-store";
 import type {
   BlendMode,
@@ -152,6 +158,7 @@ const GRADIENT_DIRECTIONS: GradientDirection[] = [
   "diagonal-down",
   "diagonal-up",
 ];
+const GENERATED_SOURCE_PREVIEW_MAX_DIMENSION = 640;
 const ORGANIC_DISTRIBUTION_MAX = 4_096;
 const THREE_D_DISTRIBUTION_MAX = 4_096;
 
@@ -178,6 +185,14 @@ function formatPercentValue(value: number) {
 
 function formatDegreeValue(value: number) {
   return `${Math.round(value)}°`;
+}
+
+function formatSourceWeightValue(value: number) {
+  const rounded = Math.round(value * 100) / 100;
+  const displayValue = Number.isInteger(rounded)
+    ? rounded.toFixed(0)
+    : rounded.toFixed(2).replace(/0+$/, "").replace(/\.$/, "");
+  return `${displayValue}x`;
 }
 
 function createNoiseSeed() {
@@ -240,6 +255,60 @@ function SourceColorField({
             onChange(normalizeHexColor(event.target.value, value))
           }
         />
+      </div>
+    </div>
+  );
+}
+
+function GeneratedSourcePreview({
+  source,
+  canvasSize,
+}: {
+  source: GeneratedSourceInput;
+  canvasSize: Pick<ProjectDocument["canvas"], "width" | "height">;
+}) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const scale = Math.min(
+    1,
+    GENERATED_SOURCE_PREVIEW_MAX_DIMENSION /
+      Math.max(canvasSize.width, canvasSize.height),
+  );
+  const previewWidth = Math.max(1, Math.round(canvasSize.width * scale));
+  const previewHeight = Math.max(1, Math.round(canvasSize.height * scale));
+  const previewSignature = JSON.stringify(source);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    canvas.width = previewWidth;
+    canvas.height = previewHeight;
+    renderGeneratedSourceToCanvas(canvas, source);
+  }, [previewHeight, previewSignature, previewWidth]);
+
+  return (
+    <div
+      data-testid="source-editor-preview"
+      className="rounded-lg border border-border-subtle bg-surface-sunken/60 p-4"
+    >
+      <div className="space-y-1">
+        <div className="text-sm font-medium text-text">Preview</div>
+        <div className="text-xs text-text-muted">
+          Live source preview using the current canvas aspect ratio.
+        </div>
+      </div>
+      <div className="mt-4 overflow-hidden rounded-md bg-preview-bg p-3">
+        <div className="flex min-h-[18rem] items-center justify-center">
+          <canvas
+            ref={canvasRef}
+            data-testid="source-editor-preview-canvas"
+            aria-label="Generated source preview"
+            className="h-auto w-full rounded-md bg-preview-canvas object-contain"
+            style={{ aspectRatio: `${canvasSize.width} / ${canvasSize.height}` }}
+            width={previewWidth}
+            height={previewHeight}
+          />
+        </div>
       </div>
     </div>
   );
@@ -535,12 +604,22 @@ function App() {
   const activeVersions = activeProject
     ? versions.filter((version) => version.projectId === activeProject.id)
     : [];
+  const activeSourceWeights = activeAssets.map((asset) => ({
+    asset,
+    weight: getSourceWeight(activeProject?.sourceMapping.sourceWeights, asset.id),
+  }));
+  const activeSourceWeightTotal = activeSourceWeights.reduce(
+    (sum, entry) => sum + entry.weight,
+    0,
+  );
   const activeAssetSignature = activeAssets.map((asset) => asset.id).join("|");
   const purgeDialogProject =
     projects.find((project) => project.id === purgeDialogProjectId) ?? null;
   const isLinearGradientMode = gradientSourceMode === "linear";
   const isRadialGradientMode = gradientSourceMode === "radial";
   const isConicGradientMode = gradientSourceMode === "conic";
+  const showGeneratedSourcePreview =
+    sourceDialogMode === "gradient" || sourceDialogMode === "noise";
 
   useEffect(() => {
     setRenderState({
@@ -602,6 +681,40 @@ function App() {
       canvasRef.current?.toBlob((blob) => resolve(blob), "image/webp", 0.88);
     });
 
+  const gradientPreviewSource: GeneratedSourceInput = {
+    kind: "gradient",
+    name: gradientSourceName,
+    recipe: normalizeGradientInput({
+      name: gradientSourceName,
+      mode: gradientSourceMode,
+      from: gradientSourceFrom,
+      to: gradientSourceTo,
+      direction: gradientSourceDirection,
+      viaColor: gradientSourceViaEnabled ? gradientSourceViaColor : null,
+      viaPosition: gradientSourceViaPosition,
+      centerX: gradientSourceCenterX,
+      centerY: gradientSourceCenterY,
+      radialRadius: gradientSourceRadialRadius,
+      radialInnerRadius: gradientSourceRadialInnerRadius,
+      conicAngle: gradientSourceConicAngle,
+      conicSpan: gradientSourceConicSpan,
+      conicRepeat: gradientSourceConicRepeat,
+    }),
+  };
+  const noisePreviewSource: GeneratedSourceInput = {
+    kind: "noise",
+    name: noiseSourceName,
+    recipe: normalizeNoiseInput({
+      name: noiseSourceName,
+      color: noiseSourceColor,
+      scale: noiseSourceScale,
+      detail: noiseSourceDetail,
+      contrast: noiseSourceContrast,
+      distortion: noiseSourceDistortion,
+      seed: noiseSourceSeed,
+    }),
+  };
+
   const openSaveVersion = async () => {
     const label = window.prompt(
       "Version label",
@@ -617,6 +730,28 @@ function App() {
     patchProject((project) => ({
       ...project,
       sourceIds: toggleSourceId(project.sourceIds, assetId),
+    }));
+  };
+  const updateSourceWeight = (assetId: string, value: number) => {
+    patchProject((project) => ({
+      ...project,
+      sourceMapping: {
+        ...project.sourceMapping,
+        sourceWeights: setSourceWeight(
+          project.sourceMapping.sourceWeights,
+          assetId,
+          value,
+        ),
+      },
+    }));
+  };
+  const resetSourceMix = () => {
+    patchProject((project) => ({
+      ...project,
+      sourceMapping: {
+        ...project.sourceMapping,
+        sourceWeights: {},
+      },
     }));
   };
   const handleRemoveSource = async (assetId: string) => {
@@ -1064,31 +1199,98 @@ function App() {
                       edited later.
                     </div>
                   ) : (
-                    <div className="flex gap-2 overflow-x-auto overflow-y-hidden pb-1">
-                      {projectAssets.map((asset) => (
-                        <SourceAssetCard
-                          key={asset.id}
-                          asset={asset}
-                          enabled={activeProject.sourceIds.includes(asset.id)}
-                          onToggle={toggleAssetEnabled}
-                          onRemove={(assetId) =>
-                            void handleRemoveSource(assetId)
-                          }
-                          onEdit={
-                            asset.kind === "image"
-                              ? undefined
-                              : openEditSourceDialog
-                          }
-                          thumbnail={
-                            <SourceThumbnail
-                              previewPath={asset.previewPath}
-                              label={asset.name}
-                              versionKey={getSourceContentSignature(asset)}
-                            />
-                          }
-                        />
-                      ))}
-                    </div>
+                    <>
+                      <div className="rounded-md border border-border-subtle bg-surface-sunken/70 p-3">
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="space-y-1">
+                            <div className="text-sm font-medium text-text">
+                              Source Mix
+                            </div>
+                            <div className="text-xs leading-relaxed text-text-muted">
+                              Adjust how often each enabled source appears in
+                              the compositor.
+                            </div>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={resetSourceMix}
+                            disabled={activeAssets.length === 0}
+                          >
+                            Reset
+                          </Button>
+                        </div>
+                        {activeSourceWeights.length > 0 ? (
+                          <div className="mt-3 flex gap-2 overflow-x-auto overflow-y-hidden pb-1">
+                            {activeSourceWeights.map(({ asset, weight }) => {
+                              const share =
+                                activeSourceWeightTotal > 0
+                                  ? weight / activeSourceWeightTotal
+                                  : 1 / activeSourceWeights.length;
+
+                              return (
+                                <div
+                                  key={asset.id}
+                                  className="min-w-[9.5rem] flex-1 rounded-md border border-border-subtle bg-surface px-3 py-3"
+                                >
+                                  <div className="truncate text-xs font-medium text-text">
+                                    {asset.name}
+                                  </div>
+                                  <div className="mt-1 flex items-center justify-between font-mono text-[10px] uppercase tracking-[0.08em] text-text-muted">
+                                    <span>{formatSourceWeightValue(weight)}</span>
+                                    <span>{formatPercentValue(share)}</span>
+                                  </div>
+                                  <div className="mt-3">
+                                    <Slider
+                                      aria-label={`${asset.name} mix weight`}
+                                      min={0}
+                                      max={4}
+                                      step={0.05}
+                                      value={[weight]}
+                                      onValueChange={(next) =>
+                                        updateSourceWeight(
+                                          asset.id,
+                                          next[0] ?? weight,
+                                        )
+                                      }
+                                    />
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <div className="mt-3 rounded-md bg-surface px-3 py-2 text-xs text-text-faint">
+                            Enable at least one source to mix it here.
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex gap-2 overflow-x-auto overflow-y-hidden pb-1">
+                        {projectAssets.map((asset) => (
+                          <SourceAssetCard
+                            key={asset.id}
+                            asset={asset}
+                            enabled={activeProject.sourceIds.includes(asset.id)}
+                            onToggle={toggleAssetEnabled}
+                            onRemove={(assetId) =>
+                              void handleRemoveSource(assetId)
+                            }
+                            onEdit={
+                              asset.kind === "image"
+                                ? undefined
+                                : openEditSourceDialog
+                            }
+                            thumbnail={
+                              <SourceThumbnail
+                                previewPath={asset.previewPath}
+                                label={asset.name}
+                                versionKey={getSourceContentSignature(asset)}
+                              />
+                            }
+                          />
+                        ))}
+                      </div>
+                    </>
                   )}
                 </CardContent>
               </Card>
@@ -2594,7 +2796,11 @@ function App() {
           }
         }}
       >
-        <DialogContent>
+        <DialogContent
+          className={
+            showGeneratedSourcePreview ? "w-[min(92vw,64rem)]" : undefined
+          }
+        >
           <DialogHeader>
             <DialogTitle>
               {editingSource ? "Edit source" : "Add source"}
@@ -2667,286 +2873,308 @@ function App() {
                 </Button>
               </div>
             </TabsContent>
-            <TabsContent value="gradient" className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="gradient-source-name">Name</Label>
-                <Input
-                  id="gradient-source-name"
-                  placeholder="Gradient #RRGGBB -> #RRGGBB"
-                  value={gradientSourceName}
-                  onChange={(event) =>
-                    setGradientSourceName(event.target.value)
-                  }
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Mode</Label>
-                <Select
-                  value={gradientSourceMode}
-                  onValueChange={(value) =>
-                    setGradientSourceMode(value as GradientMode)
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {GRADIENT_MODES.map((mode) => (
-                      <SelectItem key={mode} value={mode}>
-                        {formatGradientModeLabel(mode)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <SourceColorField
-                id="gradient-source-from"
-                label="Start color"
-                value={gradientSourceFrom}
-                onChange={setGradientSourceFrom}
-              />
-              <SourceColorField
-                id="gradient-source-to"
-                label="End color"
-                value={gradientSourceTo}
-                onChange={setGradientSourceTo}
-              />
-              <div className="rounded-md border border-border-subtle bg-surface-sunken/60 p-3">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <Label htmlFor="gradient-source-via-enabled">
-                      Midpoint color
-                    </Label>
-                    <div className="text-xs text-text-muted">
-                      Insert an optional third stop into the blend.
-                    </div>
+            <TabsContent value="gradient">
+              <div
+                data-testid="source-editor-preview-layout"
+                className="grid gap-6 md:grid-cols-2 md:items-start"
+              >
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="gradient-source-name">Name</Label>
+                    <Input
+                      id="gradient-source-name"
+                      placeholder="Gradient #RRGGBB -> #RRGGBB"
+                      value={gradientSourceName}
+                      onChange={(event) =>
+                        setGradientSourceName(event.target.value)
+                      }
+                    />
                   </div>
-                  <Switch
-                    id="gradient-source-via-enabled"
-                    checked={gradientSourceViaEnabled}
-                    onCheckedChange={setGradientSourceViaEnabled}
-                    aria-label="Enable midpoint color"
-                  />
-                </div>
-              </div>
-              {gradientSourceViaEnabled ? (
-                <>
+                  <div className="space-y-2">
+                    <Label>Mode</Label>
+                    <Select
+                      value={gradientSourceMode}
+                      onValueChange={(value) =>
+                        setGradientSourceMode(value as GradientMode)
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {GRADIENT_MODES.map((mode) => (
+                          <SelectItem key={mode} value={mode}>
+                            {formatGradientModeLabel(mode)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
                   <SourceColorField
-                    id="gradient-source-via-color"
-                    label="Midpoint color"
-                    value={gradientSourceViaColor}
-                    onChange={setGradientSourceViaColor}
+                    id="gradient-source-from"
+                    label="Start color"
+                    value={gradientSourceFrom}
+                    onChange={setGradientSourceFrom}
                   />
-                  <SliderField
-                    label="Midpoint Position"
-                    min={0}
-                    max={1}
-                    step={0.01}
-                    value={gradientSourceViaPosition}
-                    formatter={formatPercentValue}
-                    onChange={setGradientSourceViaPosition}
-                  />
-                </>
-              ) : null}
-              {isLinearGradientMode ? (
-                <div className="space-y-2">
-                  <Label>Direction</Label>
-                  <Select
-                    value={gradientSourceDirection}
-                    onValueChange={(value) =>
-                      setGradientSourceDirection(value as GradientDirection)
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {GRADIENT_DIRECTIONS.map((direction) => (
-                        <SelectItem key={direction} value={direction}>
-                          {formatGradientDirectionLabel(direction)}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-              ) : null}
-              {isRadialGradientMode || isConicGradientMode ? (
-                <>
-                  <SliderField
-                    label="Center X"
-                    min={0}
-                    max={1}
-                    step={0.01}
-                    value={gradientSourceCenterX}
-                    formatter={formatPercentValue}
-                    onChange={setGradientSourceCenterX}
-                  />
-                  <SliderField
-                    label="Center Y"
-                    min={0}
-                    max={1}
-                    step={0.01}
-                    value={gradientSourceCenterY}
-                    formatter={formatPercentValue}
-                    onChange={setGradientSourceCenterY}
-                  />
-                </>
-              ) : null}
-              {isRadialGradientMode ? (
-                <>
-                  <SliderField
-                    label="Outer Radius"
-                    min={0}
-                    max={1}
-                    step={0.01}
-                    value={gradientSourceRadialRadius}
-                    formatter={formatPercentValue}
-                    onChange={setGradientSourceRadialRadius}
-                  />
-                  <SliderField
-                    label="Inner Radius"
-                    min={0}
-                    max={0.95}
-                    step={0.01}
-                    value={gradientSourceRadialInnerRadius}
-                    formatter={formatPercentValue}
-                    onChange={setGradientSourceRadialInnerRadius}
-                  />
-                </>
-              ) : null}
-              {isConicGradientMode ? (
-                <>
-                  <SliderField
-                    label="Angle"
-                    min={0}
-                    max={360}
-                    step={1}
-                    value={gradientSourceConicAngle}
-                    formatter={formatDegreeValue}
-                    onChange={setGradientSourceConicAngle}
-                  />
-                  <SliderField
-                    label="Span"
-                    min={1}
-                    max={360}
-                    step={1}
-                    value={gradientSourceConicSpan}
-                    formatter={formatDegreeValue}
-                    onChange={setGradientSourceConicSpan}
+                  <SourceColorField
+                    id="gradient-source-to"
+                    label="End color"
+                    value={gradientSourceTo}
+                    onChange={setGradientSourceTo}
                   />
                   <div className="rounded-md border border-border-subtle bg-surface-sunken/60 p-3">
                     <div className="flex items-center justify-between gap-3">
                       <div>
-                        <Label htmlFor="gradient-source-conic-repeat">
-                          Repeat span
+                        <Label htmlFor="gradient-source-via-enabled">
+                          Midpoint color
                         </Label>
                         <div className="text-xs text-text-muted">
-                          Tile the span pattern around the full circle.
+                          Insert an optional third stop into the blend.
                         </div>
                       </div>
                       <Switch
-                        id="gradient-source-conic-repeat"
-                        checked={gradientSourceConicRepeat}
-                        onCheckedChange={setGradientSourceConicRepeat}
-                        aria-label="Repeat span"
+                        id="gradient-source-via-enabled"
+                        checked={gradientSourceViaEnabled}
+                        onCheckedChange={setGradientSourceViaEnabled}
+                        aria-label="Enable midpoint color"
                       />
                     </div>
                   </div>
-                </>
-              ) : null}
-              <div className="flex justify-end gap-2">
-                <Button
-                  variant="outline"
-                  onClick={() => setSourceDialogOpen(false)}
-                >
-                  Cancel
-                </Button>
-                <Button onClick={() => void submitGeneratedSource()}>
-                  {editingSource ? "Save source" : "Add source"}
-                </Button>
-              </div>
-            </TabsContent>
-            <TabsContent value="noise" className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="noise-source-name">Name</Label>
-                <Input
-                  id="noise-source-name"
-                  placeholder="Noise #RRGGBB"
-                  value={noiseSourceName}
-                  onChange={(event) => setNoiseSourceName(event.target.value)}
+                  {gradientSourceViaEnabled ? (
+                    <>
+                      <SourceColorField
+                        id="gradient-source-via-color"
+                        label="Midpoint color"
+                        value={gradientSourceViaColor}
+                        onChange={setGradientSourceViaColor}
+                      />
+                      <SliderField
+                        label="Midpoint Position"
+                        min={0}
+                        max={1}
+                        step={0.01}
+                        value={gradientSourceViaPosition}
+                        formatter={formatPercentValue}
+                        onChange={setGradientSourceViaPosition}
+                      />
+                    </>
+                  ) : null}
+                  {isLinearGradientMode ? (
+                    <div className="space-y-2">
+                      <Label>Direction</Label>
+                      <Select
+                        value={gradientSourceDirection}
+                        onValueChange={(value) =>
+                          setGradientSourceDirection(value as GradientDirection)
+                        }
+                      >
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {GRADIENT_DIRECTIONS.map((direction) => (
+                            <SelectItem key={direction} value={direction}>
+                              {formatGradientDirectionLabel(direction)}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  ) : null}
+                  {isRadialGradientMode || isConicGradientMode ? (
+                    <>
+                      <SliderField
+                        label="Center X"
+                        min={0}
+                        max={1}
+                        step={0.01}
+                        value={gradientSourceCenterX}
+                        formatter={formatPercentValue}
+                        onChange={setGradientSourceCenterX}
+                      />
+                      <SliderField
+                        label="Center Y"
+                        min={0}
+                        max={1}
+                        step={0.01}
+                        value={gradientSourceCenterY}
+                        formatter={formatPercentValue}
+                        onChange={setGradientSourceCenterY}
+                      />
+                    </>
+                  ) : null}
+                  {isRadialGradientMode ? (
+                    <>
+                      <SliderField
+                        label="Outer Radius"
+                        min={0}
+                        max={1}
+                        step={0.01}
+                        value={gradientSourceRadialRadius}
+                        formatter={formatPercentValue}
+                        onChange={setGradientSourceRadialRadius}
+                      />
+                      <SliderField
+                        label="Inner Radius"
+                        min={0}
+                        max={0.95}
+                        step={0.01}
+                        value={gradientSourceRadialInnerRadius}
+                        formatter={formatPercentValue}
+                        onChange={setGradientSourceRadialInnerRadius}
+                      />
+                    </>
+                  ) : null}
+                  {isConicGradientMode ? (
+                    <>
+                      <SliderField
+                        label="Angle"
+                        min={0}
+                        max={360}
+                        step={1}
+                        value={gradientSourceConicAngle}
+                        formatter={formatDegreeValue}
+                        onChange={setGradientSourceConicAngle}
+                      />
+                      <SliderField
+                        label="Span"
+                        min={1}
+                        max={360}
+                        step={1}
+                        value={gradientSourceConicSpan}
+                        formatter={formatDegreeValue}
+                        onChange={setGradientSourceConicSpan}
+                      />
+                      <div className="rounded-md border border-border-subtle bg-surface-sunken/60 p-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <div>
+                            <Label htmlFor="gradient-source-conic-repeat">
+                              Repeat span
+                            </Label>
+                            <div className="text-xs text-text-muted">
+                              Tile the span pattern around the full circle.
+                            </div>
+                          </div>
+                          <Switch
+                            id="gradient-source-conic-repeat"
+                            checked={gradientSourceConicRepeat}
+                            onCheckedChange={setGradientSourceConicRepeat}
+                            aria-label="Repeat span"
+                          />
+                        </div>
+                      </div>
+                    </>
+                  ) : null}
+                  <div className="flex justify-end gap-2">
+                    <Button
+                      variant="outline"
+                      onClick={() => setSourceDialogOpen(false)}
+                    >
+                      Cancel
+                    </Button>
+                    <Button onClick={() => void submitGeneratedSource()}>
+                      {editingSource ? "Save source" : "Add source"}
+                    </Button>
+                  </div>
+                </div>
+                <GeneratedSourcePreview
+                  source={gradientPreviewSource}
+                  canvasSize={activeProject.canvas}
                 />
               </div>
-              <SourceColorField
-                id="noise-source-color"
-                label="Base color"
-                value={noiseSourceColor}
-                onChange={setNoiseSourceColor}
-              />
-              <div className="rounded-md border border-border-subtle bg-surface-sunken/60 p-3">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <Label>Variation</Label>
-                    <div className="text-xs text-text-muted">
-                      Regenerate the hidden seed while keeping the sliders unchanged.
+            </TabsContent>
+            <TabsContent value="noise">
+              <div
+                data-testid="source-editor-preview-layout"
+                className="grid gap-6 md:grid-cols-2 md:items-start"
+              >
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="noise-source-name">Name</Label>
+                    <Input
+                      id="noise-source-name"
+                      placeholder="Noise #RRGGBB"
+                      value={noiseSourceName}
+                      onChange={(event) => setNoiseSourceName(event.target.value)}
+                    />
+                  </div>
+                  <SourceColorField
+                    id="noise-source-color"
+                    label="Base color"
+                    value={noiseSourceColor}
+                    onChange={setNoiseSourceColor}
+                  />
+                  <div className="rounded-md border border-border-subtle bg-surface-sunken/60 p-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <Label>Variation</Label>
+                        <div className="text-xs text-text-muted">
+                          Regenerate the hidden seed while keeping the sliders unchanged.
+                        </div>
+                      </div>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setNoiseSourceSeed(createNoiseSeed())}
+                      >
+                        <RefreshCw className="h-3.5 w-3.5" />
+                        Regenerate
+                      </Button>
                     </div>
                   </div>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setNoiseSourceSeed(createNoiseSeed())}
-                  >
-                    <RefreshCw className="h-3.5 w-3.5" />
-                    Regenerate
-                  </Button>
+                  <SliderField
+                    label="Scale"
+                    min={0}
+                    max={1}
+                    step={0.01}
+                    value={noiseSourceScale}
+                    formatter={formatPercentValue}
+                    onChange={setNoiseSourceScale}
+                  />
+                  <SliderField
+                    label="Detail"
+                    min={0}
+                    max={1}
+                    step={0.01}
+                    value={noiseSourceDetail}
+                    formatter={formatPercentValue}
+                    onChange={setNoiseSourceDetail}
+                  />
+                  <SliderField
+                    label="Contrast"
+                    min={0}
+                    max={1}
+                    step={0.01}
+                    value={noiseSourceContrast}
+                    formatter={formatPercentValue}
+                    onChange={setNoiseSourceContrast}
+                  />
+                  <SliderField
+                    label="Distortion"
+                    min={0}
+                    max={1}
+                    step={0.01}
+                    value={noiseSourceDistortion}
+                    formatter={formatPercentValue}
+                    onChange={setNoiseSourceDistortion}
+                  />
+                  <div className="flex justify-end gap-2">
+                    <Button
+                      variant="outline"
+                      onClick={() => setSourceDialogOpen(false)}
+                    >
+                      Cancel
+                    </Button>
+                    <Button onClick={() => void submitGeneratedSource()}>
+                      {editingSource ? "Save source" : "Add source"}
+                    </Button>
+                  </div>
                 </div>
-              </div>
-              <SliderField
-                label="Scale"
-                min={0}
-                max={1}
-                step={0.01}
-                value={noiseSourceScale}
-                formatter={formatPercentValue}
-                onChange={setNoiseSourceScale}
-              />
-              <SliderField
-                label="Detail"
-                min={0}
-                max={1}
-                step={0.01}
-                value={noiseSourceDetail}
-                formatter={formatPercentValue}
-                onChange={setNoiseSourceDetail}
-              />
-              <SliderField
-                label="Contrast"
-                min={0}
-                max={1}
-                step={0.01}
-                value={noiseSourceContrast}
-                formatter={formatPercentValue}
-                onChange={setNoiseSourceContrast}
-              />
-              <SliderField
-                label="Distortion"
-                min={0}
-                max={1}
-                step={0.01}
-                value={noiseSourceDistortion}
-                formatter={formatPercentValue}
-                onChange={setNoiseSourceDistortion}
-              />
-              <div className="flex justify-end gap-2">
-                <Button
-                  variant="outline"
-                  onClick={() => setSourceDialogOpen(false)}
-                >
-                  Cancel
-                </Button>
-                <Button onClick={() => void submitGeneratedSource()}>
-                  {editingSource ? "Save source" : "Add source"}
-                </Button>
+                <GeneratedSourcePreview
+                  source={noisePreviewSource}
+                  canvasSize={activeProject.canvas}
+                />
               </div>
             </TabsContent>
           </Tabs>

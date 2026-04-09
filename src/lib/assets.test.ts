@@ -9,6 +9,7 @@ import {
   createGeneratedSourceAsset,
   getSourceContentSignature,
   normalizeSourceAsset,
+  renderGeneratedSourceToCanvas,
   updateGeneratedSourceAsset,
 } from "@/lib/assets";
 import { writeBlob } from "@/lib/opfs";
@@ -528,6 +529,66 @@ describe("generated sources", () => {
     } finally {
       createElementSpy.mockRestore();
     }
+  });
+
+  it("renders gradient previews through the shared canvas renderer", () => {
+    const { primaryCanvas, primaryContext, radialGradient } = createCanvasMocks();
+    primaryCanvas.width = 320;
+    primaryCanvas.height = 240;
+
+    renderGeneratedSourceToCanvas(primaryCanvas, {
+      kind: "gradient",
+      name: "Preview",
+      recipe: {
+        mode: "radial",
+        from: "#112233",
+        to: "#ddeeff",
+        direction: "diagonal-down",
+        viaColor: "#778899",
+        viaPosition: 0.5,
+        centerX: 0.25,
+        centerY: 0.75,
+        radialRadius: 0.4,
+        radialInnerRadius: 0.25,
+        conicAngle: 0,
+        conicSpan: 360,
+        conicRepeat: false,
+      },
+    });
+
+    expect(primaryContext.createRadialGradient).toHaveBeenCalledWith(
+      80,
+      180,
+      30,
+      80,
+      180,
+      120,
+    );
+    expect(radialGradient.addColorStop).toHaveBeenNthCalledWith(1, 0, "#112233");
+    expect(radialGradient.addColorStop).toHaveBeenNthCalledWith(2, 0.5, "#778899");
+    expect(radialGradient.addColorStop).toHaveBeenNthCalledWith(3, 1, "#ddeeff");
+  });
+
+  it("renders noise previews through the shared canvas renderer", () => {
+    const { primaryCanvas, primaryContext } = createCanvasMocks();
+    primaryCanvas.width = 96;
+    primaryCanvas.height = 72;
+
+    renderGeneratedSourceToCanvas(primaryCanvas, {
+      kind: "noise",
+      name: "Preview",
+      recipe: {
+        color: "#225577",
+        scale: 0.9,
+        detail: 0.4,
+        contrast: 0.7,
+        distortion: 0.2,
+        seed: 42,
+      },
+    });
+
+    expect(primaryContext.createImageData).toHaveBeenCalledWith(96, 72);
+    expect(primaryContext.putImageData).toHaveBeenCalledTimes(1);
   });
 
   it("includes the expanded gradient recipe in source signatures", () => {

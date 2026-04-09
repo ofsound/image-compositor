@@ -76,7 +76,7 @@ export interface NoiseSourceInput {
   seed: number;
 }
 
-type GeneratedSourceInput =
+export type GeneratedSourceInput =
   | { kind: "solid"; name?: string; recipe: SolidSourceInput }
   | { kind: "gradient"; name?: string; recipe: GradientSourceInput }
   | { kind: "noise"; name?: string; recipe: NoiseSourceInput };
@@ -613,6 +613,53 @@ function drawGeneratedSource(
   context.fillRect(0, 0, width, height);
 }
 
+function normalizeGeneratedSourceInput(
+  source: GeneratedSourceInput,
+): GeneratedSourceInput {
+  if (source.kind === "solid") {
+    return {
+      kind: "solid",
+      name: source.name,
+      recipe: normalizeSolidInput(source.recipe),
+    };
+  }
+
+  if (source.kind === "noise") {
+    return {
+      kind: "noise",
+      name: source.name,
+      recipe: normalizeNoiseInput(source.recipe),
+    };
+  }
+
+  return {
+    kind: "gradient",
+    name: source.name,
+    recipe: normalizeGradientRecipe(source.recipe),
+  };
+}
+
+export function renderGeneratedSourceToCanvas(
+  canvas: HTMLCanvasElement,
+  source: GeneratedSourceInput,
+) {
+  const width = Math.max(1, Math.round(canvas.width));
+  const height = Math.max(1, Math.round(canvas.height));
+  const context = canvas.getContext("2d", {
+    willReadFrequently: source.kind === "noise",
+  });
+  if (!context) {
+    throw new Error("Unable to create a canvas for generated source preview.");
+  }
+
+  drawGeneratedSource(
+    context,
+    width,
+    height,
+    normalizeGeneratedSourceInput(source),
+  );
+}
+
 async function buildGeneratedSourcePayload(
   source: GeneratedSourceInput,
   width: number,
@@ -927,24 +974,7 @@ export async function createGeneratedSourceAsset(
   size: Pick<SourceAsset, "width" | "height">,
 ) {
   const assetId = makeId("asset");
-  const normalizedSource =
-    source.kind === "solid"
-      ? ({
-          kind: "solid" as const,
-          name: source.name,
-          recipe: normalizeSolidInput(source.recipe),
-        } satisfies GeneratedSourceInput)
-      : source.kind === "noise"
-        ? ({
-            kind: "noise" as const,
-            name: source.name,
-            recipe: normalizeNoiseInput(source.recipe),
-          } satisfies GeneratedSourceInput)
-      : ({
-          kind: "gradient" as const,
-          name: source.name,
-          recipe: normalizeGradientRecipe(source.recipe),
-        } satisfies GeneratedSourceInput);
+  const normalizedSource = normalizeGeneratedSourceInput(source);
   const payload = await buildGeneratedSourcePayload(
     normalizedSource,
     size.width,
@@ -986,24 +1016,25 @@ export async function updateGeneratedSourceAsset(
     throw new Error("Image sources cannot be edited.");
   }
 
-  const normalizedSource =
+  const nextSource: GeneratedSourceInput =
     asset.kind === "solid"
       ? {
-          kind: "solid" as const,
+          kind: "solid",
           name: source.name,
-          recipe: normalizeSolidInput(source as SolidSourceInput),
-        } satisfies GeneratedSourceInput
+          recipe: source as SolidSourceInput,
+        }
       : asset.kind === "noise"
         ? {
-            kind: "noise" as const,
+            kind: "noise",
             name: source.name,
-            recipe: normalizeNoiseInput(source as NoiseSourceInput),
-          } satisfies GeneratedSourceInput
-      : {
-          kind: "gradient" as const,
-          name: source.name,
-          recipe: normalizeGradientRecipe(source as GradientSourceInput),
-        } satisfies GeneratedSourceInput;
+            recipe: source as NoiseSourceInput,
+          }
+        : {
+            kind: "gradient",
+            name: source.name,
+            recipe: source as GradientSourceInput,
+          };
+  const normalizedSource = normalizeGeneratedSourceInput(nextSource);
 
   const payload = await buildGeneratedSourcePayload(
     normalizedSource,

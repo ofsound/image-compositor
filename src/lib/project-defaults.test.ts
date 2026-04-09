@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   createProjectDocument,
   normalizeProjectDocument,
+  serializeProjectDocument,
   normalizeProjectVersion,
 } from "@/lib/project-defaults";
 import type { ProjectDocument, ProjectVersion } from "@/types/project";
@@ -90,6 +91,28 @@ describe("createProjectDocument", () => {
     } as unknown as ProjectDocument;
 
     expect(normalizeProjectDocument(legacyProject).sourceMapping.cropDistribution).toBe("center");
+  });
+
+  it("moves legacy root settings into the selected layer and serializes canonically", () => {
+    const project = createProjectDocument("Legacy Canonical");
+    const legacyProject = {
+      ...project,
+      sourceIds: ["asset_legacy"],
+      layout: {
+        ...project.layout,
+        columns: 3,
+      },
+    } as unknown as ProjectDocument;
+
+    const normalized = normalizeProjectDocument(legacyProject);
+    const serialized = serializeProjectDocument(normalized);
+
+    expect(normalized.layers[0]?.sourceIds).toEqual(["asset_legacy"]);
+    expect(normalized.layers[0]?.layout.columns).toBe(3);
+    expect("sourceIds" in serialized).toBe(false);
+    expect("layout" in serialized).toBe(false);
+    expect(serialized.layers[0]?.sourceIds).toEqual(["asset_legacy"]);
+    expect(serialized.layers[0]?.layout.columns).toBe(3);
   });
 
   it("migrates legacy compositing shadow values into the new finish shadow settings", () => {

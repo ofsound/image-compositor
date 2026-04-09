@@ -1,8 +1,7 @@
 import { useEffect } from "react";
 
 import { getSourceContentSignature } from "@/lib/assets";
-import { buildBitmapMap, renderProjectToCanvas } from "@/lib/render";
-import { readBlob } from "@/lib/opfs";
+import { renderProjectPreview } from "@/lib/render-service";
 import type {
   ProjectDocument,
   RenderedPreviewSnapshot,
@@ -37,13 +36,9 @@ export function PreviewStage({
 
       onRenderState?.({ ready: false, lastRenderedPreview: null });
 
-      const bitmapMap = await buildBitmapMap(assets, (asset) =>
-        readBlob(asset.normalizedPath),
-      );
-
       if (cancelled || !canvasRef.current) return;
 
-      await renderProjectToCanvas(project, assets, bitmapMap, canvasRef.current);
+      await renderProjectPreview(project, assets, canvasRef.current);
 
       if (cancelled) return;
       onRenderState?.({

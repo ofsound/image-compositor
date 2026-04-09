@@ -323,6 +323,7 @@ export interface ProjectSnapshot {
   export: ExportSettings;
   layers: CompositorLayer[];
   selectedLayerId: string | null;
+  // Compatibility projection of the selected layer. Canonical data lives in `layers`.
   sourceIds: string[];
   layout: LayoutSettings;
   sourceMapping: SourceMappingSettings;
@@ -353,7 +354,7 @@ export interface ProjectVersion {
 }
 
 export interface ProjectBundleManifest {
-  version: 1 | 2;
+  version: 1 | 2 | 3;
   projectId: string;
   exportedAt: string;
   assetIds: string[];

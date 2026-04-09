@@ -1,6 +1,6 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
-  "name": "image-grid",
+  "name": "image-compositor",
   "compatibility_date": "2026-03-30",
   "routes": [
     {

@@ -824,8 +824,8 @@ function drawReactionSource(
     24,
     Math.round((simulationWidth * height) / Math.max(width, 1)),
   );
-  let a = new Float32Array(simulationWidth * simulationHeight).fill(1);
-  let bField = new Float32Array(simulationWidth * simulationHeight);
+  const a = new Float32Array(simulationWidth * simulationHeight).fill(1);
+  const bField = new Float32Array(simulationWidth * simulationHeight);
   const nextA = new Float32Array(simulationWidth * simulationHeight);
   const nextB = new Float32Array(simulationWidth * simulationHeight);
   const feed = lerp(0.026, 0.058, recipe.balance);

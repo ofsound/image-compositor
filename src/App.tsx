@@ -74,7 +74,6 @@ import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import {
   ACCEPTED_IMAGE_TYPES,
-  type CellularSourceInput,
   type GeneratedSourceInput,
   getDefaultGradientInput,
   getDefaultGradientDirection,
@@ -92,19 +91,22 @@ import {
   renderGeneratedSourceToCanvas,
 } from "@/lib/assets";
 import { normalizeHexColor } from "@/lib/color";
+import {
+  createProjectEditorView,
+  updateProjectFromEditorView,
+} from "@/lib/project-editor-view";
 import { lockExportDimensionsToCanvas } from "@/lib/export-sizing";
 import { readBlob } from "@/lib/opfs";
-import {
-  buildBitmapMap,
-  renderProjectLayerToCanvas,
-} from "@/lib/render";
 import { toggleSourceId } from "@/lib/source-selection";
 import {
   getSourceWeight,
   setSourceWeight,
 } from "@/lib/source-weights";
 import { cn } from "@/lib/utils";
-import { useAppStore } from "@/state/use-app-store";
+import {
+  useWorkspaceActions,
+  useWorkspaceState,
+} from "@/state/app-store-hooks";
 import type {
   BlendMode,
   BundleImportInspection,
@@ -128,6 +130,8 @@ import type {
   WaveSourceAsset,
 } from "@/types/project";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useHistoryShortcuts } from "@/components/app/use-history-shortcuts";
+import { useLayerThumbnailUrls } from "@/components/app/use-layer-thumbnail-urls";
 
 function useObjectUrl(path: string | null, versionKey?: string) {
   const [url, setUrl] = useState<string | null>(null);
@@ -284,22 +288,6 @@ function SortableLayerRow({
       </div>
     </div>
   );
-}
-
-function revokeObjectUrls(urls: Record<string, string>) {
-  for (const url of Object.values(urls)) {
-    URL.revokeObjectURL(url);
-  }
-}
-
-function canvasToBlob(
-  canvas: HTMLCanvasElement,
-  type: string,
-  quality?: number,
-) {
-  return new Promise<Blob | null>((resolve) => {
-    canvas.toBlob((blob) => resolve(blob), type, quality);
-  });
 }
 
 function LayerRowThumbnail({
@@ -580,18 +568,6 @@ function PanelShell({
   );
 }
 
-function isEditableTarget(target: EventTarget | null) {
-  if (!(target instanceof HTMLElement)) return false;
-  const tagName = target.tagName.toLowerCase();
-
-  return (
-    target.isContentEditable ||
-    tagName === "input" ||
-    tagName === "textarea" ||
-    tagName === "select"
-  );
-}
-
 function SliderField({
   label,
   min,
@@ -789,14 +765,10 @@ function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const uploadInputRef = useRef<HTMLInputElement>(null);
   const bundleInputRef = useRef<HTMLInputElement>(null);
-  const layerThumbnailUrlsRef = useRef<Record<string, string>>({});
   const [renderState, setRenderState] = useState<PreviewRenderState>({
     ready: false,
     lastRenderedPreview: null,
   });
-  const [layerThumbnailUrls, setLayerThumbnailUrls] = useState<
-    Record<string, string>
-  >({});
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
   const [duplicateDialogOpen, setDuplicateDialogOpen] = useState(false);
   const [manageProjectsOpen, setManageProjectsOpen] = useState(false);
@@ -877,6 +849,8 @@ function App() {
     activeProjectId,
     canUndo,
     canRedo,
+  } = useWorkspaceState();
+  const {
     bootstrap,
     createProject,
     renameProject,
@@ -909,7 +883,7 @@ function App() {
     resolveBundleImport,
     undo,
     redo,
-  } = useAppStore();
+  } = useWorkspaceActions();
   const layerSensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
@@ -925,34 +899,7 @@ function App() {
     void bootstrap();
   }, [bootstrap]);
 
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (
-        (!event.metaKey && !event.ctrlKey) ||
-        isEditableTarget(event.target)
-      ) {
-        return;
-      }
-
-      const key = event.key.toLowerCase();
-      const wantsUndo = key === "z" && !event.shiftKey;
-      const wantsRedo = (key === "z" && event.shiftKey) || key === "y";
-
-      if (wantsUndo && canUndo && !busy) {
-        event.preventDefault();
-        void undo();
-        return;
-      }
-
-      if (wantsRedo && canRedo && !busy) {
-        event.preventDefault();
-        void redo();
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [busy, canRedo, canUndo, redo, undo]);
+  useHistoryShortcuts({ busy, canUndo, canRedo, undo, redo });
 
   const activeProjects = projects.filter(
     (project) => project.deletedAt === null,
@@ -963,13 +910,14 @@ function App() {
   const activeProject =
     activeProjects.find((project) => project.id === activeProjectId) ?? null;
   const deferredProject = useDeferredValue(activeProject);
-  const deferredProjectAssets = deferredProject
-    ? assets.filter((asset) => asset.projectId === deferredProject.id)
+  const previewProject = deferredProject ?? activeProject;
+  const deferredProjectAssets = previewProject
+    ? assets.filter((asset) => asset.projectId === previewProject.id)
     : [];
-  const previewAssets = deferredProject
+  const previewAssets = previewProject
     ? Array.from(
         new Set(
-          deferredProject.layers
+          previewProject.layers
             .filter((layer) => layer.visible)
             .flatMap((layer) => layer.sourceIds),
         ),
@@ -986,17 +934,15 @@ function App() {
     setDuplicateValue(`${activeProject.title} Copy`);
   }, [activeProject]);
 
+  const activeProjectView = activeProject
+    ? createProjectEditorView(activeProject)
+    : null;
   const projectAssets = activeProject
     ? assets.filter((asset) => asset.projectId === activeProject.id)
     : [];
   const editingSource = editingSourceId
     ? (projectAssets.find((asset) => asset.id === editingSourceId) ?? null)
     : null;
-  const activeAssets = activeProject
-    ? activeProject.sourceIds
-        .map((sourceId) => projectAssets.find((asset) => asset.id === sourceId))
-        .filter((asset): asset is SourceAsset => Boolean(asset))
-    : [];
   const selectedLayer = activeProject
     ? activeProject.layers.find((layer) => layer.id === activeProject.selectedLayerId) ??
       activeProject.layers.at(-1) ??
@@ -1006,9 +952,6 @@ function App() {
   const activeVersions = activeProject
     ? versions.filter((version) => version.projectId === activeProject.id)
     : [];
-  const deferredProjectAssetSignature = deferredProjectAssets
-    .map(getSourceContentSignature)
-    .join("|");
   const previewAssetSignature = previewAssets.map((asset) => asset.id).join("|");
   const purgeDialogProject =
     projects.find((project) => project.id === purgeDialogProjectId) ?? null;
@@ -1026,77 +969,12 @@ function App() {
     });
   }, [previewAssetSignature, activeProject?.id, activeProject?.updatedAt]);
 
-  useEffect(() => {
-    if (!deferredProject) {
-      revokeObjectUrls(layerThumbnailUrlsRef.current);
-      layerThumbnailUrlsRef.current = {};
-      setLayerThumbnailUrls({});
-      return;
-    }
-
-    const project = deferredProject;
-    const projectAssets = deferredProjectAssets;
-    let cancelled = false;
-
-    async function renderLayerThumbnails() {
-      const bitmaps = await buildBitmapMap(
-        projectAssets,
-        (asset) => readBlob(asset.normalizedPath),
-      );
-      const nextEntries = await Promise.all(
-        project.layers.map(async (layer) => {
-          const canvas = document.createElement("canvas");
-          canvas.width = LAYER_ROW_THUMBNAIL_WIDTH;
-          canvas.height = LAYER_ROW_THUMBNAIL_HEIGHT;
-
-          await renderProjectLayerToCanvas(
-            project,
-            layer,
-            projectAssets,
-            bitmaps,
-            canvas,
-            { includeBackground: false },
-          );
-
-          const blob = await canvasToBlob(canvas, "image/webp", 0.82);
-          if (!blob) {
-            return [layer.id, null] as const;
-          }
-
-          return [layer.id, URL.createObjectURL(blob)] as const;
-        }),
-      );
-
-      const nextUrls = Object.fromEntries(
-        nextEntries.filter(
-          (entry): entry is readonly [string, string] => Boolean(entry[1]),
-        ),
-      );
-
-      if (cancelled) {
-        revokeObjectUrls(nextUrls);
-        return;
-      }
-
-      const previousUrls = layerThumbnailUrlsRef.current;
-      layerThumbnailUrlsRef.current = nextUrls;
-      setLayerThumbnailUrls(nextUrls);
-      revokeObjectUrls(previousUrls);
-    }
-
-    void renderLayerThumbnails();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [deferredProject?.id, deferredProject?.updatedAt, deferredProjectAssetSignature]);
-
-  useEffect(() => {
-    return () => {
-      revokeObjectUrls(layerThumbnailUrlsRef.current);
-      layerThumbnailUrlsRef.current = {};
-    };
-  }, []);
+  const layerThumbnailUrls = useLayerThumbnailUrls({
+    project: previewProject,
+    assets: deferredProjectAssets,
+    width: LAYER_ROW_THUMBNAIL_WIDTH,
+    height: LAYER_ROW_THUMBNAIL_HEIGHT,
+  });
 
   const handleLayerDragEnd = ({ active, over }: DragEndEvent) => {
     if (!over) {
@@ -1122,7 +1000,7 @@ function App() {
     void reorderLayers([...nextDisplayLayerIds].reverse());
   };
 
-  if (!ready || !activeProject || !deferredProject) {
+  if (!ready || !activeProject || !activeProjectView) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-app">
         <Card className="w-[min(32rem,92vw)]">
@@ -1135,40 +1013,46 @@ function App() {
     );
   }
 
-  const patchProject = (updater: Parameters<typeof updateProject>[0]) => {
+  const patchProject = (
+    updater: (
+      project: NonNullable<typeof activeProjectView>,
+    ) => NonNullable<typeof activeProjectView>,
+  ) => {
     startTransition(() => {
-      void updateProject(updater);
+      void updateProject((project) =>
+        updateProjectFromEditorView(project, updater),
+      );
     });
   };
-  const isStripsFamily = activeProject.layout.family === "strips";
-  const isGridFamily = activeProject.layout.family === "grid";
-  const isBlocksFamily = activeProject.layout.family === "blocks";
-  const isRadialFamily = activeProject.layout.family === "radial";
-  const isOrganicFamily = activeProject.layout.family === "organic";
-  const isFlowFamily = activeProject.layout.family === "flow";
-  const isThreeDFamily = activeProject.layout.family === "3d";
-  const isRectShapeMode = activeProject.layout.shapeMode === "rect";
+  const isStripsFamily = activeProjectView.layout.family === "strips";
+  const isGridFamily = activeProjectView.layout.family === "grid";
+  const isBlocksFamily = activeProjectView.layout.family === "blocks";
+  const isRadialFamily = activeProjectView.layout.family === "radial";
+  const isOrganicFamily = activeProjectView.layout.family === "organic";
+  const isFlowFamily = activeProjectView.layout.family === "flow";
+  const isThreeDFamily = activeProjectView.layout.family === "3d";
+  const isRectShapeMode = activeProjectView.layout.shapeMode === "rect";
   const isWedgeShapeMode =
-    activeProject.layout.shapeMode === "arc" ||
-    activeProject.layout.shapeMode === "wedge" ||
-    activeProject.layout.shapeMode === "mixed";
+    activeProjectView.layout.shapeMode === "arc" ||
+    activeProjectView.layout.shapeMode === "wedge" ||
+    activeProjectView.layout.shapeMode === "mixed";
   const isHollowShapeMode =
-    activeProject.layout.shapeMode === "ring" ||
-    activeProject.layout.shapeMode === "arc" ||
-    activeProject.layout.shapeMode === "mixed";
-  const isSymmetryActive = activeProject.layout.symmetryMode !== "none";
-  const isRadialSymmetry = activeProject.layout.symmetryMode === "radial";
+    activeProjectView.layout.shapeMode === "ring" ||
+    activeProjectView.layout.shapeMode === "arc" ||
+    activeProjectView.layout.shapeMode === "mixed";
+  const isSymmetryActive = activeProjectView.layout.symmetryMode !== "none";
+  const isRadialSymmetry = activeProjectView.layout.symmetryMode === "radial";
   const isWeightedAssignment =
-    activeProject.sourceMapping.strategy === "weighted";
+    activeProjectView.sourceMapping.strategy === "weighted";
   const isPaletteAssignment =
-    activeProject.sourceMapping.strategy === "palette";
-  const isKaleidoscopeActive = activeProject.effects.kaleidoscopeSegments > 1;
-  const geometryOptions = getGeometryOptions(activeProject.layout.family);
-  const geometryValue = geometryOptions.includes(activeProject.layout.shapeMode)
-    ? activeProject.layout.shapeMode
+    activeProjectView.sourceMapping.strategy === "palette";
+  const isKaleidoscopeActive = activeProjectView.effects.kaleidoscopeSegments > 1;
+  const geometryOptions = getGeometryOptions(activeProjectView.layout.family);
+  const geometryValue = geometryOptions.includes(activeProjectView.layout.shapeMode)
+    ? activeProjectView.layout.shapeMode
     : coerceShapeModeForFamily(
-        activeProject.layout.family,
-        activeProject.layout.shapeMode,
+        activeProjectView.layout.family,
+        activeProjectView.layout.shapeMode,
       );
   const inspectorLayerName = selectedLayer?.name ?? "Selected Layer";
 
@@ -1855,7 +1739,7 @@ function App() {
             >
               <PreviewStage
                 canvasRef={canvasRef}
-                project={deferredProject}
+                project={previewProject ?? activeProject}
                 assets={previewAssets}
                 onRenderState={setRenderState}
               />
@@ -1885,9 +1769,9 @@ function App() {
               ) : (
                 <div className="flex flex-col gap-3" data-testid="sources-rail">
                   {projectAssets.map((asset) => {
-                    const enabled = activeProject.sourceIds.includes(asset.id);
+                    const enabled = activeProjectView.sourceIds.includes(asset.id);
                     const mixWeight = getSourceWeight(
-                      activeProject.sourceMapping.sourceWeights,
+                      activeProjectView.sourceMapping.sourceWeights,
                       asset.id,
                     );
 
@@ -1972,7 +1856,7 @@ function App() {
                     </div>
                     <ControlBlock label="Family">
                       <Select
-                        value={activeProject.layout.family}
+                        value={activeProjectView.layout.family}
                         onValueChange={(value) =>
                           patchProject((project) => {
                             const nextFamily = value as LayoutFamily;
@@ -2035,7 +1919,7 @@ function App() {
                         min={0}
                         max={1}
                         step={0.01}
-                        value={activeProject.layout.rectCornerRadius}
+                        value={activeProjectView.layout.rectCornerRadius}
                         formatter={(value) => `${Math.round(value * 100)}%`}
                         onChange={(value) =>
                           patchProject((project) => ({
@@ -2059,7 +1943,7 @@ function App() {
                             min={0}
                             max={180}
                             step={1}
-                            value={activeProject.layout.stripAngle}
+                            value={activeProjectView.layout.stripAngle}
                             formatter={(value) => `${Math.round(value)}°`}
                             onChange={(value) =>
                               patchProject((project) => ({
@@ -2078,7 +1962,7 @@ function App() {
                           max={1}
                           step={0.01}
                           value={
-                            activeProject.layout.density / DENSITY_UI_SCALE
+                            activeProjectView.layout.density / DENSITY_UI_SCALE
                           }
                           onChange={(value) =>
                             patchProject((project) => ({
@@ -2095,7 +1979,7 @@ function App() {
                         {isThreeDFamily ? (
                           <ControlBlock label="Structure">
                             <Select
-                              value={activeProject.layout.threeDStructure}
+                              value={activeProjectView.layout.threeDStructure}
                               onValueChange={(value) =>
                                 patchProject((project) => ({
                                   ...project,
@@ -2125,7 +2009,7 @@ function App() {
                             min={0}
                             max={ORGANIC_DISTRIBUTION_MAX}
                             step={1}
-                            value={activeProject.layout.organicVariation}
+                            value={activeProjectView.layout.organicVariation}
                             formatter={(value) => `${Math.round(value)}`}
                             onChange={(value) =>
                               patchProject((project) => ({
@@ -2145,7 +2029,7 @@ function App() {
                               min={0}
                               max={1}
                               step={0.01}
-                              value={activeProject.layout.flowCurvature}
+                              value={activeProjectView.layout.flowCurvature}
                               formatter={(value) => `${Math.round(value * 100)}%`}
                               onChange={(value) =>
                                 patchProject((project) => ({
@@ -2162,7 +2046,7 @@ function App() {
                               min={0}
                               max={1}
                               step={0.01}
-                              value={activeProject.layout.flowCoherence}
+                              value={activeProjectView.layout.flowCoherence}
                               formatter={(value) => `${Math.round(value * 100)}%`}
                               onChange={(value) =>
                                 patchProject((project) => ({
@@ -2179,7 +2063,7 @@ function App() {
                               min={0}
                               max={1}
                               step={0.01}
-                              value={activeProject.layout.flowBranchRate}
+                              value={activeProjectView.layout.flowBranchRate}
                               formatter={(value) => `${Math.round(value * 100)}%`}
                               onChange={(value) =>
                                 patchProject((project) => ({
@@ -2196,7 +2080,7 @@ function App() {
                               min={0}
                               max={1}
                               step={0.01}
-                              value={activeProject.layout.flowTaper}
+                              value={activeProjectView.layout.flowTaper}
                               formatter={(value) => `${Math.round(value * 100)}%`}
                               onChange={(value) =>
                                 patchProject((project) => ({
@@ -2217,7 +2101,7 @@ function App() {
                               min={0}
                               max={THREE_D_DISTRIBUTION_MAX}
                               step={1}
-                              value={activeProject.layout.threeDDistribution}
+                              value={activeProjectView.layout.threeDDistribution}
                               formatter={(value) => `${Math.round(value)}`}
                               onChange={(value) =>
                                 patchProject((project) => ({
@@ -2234,7 +2118,7 @@ function App() {
                               min={0}
                               max={1}
                               step={0.01}
-                              value={activeProject.layout.threeDDepth}
+                              value={activeProjectView.layout.threeDDepth}
                               formatter={(value) => `${Math.round(value * 100)}%`}
                               onChange={(value) =>
                                 patchProject((project) => ({
@@ -2251,7 +2135,7 @@ function App() {
                               min={0}
                               max={1}
                               step={0.01}
-                              value={activeProject.layout.threeDCameraDistance}
+                              value={activeProjectView.layout.threeDCameraDistance}
                               formatter={(value) => `${Math.round(value * 100)}%`}
                               onChange={(value) =>
                                 patchProject((project) => ({
@@ -2268,7 +2152,7 @@ function App() {
                               min={-1}
                               max={1}
                               step={0.01}
-                              value={activeProject.layout.threeDPanX}
+                              value={activeProjectView.layout.threeDPanX}
                               formatter={(value) => `${Math.round(value * 100)}%`}
                               onChange={(value) =>
                                 patchProject((project) => ({
@@ -2285,7 +2169,7 @@ function App() {
                               min={-1}
                               max={1}
                               step={0.01}
-                              value={activeProject.layout.threeDPanY}
+                              value={activeProjectView.layout.threeDPanY}
                               formatter={(value) => `${Math.round(value * 100)}%`}
                               onChange={(value) =>
                                 patchProject((project) => ({
@@ -2302,7 +2186,7 @@ function App() {
                               min={-180}
                               max={180}
                               step={1}
-                              value={activeProject.layout.threeDYaw}
+                              value={activeProjectView.layout.threeDYaw}
                               formatter={(value) => `${Math.round(value)}°`}
                               onChange={(value) =>
                                 patchProject((project) => ({
@@ -2319,7 +2203,7 @@ function App() {
                               min={-89}
                               max={89}
                               step={1}
-                              value={activeProject.layout.threeDPitch}
+                              value={activeProjectView.layout.threeDPitch}
                               formatter={(value) => `${Math.round(value)}°`}
                               onChange={(value) =>
                                 patchProject((project) => ({
@@ -2336,7 +2220,7 @@ function App() {
                               min={0}
                               max={1}
                               step={0.01}
-                              value={activeProject.layout.threeDPerspective}
+                              value={activeProjectView.layout.threeDPerspective}
                               formatter={(value) => `${Math.round(value * 100)}%`}
                               onChange={(value) =>
                                 patchProject((project) => ({
@@ -2353,7 +2237,7 @@ function App() {
                               min={0}
                               max={1}
                               step={0.01}
-                              value={activeProject.layout.threeDBillboard}
+                              value={activeProjectView.layout.threeDBillboard}
                               formatter={(value) => `${Math.round(value * 100)}%`}
                               onChange={(value) =>
                                 patchProject((project) => ({
@@ -2370,7 +2254,7 @@ function App() {
                               min={0}
                               max={1}
                               step={0.01}
-                              value={activeProject.layout.threeDZJitter}
+                              value={activeProjectView.layout.threeDZJitter}
                               formatter={(value) => `${Math.round(value * 100)}%`}
                               onChange={(value) =>
                                 patchProject((project) => ({
@@ -2393,7 +2277,7 @@ function App() {
                           min={0}
                           max={360}
                           step={1}
-                          value={activeProject.layout.wedgeAngle}
+                          value={activeProjectView.layout.wedgeAngle}
                           formatter={(value) => `${Math.round(value)}°`}
                           onChange={(value) =>
                             patchProject((project) => ({
@@ -2410,7 +2294,7 @@ function App() {
                           min={0}
                           max={360}
                           step={1}
-                          value={activeProject.layout.wedgeJitter}
+                          value={activeProjectView.layout.wedgeJitter}
                           formatter={(value) => `${Math.round(value)}°`}
                           onChange={(value) =>
                             patchProject((project) => ({
@@ -2430,7 +2314,7 @@ function App() {
                         min={0}
                         max={0.95}
                         step={0.01}
-                        value={activeProject.layout.hollowRatio}
+                        value={activeProjectView.layout.hollowRatio}
                         formatter={(value) => `${Math.round(value * 100)}%`}
                         onChange={(value) =>
                           patchProject((project) => ({
@@ -2450,7 +2334,7 @@ function App() {
                           min={2}
                           max={32}
                           step={1}
-                          value={activeProject.layout.columns}
+                          value={activeProjectView.layout.columns}
                           formatter={(value) => `${Math.round(value)}`}
                           onChange={(value) =>
                             patchProject((project) => ({
@@ -2467,7 +2351,7 @@ function App() {
                           min={2}
                           max={32}
                           step={1}
-                          value={activeProject.layout.rows}
+                          value={activeProjectView.layout.rows}
                           formatter={(value) => `${Math.round(value)}`}
                           onChange={(value) =>
                             patchProject((project) => ({
@@ -2488,7 +2372,7 @@ function App() {
                           min={2}
                           max={36}
                           step={1}
-                          value={activeProject.layout.radialSegments}
+                          value={activeProjectView.layout.radialSegments}
                           formatter={(value) => `${Math.round(value)}`}
                           onChange={(value) =>
                             patchProject((project) => ({
@@ -2505,7 +2389,7 @@ function App() {
                           min={1}
                           max={12}
                           step={1}
-                          value={activeProject.layout.radialRings}
+                          value={activeProjectView.layout.radialRings}
                           formatter={(value) => `${Math.round(value)}`}
                           onChange={(value) =>
                             patchProject((project) => ({
@@ -2522,7 +2406,7 @@ function App() {
                           min={0}
                           max={360}
                           step={1}
-                          value={activeProject.layout.radialAngleOffset}
+                          value={activeProjectView.layout.radialAngleOffset}
                           formatter={(value) => `${Math.round(value)}°`}
                           onChange={(value) =>
                             patchProject((project) => ({
@@ -2539,7 +2423,7 @@ function App() {
                           min={-180}
                           max={180}
                           step={1}
-                          value={activeProject.layout.radialRingPhaseStep}
+                          value={activeProjectView.layout.radialRingPhaseStep}
                           formatter={(value) => `${Math.round(value)}°`}
                           onChange={(value) =>
                             patchProject((project) => ({
@@ -2556,7 +2440,7 @@ function App() {
                           min={0}
                           max={0.85}
                           step={0.01}
-                          value={activeProject.layout.radialInnerRadius}
+                          value={activeProjectView.layout.radialInnerRadius}
                           formatter={(value) => `${Math.round(value * 100)}%`}
                           onChange={(value) =>
                             patchProject((project) => ({
@@ -2570,7 +2454,7 @@ function App() {
                         />
                         <ControlBlock label="Child Rotation">
                           <Select
-                            value={activeProject.layout.radialChildRotationMode}
+                            value={activeProjectView.layout.radialChildRotationMode}
                             onValueChange={(value) =>
                               patchProject((project) => ({
                                 ...project,
@@ -2602,7 +2486,7 @@ function App() {
                         min={0}
                         max={300}
                         step={1}
-                        value={activeProject.layout.gutter}
+                        value={activeProjectView.layout.gutter}
                         formatter={(value) => `${Math.round(value)} px`}
                         onChange={(value) =>
                           patchProject((project) => ({
@@ -2619,7 +2503,7 @@ function App() {
                           min={0}
                           max={300}
                           step={1}
-                          value={activeProject.layout.gutterHorizontal}
+                          value={activeProjectView.layout.gutterHorizontal}
                           formatter={(value) => `${Math.round(value)} px`}
                           onChange={(value) =>
                             patchProject((project) => ({
@@ -2636,7 +2520,7 @@ function App() {
                           min={0}
                           max={300}
                           step={1}
-                          value={activeProject.layout.gutterVertical}
+                          value={activeProjectView.layout.gutterVertical}
                           formatter={(value) => `${Math.round(value)} px`}
                           onChange={(value) =>
                             patchProject((project) => ({
@@ -2657,7 +2541,7 @@ function App() {
                           min={0}
                           max={7}
                           step={1}
-                          value={activeProject.layout.blockDepth}
+                          value={activeProjectView.layout.blockDepth}
                           formatter={(value) => `${Math.round(value)}`}
                           onChange={(value) =>
                             patchProject((project) => ({
@@ -2674,7 +2558,7 @@ function App() {
                           min={0}
                           max={1}
                           step={0.01}
-                          value={activeProject.layout.blockSplitRandomness}
+                          value={activeProjectView.layout.blockSplitRandomness}
                           formatter={(value) => `${Math.round(value * 100)}%`}
                           onChange={(value) =>
                             patchProject((project) => ({
@@ -2691,7 +2575,7 @@ function App() {
                           min={32}
                           max={400}
                           step={1}
-                          value={activeProject.layout.blockMinSize}
+                          value={activeProjectView.layout.blockMinSize}
                           formatter={(value) => `${Math.round(value)} px`}
                           onChange={(value) =>
                             patchProject((project) => ({
@@ -2708,7 +2592,7 @@ function App() {
                           min={0}
                           max={1}
                           step={0.01}
-                          value={activeProject.layout.blockSplitBias}
+                          value={activeProjectView.layout.blockSplitBias}
                           formatter={(value) => {
                             if (value < 0.45) return "horizontal";
                             if (value > 0.55) return "vertical";
@@ -2728,7 +2612,7 @@ function App() {
                     ) : null}
                     <ControlBlock label="Symmetry">
                       <Select
-                        value={activeProject.layout.symmetryMode}
+                        value={activeProjectView.layout.symmetryMode}
                         onValueChange={(value) =>
                           patchProject((project) => ({
                             ...project,
@@ -2765,7 +2649,7 @@ function App() {
                           min={0}
                           max={1}
                           step={0.01}
-                          value={activeProject.layout.symmetryCenterX}
+                          value={activeProjectView.layout.symmetryCenterX}
                           formatter={formatPercentValue}
                           onChange={(value) =>
                             patchProject((project) => ({
@@ -2782,7 +2666,7 @@ function App() {
                           min={0}
                           max={1}
                           step={0.01}
-                          value={activeProject.layout.symmetryCenterY}
+                          value={activeProjectView.layout.symmetryCenterY}
                           formatter={formatPercentValue}
                           onChange={(value) =>
                             patchProject((project) => ({
@@ -2799,7 +2683,7 @@ function App() {
                           min={0}
                           max={1}
                           step={0.01}
-                          value={activeProject.layout.symmetryJitter}
+                          value={activeProjectView.layout.symmetryJitter}
                           formatter={formatPercentValue}
                           onChange={(value) =>
                             patchProject((project) => ({
@@ -2820,7 +2704,7 @@ function App() {
                           min={-180}
                           max={180}
                           step={1}
-                          value={activeProject.layout.symmetryAngleOffset}
+                          value={activeProjectView.layout.symmetryAngleOffset}
                           formatter={formatDegreeValue}
                           onChange={(value) =>
                             patchProject((project) => ({
@@ -2837,7 +2721,7 @@ function App() {
                           min={2}
                           max={12}
                           step={1}
-                          value={activeProject.layout.symmetryCopies}
+                          value={activeProjectView.layout.symmetryCopies}
                           formatter={(value) => `${Math.round(value)}`}
                           onChange={(value) =>
                             patchProject((project) => ({
@@ -2856,7 +2740,7 @@ function App() {
                       min={0}
                       max={1}
                       step={0.01}
-                      value={activeProject.layout.hidePercentage}
+                      value={activeProjectView.layout.hidePercentage}
                       formatter={(value) => `${Math.round(value * 100)}%`}
                       onChange={(value) =>
                         patchProject((project) => ({
@@ -2873,7 +2757,7 @@ function App() {
                       min={0}
                       max={1}
                       step={0.01}
-                      value={activeProject.layout.letterbox}
+                      value={activeProjectView.layout.letterbox}
                       formatter={(value) => `${Math.round(value * 100)}%`}
                       onChange={(value) =>
                         patchProject((project) => ({
@@ -2893,7 +2777,7 @@ function App() {
                     </div>
                     <ControlBlock label="Source Assignment">
                       <Select
-                        value={activeProject.sourceMapping.strategy}
+                        value={activeProjectView.sourceMapping.strategy}
                         onValueChange={(value) =>
                           patchProject((project) => ({
                             ...project,
@@ -2925,7 +2809,7 @@ function App() {
                     </ControlBlock>
                     <ControlBlock label="Crop Distribution">
                       <Select
-                        value={activeProject.sourceMapping.cropDistribution}
+                        value={activeProjectView.sourceMapping.cropDistribution}
                         onValueChange={(value) =>
                           patchProject((project) => ({
                             ...project,
@@ -2952,7 +2836,7 @@ function App() {
                       min={1}
                       max={2.5}
                       step={0.01}
-                      value={activeProject.sourceMapping.cropZoom}
+                      value={activeProjectView.sourceMapping.cropZoom}
                       onChange={(value) =>
                         patchProject((project) => ({
                           ...project,
@@ -2969,7 +2853,7 @@ function App() {
                         min={0}
                         max={1}
                         step={0.01}
-                        value={activeProject.sourceMapping.sourceBias}
+                        value={activeProjectView.sourceMapping.sourceBias}
                         onChange={(value) =>
                           patchProject((project) => ({
                             ...project,
@@ -2987,7 +2871,7 @@ function App() {
                         min={0}
                         max={1}
                         step={0.01}
-                        value={activeProject.sourceMapping.paletteEmphasis}
+                        value={activeProjectView.sourceMapping.paletteEmphasis}
                         onChange={(value) =>
                           patchProject((project) => ({
                             ...project,
@@ -3005,7 +2889,7 @@ function App() {
                           Center crop, no stretch
                         </span>
                         <Switch
-                          checked={activeProject.sourceMapping.preserveAspect}
+                          checked={activeProjectView.sourceMapping.preserveAspect}
                           onCheckedChange={(checked) =>
                             patchProject((project) => ({
                               ...project,
@@ -3020,7 +2904,7 @@ function App() {
                     </ControlBlock>
                     <ControlBlock label="Blend Mode">
                       <Select
-                        value={activeProject.compositing.blendMode}
+                        value={activeProjectView.compositing.blendMode}
                         onValueChange={(value) =>
                           patchProject((project) => ({
                             ...project,
@@ -3058,7 +2942,7 @@ function App() {
                       min={0.2}
                       max={1}
                       step={0.01}
-                      value={activeProject.compositing.opacity}
+                      value={activeProjectView.compositing.opacity}
                       onChange={(value) =>
                         patchProject((project) => ({
                           ...project,
@@ -3074,7 +2958,7 @@ function App() {
                       min={0}
                       max={1}
                       step={0.01}
-                      value={activeProject.compositing.overlap}
+                      value={activeProjectView.compositing.overlap}
                       onChange={(value) =>
                         patchProject((project) => ({
                           ...project,
@@ -3096,7 +2980,7 @@ function App() {
                       min={0}
                       max={18}
                       step={0.1}
-                      value={activeProject.effects.blur}
+                      value={activeProjectView.effects.blur}
                       formatter={(value) => `${value.toFixed(1)} px`}
                       onChange={(value) =>
                         patchProject((project) => ({
@@ -3110,7 +2994,7 @@ function App() {
                       min={0}
                       max={1}
                       step={0.01}
-                      value={activeProject.effects.sharpen}
+                      value={activeProjectView.effects.sharpen}
                       onChange={(value) =>
                         patchProject((project) => ({
                           ...project,
@@ -3123,7 +3007,7 @@ function App() {
                       min={0}
                       max={180}
                       step={1}
-                      value={activeProject.effects.rotationJitter}
+                      value={activeProjectView.effects.rotationJitter}
                       formatter={(value) => `${Math.round(value)}°`}
                       onChange={(value) =>
                         patchProject((project) => ({
@@ -3140,7 +3024,7 @@ function App() {
                       min={0}
                       max={0.8}
                       step={0.01}
-                      value={activeProject.effects.scaleJitter}
+                      value={activeProjectView.effects.scaleJitter}
                       onChange={(value) =>
                         patchProject((project) => ({
                           ...project,
@@ -3153,7 +3037,7 @@ function App() {
                       min={0}
                       max={100}
                       step={1}
-                      value={activeProject.effects.displacement}
+                      value={activeProjectView.effects.displacement}
                       formatter={(value) => `${Math.round(value)} px`}
                       onChange={(value) =>
                         patchProject((project) => ({
@@ -3167,7 +3051,7 @@ function App() {
                       min={0}
                       max={0.8}
                       step={0.01}
-                      value={activeProject.effects.distortion}
+                      value={activeProjectView.effects.distortion}
                       onChange={(value) =>
                         patchProject((project) => ({
                           ...project,
@@ -3180,7 +3064,7 @@ function App() {
                       min={1}
                       max={12}
                       step={1}
-                      value={activeProject.effects.kaleidoscopeSegments}
+                      value={activeProjectView.effects.kaleidoscopeSegments}
                       formatter={(value) => `${Math.round(value)} seg`}
                       onChange={(value) =>
                         patchProject((project) => ({
@@ -3199,7 +3083,7 @@ function App() {
                           min={0}
                           max={1}
                           step={0.01}
-                          value={activeProject.effects.kaleidoscopeCenterX}
+                          value={activeProjectView.effects.kaleidoscopeCenterX}
                           formatter={(value) => `${Math.round(value * 100)}%`}
                           onChange={(value) =>
                             patchProject((project) => ({
@@ -3216,7 +3100,7 @@ function App() {
                           min={0}
                           max={1}
                           step={0.01}
-                          value={activeProject.effects.kaleidoscopeCenterY}
+                          value={activeProjectView.effects.kaleidoscopeCenterY}
                           formatter={(value) => `${Math.round(value * 100)}%`}
                           onChange={(value) =>
                             patchProject((project) => ({
@@ -3233,7 +3117,7 @@ function App() {
                           min={0}
                           max={360}
                           step={1}
-                          value={activeProject.effects.kaleidoscopeAngleOffset}
+                          value={activeProjectView.effects.kaleidoscopeAngleOffset}
                           formatter={(value) => `${Math.round(value)}°`}
                           onChange={(value) =>
                             patchProject((project) => ({
@@ -3251,7 +3135,7 @@ function App() {
                           max={180}
                           step={1}
                           value={
-                            activeProject.effects.kaleidoscopeRotationDrift
+                            activeProjectView.effects.kaleidoscopeRotationDrift
                           }
                           formatter={(value) => `${Math.round(value)}°`}
                           onChange={(value) =>
@@ -3269,7 +3153,7 @@ function App() {
                           min={0}
                           max={1}
                           step={0.01}
-                          value={activeProject.effects.kaleidoscopeScaleFalloff}
+                          value={activeProjectView.effects.kaleidoscopeScaleFalloff}
                           formatter={(value) => `${Math.round(value * 100)}%`}
                           onChange={(value) =>
                             patchProject((project) => ({
@@ -3286,7 +3170,7 @@ function App() {
                           min={0}
                           max={1}
                           step={0.01}
-                          value={activeProject.effects.kaleidoscopeOpacity}
+                          value={activeProjectView.effects.kaleidoscopeOpacity}
                           formatter={(value) => `${Math.round(value * 100)}%`}
                           onChange={(value) =>
                             patchProject((project) => ({
@@ -3300,7 +3184,7 @@ function App() {
                         />
                         <ControlBlock label="Mirror Mode">
                           <Select
-                            value={activeProject.effects.kaleidoscopeMirrorMode}
+                            value={activeProjectView.effects.kaleidoscopeMirrorMode}
                             onValueChange={(value) =>
                               patchProject((project) => ({
                                 ...project,
@@ -3337,7 +3221,7 @@ function App() {
                         min={-200}
                         max={200}
                         step={1}
-                        value={activeProject.finish.shadowOffsetX}
+                        value={activeProjectView.finish.shadowOffsetX}
                         formatter={(value) => `${Math.round(value)} px`}
                         onChange={(value) =>
                           patchProject((project) => ({
@@ -3354,7 +3238,7 @@ function App() {
                         min={-200}
                         max={200}
                         step={1}
-                        value={activeProject.finish.shadowOffsetY}
+                        value={activeProjectView.finish.shadowOffsetY}
                         formatter={(value) => `${Math.round(value)} px`}
                         onChange={(value) =>
                           patchProject((project) => ({
@@ -3371,7 +3255,7 @@ function App() {
                         min={0}
                         max={200}
                         step={1}
-                        value={activeProject.finish.shadowBlur}
+                        value={activeProjectView.finish.shadowBlur}
                         formatter={(value) => `${Math.round(value)} px`}
                         onChange={(value) =>
                           patchProject((project) => ({
@@ -3388,7 +3272,7 @@ function App() {
                         min={0}
                         max={1}
                         step={0.01}
-                        value={activeProject.finish.shadowOpacity}
+                        value={activeProjectView.finish.shadowOpacity}
                         formatter={formatPercentValue}
                         onChange={(value) =>
                           patchProject((project) => ({
@@ -3403,7 +3287,7 @@ function App() {
                       <SourceColorField
                         id="finish-shadow-color"
                         label="Shadow Color"
-                        value={activeProject.finish.shadowColor}
+                        value={activeProjectView.finish.shadowColor}
                         onChange={(value) =>
                           patchProject((project) => ({
                             ...project,
@@ -3419,7 +3303,7 @@ function App() {
                         min={0}
                         max={2}
                         step={0.01}
-                        value={activeProject.finish.brightness}
+                        value={activeProjectView.finish.brightness}
                         formatter={formatPercentValue}
                         onChange={(value) =>
                           patchProject((project) => ({
@@ -3436,7 +3320,7 @@ function App() {
                         min={0}
                         max={2}
                         step={0.01}
-                        value={activeProject.finish.contrast}
+                        value={activeProjectView.finish.contrast}
                         formatter={formatPercentValue}
                         onChange={(value) =>
                           patchProject((project) => ({
@@ -3453,7 +3337,7 @@ function App() {
                         min={0}
                         max={2}
                         step={0.01}
-                        value={activeProject.finish.saturate}
+                        value={activeProjectView.finish.saturate}
                         formatter={formatPercentValue}
                         onChange={(value) =>
                           patchProject((project) => ({
@@ -3470,7 +3354,7 @@ function App() {
                         min={-180}
                         max={180}
                         step={1}
-                        value={activeProject.finish.hueRotate}
+                        value={activeProjectView.finish.hueRotate}
                         formatter={formatDegreeValue}
                         onChange={(value) =>
                           patchProject((project) => ({
@@ -3487,7 +3371,7 @@ function App() {
                         min={0}
                         max={1}
                         step={0.01}
-                        value={activeProject.finish.grayscale}
+                        value={activeProjectView.finish.grayscale}
                         formatter={formatPercentValue}
                         onChange={(value) =>
                           patchProject((project) => ({
@@ -3504,7 +3388,7 @@ function App() {
                         min={0}
                         max={1}
                         step={0.01}
-                        value={activeProject.finish.invert}
+                        value={activeProjectView.finish.invert}
                         formatter={formatPercentValue}
                         onChange={(value) =>
                           patchProject((project) => ({

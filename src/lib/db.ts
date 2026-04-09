@@ -21,7 +21,7 @@ export interface BlobRecord {
   blob: Blob;
 }
 
-export class ImageGridDb extends Dexie {
+export class ImageCompositorDb extends Dexie {
   assets!: Table<SourceAsset, string>;
   projects!: Table<ProjectDocument, string>;
   versions!: Table<ProjectVersion, string>;
@@ -29,7 +29,7 @@ export class ImageGridDb extends Dexie {
   blobs!: Table<BlobRecord, string>;
 
   constructor() {
-    super("image-grid-db");
+    super("image-compositor-db");
     this.version(1).stores({
       assets: "id, createdAt, name, mimeType",
       projects: "id, updatedAt, title",
@@ -119,4 +119,4 @@ export class ImageGridDb extends Dexie {
   }
 }
 
-export const db = new ImageGridDb();
+export const db = new ImageCompositorDb();

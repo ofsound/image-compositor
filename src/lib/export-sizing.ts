@@ -28,13 +28,13 @@ export function lockExportDimensionsToCanvas(
 
   if (anchor === "height") {
     let height = clampExportHeight(exportSettings.height);
-    let width = clampExportWidth(height * aspectRatio);
+    const width = clampExportWidth(height * aspectRatio);
     height = clampExportHeight(width / aspectRatio);
     return { width, height };
   }
 
   let width = clampExportWidth(exportSettings.width);
-  let height = clampExportHeight(width / aspectRatio);
+  const height = clampExportHeight(width / aspectRatio);
   width = clampExportWidth(height * aspectRatio);
   return { width, height };
 }

@@ -20,7 +20,7 @@ interface ThemeContextValue {
   setTheme: (next: ThemeChoice) => void;
 }
 
-const STORAGE_KEY = "image-grid-theme";
+const STORAGE_KEY = "image-compositor-theme";
 
 const ThemeContext = createContext<ThemeContextValue | null>(null);
 

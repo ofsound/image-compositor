@@ -44,10 +44,11 @@ async function launchApp(userDataDir: string) {
     },
   });
   const page = await app.firstWindow();
+  await page.setViewportSize({ width: 1600, height: 1000 });
   return { app, page };
 }
 
-test("boots, imports an image, and preserves workspace on relaunch", async ({}, testInfo) => {
+test("boots, imports an image, and preserves workspace on relaunch", async ({ browserName: _browserName }, testInfo) => {
   const userDataDir = path.join(testInfo.outputDir, "user-data");
 
   const firstRun = await launchApp(userDataDir);

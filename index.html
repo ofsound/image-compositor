@@ -14,7 +14,7 @@
       // Inline theme bootstrap — prevents FOUC by applying the stored class before first paint.
       (function() {
         var stored = 'dark';
-        try { stored = localStorage.getItem('image-grid-theme') || 'dark'; } catch(e) {}
+        try { stored = localStorage.getItem('image-compositor-theme') || 'dark'; } catch(e) {}
         var resolved = stored;
         if (stored === 'system') {
           resolved = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';

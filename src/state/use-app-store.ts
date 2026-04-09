@@ -4,7 +4,6 @@ import {
   type CellularSourceInput,
   createGeneratedSourceAsset,
   duplicateSourceAsset,
-  normalizeSourceAsset,
   persistProcessedAsset,
   updateGeneratedSourceAsset,
   type GradientSourceInput,
@@ -24,15 +23,25 @@ import {
   getSelectedLayer,
   normalizeProjectDocument,
   normalizeProjectVersion,
+  serializeProjectDocument,
+  serializeProjectSnapshot,
   syncLegacyProjectFieldsToSelectedLayer,
 } from "@/lib/project-defaults";
 import { exportProjectImage } from "@/lib/render";
+import { loadNormalizedAssetBitmapMap } from "@/lib/render-service";
 import {
   createImportCopy,
   exportProjectBundle,
   loadProjectBundle,
   persistImportedProjectBundle,
 } from "@/lib/serializer";
+import {
+  deleteProjectDataAtomically,
+  loadWorkspaceSnapshotData,
+  persistActiveProjectId,
+  putProjectDocument,
+  putProjectVersion,
+} from "@/lib/workspace-storage";
 import type {
   BundleImportInspection,
   CellularSourceAsset,
@@ -200,8 +209,23 @@ function formatGeneratedSourceKind(kind: Exclude<SourceAsset["kind"], "image">) 
 
 function createProjectSnapshot(project: ProjectDocument): ProjectSnapshot {
   return structuredClone(
-    normalizeProjectDocument(syncLegacyProjectFieldsToSelectedLayer(project)),
+    serializeProjectSnapshot(normalizeProjectDocument(project)),
   );
+}
+
+function createProjectMutationBase(project: ProjectDocument) {
+  return serializeProjectDocument(normalizeProjectDocument(project));
+}
+
+function applySnapshotToProject(
+  project: ProjectDocument,
+  snapshot: ProjectSnapshot,
+): ProjectDocument {
+  return normalizeProjectDocument({
+    ...createProjectMutationBase(project),
+    ...structuredClone(snapshot),
+    updatedAt: new Date().toISOString(),
+  });
 }
 
 function snapshotsEqual(a: ProjectSnapshot, b: ProjectSnapshot) {
@@ -270,9 +294,11 @@ function replaceLayer(
   layerId: string,
   updater: (layer: CompositorLayer) => CompositorLayer,
 ) {
+  const baseProject = createProjectMutationBase(project);
+
   return normalizeProjectDocument({
-    ...project,
-    layers: project.layers.map((layer) =>
+    ...baseProject,
+    layers: baseProject.layers.map((layer) =>
       layer.id === layerId ? updater(layer) : layer,
     ),
     updatedAt: new Date().toISOString(),
@@ -306,12 +332,11 @@ function removeSourceFromLayer(layer: CompositorLayer, assetId: string): Composi
 }
 
 function removeSourceFromAllLayers(project: ProjectDocument, assetId: string) {
-  const normalizedProject = normalizeProjectDocument(
-    syncLegacyProjectFieldsToSelectedLayer(project),
-  );
+  const baseProject = createProjectMutationBase(project);
+
   return normalizeProjectDocument({
-    ...normalizedProject,
-    layers: normalizedProject.layers.map((layer) =>
+    ...baseProject,
+    layers: baseProject.layers.map((layer) =>
       removeSourceFromLayer(layer, assetId),
     ),
     updatedAt: new Date().toISOString(),
@@ -349,25 +374,12 @@ async function deleteAssetFiles(assets: SourceAsset[]) {
   );
 }
 
-async function persistActiveProjectId(projectId: string | null) {
-  if (!projectId) return;
-  await db.kv.put({ key: "activeProjectId", value: projectId });
-}
-
 async function loadWorkspaceSnapshot(preferredActiveProjectId?: string | null) {
-  const [storedProjects, storedAssets, storedVersions, activeRecord] = await Promise.all([
-    db.projects.toArray(),
-    db.assets.toArray(),
-    db.versions.toArray(),
-    db.kv.get("activeProjectId"),
-  ]);
-
-  let projects = sortByUpdated(storedProjects.map((project) => normalizeProjectDocument(project)));
-  const assets = sortAssetsByCreated(storedAssets.map((asset) => normalizeSourceAsset(asset)));
-  const versions = sortVersionsByCreated(
-    storedVersions.map((version) => normalizeProjectVersion(version)),
-  );
-  let activeProjectId = preferredActiveProjectId ?? activeRecord?.value ?? null;
+  const snapshot = await loadWorkspaceSnapshotData(preferredActiveProjectId);
+  let projects = snapshot.projects;
+  const assets = snapshot.assets;
+  const versions = snapshot.versions;
+  let activeProjectId = snapshot.activeProjectId;
   const liveProjects = getLiveProjects(projects);
 
   if (!liveProjects.some((project) => project.id === activeProjectId)) {
@@ -378,7 +390,7 @@ async function loadWorkspaceSnapshot(preferredActiveProjectId?: string | null) {
     const project = createProjectDocument(
       projects.length === 0 ? "Launch Study" : getNextProjectTitle(projects),
     );
-    await db.projects.put(project);
+    await putProjectDocument(project);
     projects = sortByUpdated([project, ...projects]);
     activeProjectId = project.id;
   }
@@ -418,31 +430,6 @@ async function syncWorkspace(
   );
 }
 
-async function deleteProjectData(projectId: string) {
-  const [assets, versions] = await Promise.all([
-    db.assets.where("projectId").equals(projectId).toArray(),
-    db.versions.where("projectId").equals(projectId).toArray(),
-  ]);
-
-  await Promise.all([
-    ...assets.flatMap((asset) => [
-      deleteBlob(asset.originalPath),
-      deleteBlob(asset.normalizedPath),
-      deleteBlob(asset.previewPath),
-    ]),
-    ...versions
-      .map((version) => version.thumbnailPath)
-      .filter((path): path is string => Boolean(path))
-      .map((path) => deleteBlob(path)),
-  ]);
-
-  await Promise.all([
-    db.assets.bulkDelete(assets.map((asset) => asset.id)),
-    db.versions.bulkDelete(versions.map((version) => version.id)),
-    db.projects.delete(projectId),
-  ]);
-}
-
 export const useAppStore = create<AppState>((set, get) => ({
   ready: false,
   busy: false,
@@ -472,7 +459,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   async createProject() {
     const project = createProjectDocument(getNextProjectTitle(get().projects));
-    await Promise.all([db.projects.put(project), persistActiveProjectId(project.id)]);
+    await Promise.all([putProjectDocument(project), persistActiveProjectId(project.id)]);
     await syncWorkspace(set, {
       activeProjectId: project.id,
       historyByProject: get().historyByProject,
@@ -485,7 +472,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     const project = get().projects.find((entry) => entry.id === projectId);
     if (!project) return;
 
-    await db.projects.put({
+    await putProjectDocument({
       ...project,
       title: nextTitle,
       updatedAt: new Date().toISOString(),
@@ -505,6 +492,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (!sourceProject) return;
 
     set({ busy: true, status: "Duplicating project…" });
+    const sourceProjectDocument = createProjectMutationBase(sourceProject);
     const nextProjectId = makeId("project");
     const nextTitle = title.trim() || `${sourceProject.title} Copy`;
     const projectAssets = get().assets.filter((asset) => asset.projectId === sourceProject.id);
@@ -514,10 +502,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     const sourceIdMap = new Map(projectAssets.map((asset, index) => [asset.id, duplicatedAssets[index]?.id ?? asset.id]));
     const now = new Date().toISOString();
     const duplicateProject: ProjectDocument = normalizeProjectDocument({
-      ...sourceProject,
+      ...sourceProjectDocument,
       id: nextProjectId,
       title: nextTitle,
-      layers: sourceProject.layers.map((layer) => ({
+      layers: sourceProjectDocument.layers.map((layer) => ({
         ...structuredClone(layer),
         sourceIds: layer.sourceIds.map(
           (sourceId) => sourceIdMap.get(sourceId) ?? sourceId,
@@ -539,7 +527,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     });
 
     await Promise.all([
-      db.projects.put(duplicateProject),
+      putProjectDocument(duplicateProject),
       db.assets.bulkPut(duplicatedAssets),
       persistActiveProjectId(duplicateProject.id),
     ]);
@@ -558,7 +546,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     );
     if (!project) return;
 
-    await db.projects.put({
+    await putProjectDocument({
       ...project,
       deletedAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -575,7 +563,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     const project = get().projects.find((entry) => entry.id === projectId);
     if (!project) return;
 
-    await db.projects.put({
+    await putProjectDocument({
       ...project,
       deletedAt: null,
       updatedAt: new Date().toISOString(),
@@ -590,7 +578,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   async purgeProject(projectId) {
     set({ busy: true, status: "Deleting project permanently…" });
-    await deleteProjectData(projectId);
+    await deleteProjectDataAtomically(projectId);
     const historyByProject = clearProjectHistory(get().historyByProject, projectId);
     set(
       withHistoryFlags(
@@ -626,12 +614,13 @@ export const useAppStore = create<AppState>((set, get) => ({
     const project = getActiveProject(get());
     if (!project || !project.layers.some((layer) => layer.id === layerId)) return;
 
+    const baseProject = createProjectMutationBase(project);
     const updatedProject = normalizeProjectDocument({
-      ...project,
+      ...baseProject,
       selectedLayerId: layerId,
       updatedAt: new Date().toISOString(),
     });
-    await db.projects.put(updatedProject);
+    await putProjectDocument(updatedProject);
 
     set((state) => ({
       projects: upsertProject(state.projects, updatedProject),
@@ -746,12 +735,13 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (!project) return;
 
     const before = createProjectSnapshot(project);
+    const draftProject = normalizeProjectDocument({
+      ...createProjectMutationBase(project),
+      updatedAt: new Date().toISOString(),
+    });
     const updatedProject = normalizeProjectDocument(
       syncLegacyProjectFieldsToSelectedLayer(
-        updater({
-          ...project,
-          updatedAt: new Date().toISOString(),
-        }),
+        updater(draftProject),
       ),
     );
     const after = createProjectSnapshot(updatedProject);
@@ -760,7 +750,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       return;
     }
 
-    await db.projects.put(updatedProject);
+    await putProjectDocument(updatedProject);
     set((state) => {
       const historyByProject =
         options?.recordHistory === false
@@ -814,18 +804,16 @@ export const useAppStore = create<AppState>((set, get) => ({
         });
       }
 
-      const nextProject = {
-        ...updateSelectedProjectLayer(activeProject, (layer) => ({
-          ...layer,
-          sourceIds: [
-            ...new Set([...layer.sourceIds, ...importedAssets.map((asset) => asset.id)]),
-          ],
-        })),
-      };
+      const nextProject = updateSelectedProjectLayer(activeProject, (layer) => ({
+        ...layer,
+        sourceIds: [
+          ...new Set([...layer.sourceIds, ...importedAssets.map((asset) => asset.id)]),
+        ],
+      }));
       const before = createProjectSnapshot(activeProject);
       const after = createProjectSnapshot(nextProject);
 
-      await db.projects.put(nextProject);
+      await putProjectDocument(nextProject);
 
       set((state) => {
         const historyByProject = patchHistory(state.historyByProject, nextProject.id, (history) => ({
@@ -876,16 +864,14 @@ export const useAppStore = create<AppState>((set, get) => ({
       );
       await db.assets.put(asset);
 
-      const nextProject = {
-        ...updateSelectedProjectLayer(activeProject, (layer) => ({
-          ...layer,
-          sourceIds: [...new Set([...layer.sourceIds, asset.id])],
-        })),
-      };
+      const nextProject = updateSelectedProjectLayer(activeProject, (layer) => ({
+        ...layer,
+        sourceIds: [...new Set([...layer.sourceIds, asset.id])],
+      }));
       const before = createProjectSnapshot(activeProject);
       const after = createProjectSnapshot(nextProject);
 
-      await db.projects.put(nextProject);
+      await putProjectDocument(nextProject);
 
       set((state) => {
         const historyByProject = patchHistory(state.historyByProject, nextProject.id, (history) => ({
@@ -934,16 +920,14 @@ export const useAppStore = create<AppState>((set, get) => ({
       );
       await db.assets.put(asset);
 
-      const nextProject = {
-        ...updateSelectedProjectLayer(activeProject, (layer) => ({
-          ...layer,
-          sourceIds: [...new Set([...layer.sourceIds, asset.id])],
-        })),
-      };
+      const nextProject = updateSelectedProjectLayer(activeProject, (layer) => ({
+        ...layer,
+        sourceIds: [...new Set([...layer.sourceIds, asset.id])],
+      }));
       const before = createProjectSnapshot(activeProject);
       const after = createProjectSnapshot(nextProject);
 
-      await db.projects.put(nextProject);
+      await putProjectDocument(nextProject);
 
       set((state) => {
         const historyByProject = patchHistory(state.historyByProject, nextProject.id, (history) => ({
@@ -992,16 +976,14 @@ export const useAppStore = create<AppState>((set, get) => ({
       );
       await db.assets.put(asset);
 
-      const nextProject = {
-        ...updateSelectedProjectLayer(activeProject, (layer) => ({
-          ...layer,
-          sourceIds: [...new Set([...layer.sourceIds, asset.id])],
-        })),
-      };
+      const nextProject = updateSelectedProjectLayer(activeProject, (layer) => ({
+        ...layer,
+        sourceIds: [...new Set([...layer.sourceIds, asset.id])],
+      }));
       const before = createProjectSnapshot(activeProject);
       const after = createProjectSnapshot(nextProject);
 
-      await db.projects.put(nextProject);
+      await putProjectDocument(nextProject);
 
       set((state) => {
         const historyByProject = patchHistory(state.historyByProject, nextProject.id, (history) => ({
@@ -1050,16 +1032,14 @@ export const useAppStore = create<AppState>((set, get) => ({
       );
       await db.assets.put(asset);
 
-      const nextProject = {
-        ...updateSelectedProjectLayer(activeProject, (layer) => ({
-          ...layer,
-          sourceIds: [...new Set([...layer.sourceIds, asset.id])],
-        })),
-      };
+      const nextProject = updateSelectedProjectLayer(activeProject, (layer) => ({
+        ...layer,
+        sourceIds: [...new Set([...layer.sourceIds, asset.id])],
+      }));
       const before = createProjectSnapshot(activeProject);
       const after = createProjectSnapshot(nextProject);
 
-      await db.projects.put(nextProject);
+      await putProjectDocument(nextProject);
 
       set((state) => {
         const historyByProject = patchHistory(state.historyByProject, nextProject.id, (history) => ({
@@ -1108,16 +1088,14 @@ export const useAppStore = create<AppState>((set, get) => ({
       );
       await db.assets.put(asset);
 
-      const nextProject = {
-        ...updateSelectedProjectLayer(activeProject, (layer) => ({
-          ...layer,
-          sourceIds: [...new Set([...layer.sourceIds, asset.id])],
-        })),
-      };
+      const nextProject = updateSelectedProjectLayer(activeProject, (layer) => ({
+        ...layer,
+        sourceIds: [...new Set([...layer.sourceIds, asset.id])],
+      }));
       const before = createProjectSnapshot(activeProject);
       const after = createProjectSnapshot(nextProject);
 
-      await db.projects.put(nextProject);
+      await putProjectDocument(nextProject);
 
       set((state) => {
         const historyByProject = patchHistory(state.historyByProject, nextProject.id, (history) => ({
@@ -1166,16 +1144,14 @@ export const useAppStore = create<AppState>((set, get) => ({
       );
       await db.assets.put(asset);
 
-      const nextProject = {
-        ...updateSelectedProjectLayer(activeProject, (layer) => ({
-          ...layer,
-          sourceIds: [...new Set([...layer.sourceIds, asset.id])],
-        })),
-      };
+      const nextProject = updateSelectedProjectLayer(activeProject, (layer) => ({
+        ...layer,
+        sourceIds: [...new Set([...layer.sourceIds, asset.id])],
+      }));
       const before = createProjectSnapshot(activeProject);
       const after = createProjectSnapshot(nextProject);
 
-      await db.projects.put(nextProject);
+      await putProjectDocument(nextProject);
 
       set((state) => {
         const historyByProject = patchHistory(state.historyByProject, nextProject.id, (history) => ({
@@ -1238,7 +1214,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       await Promise.all([
         deleteAssetFiles([asset]),
         db.assets.bulkDelete([asset.id]),
-        db.projects.put(nextProject),
+        putProjectDocument(nextProject),
       ]);
 
       set((state) => {
@@ -1300,11 +1276,11 @@ export const useAppStore = create<AppState>((set, get) => ({
       const updatedAsset = await updateGeneratedSourceAsset(asset, input);
       await db.assets.put(updatedAsset);
 
-      const updatedProject = {
-        ...activeProject,
+      const updatedProject = normalizeProjectDocument({
+        ...createProjectMutationBase(activeProject),
         updatedAt: new Date().toISOString(),
-      };
-      await db.projects.put(updatedProject);
+      });
+      await putProjectDocument(updatedProject);
 
       set((state) => {
         const historyByProject = clearProjectHistory(state.historyByProject, updatedProject.id);
@@ -1359,13 +1335,13 @@ export const useAppStore = create<AppState>((set, get) => ({
       snapshot: createProjectSnapshot(project),
     };
 
-    const updatedProject = {
-      ...project,
+    const updatedProject = normalizeProjectDocument({
+      ...createProjectMutationBase(project),
       currentVersionId: version.id,
       updatedAt: new Date().toISOString(),
-    };
+    });
 
-    await Promise.all([db.versions.put(version), db.projects.put(updatedProject)]);
+    await Promise.all([putProjectVersion(version), putProjectDocument(updatedProject)]);
 
     set((state) => ({
       versions: sortVersionsByCreated([version, ...state.versions]),
@@ -1382,14 +1358,14 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (!version || !project) return;
     const normalizedVersion = normalizeProjectVersion(version);
 
-    const updatedProject: ProjectDocument = {
-      ...project,
+    const updatedProject = normalizeProjectDocument({
+      ...createProjectMutationBase(project),
       ...structuredClone(normalizedVersion.snapshot),
       currentVersionId: normalizedVersion.id,
       updatedAt: new Date().toISOString(),
-    };
+    });
 
-    await db.projects.put(updatedProject);
+    await putProjectDocument(updatedProject);
     set((state) => {
       const historyByProject = clearProjectHistory(state.historyByProject, updatedProject.id);
       return withHistoryFlags(
@@ -1404,10 +1380,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     });
   },
 
-  async exportCurrentImage(project, assets, bitmapLookup) {
-    const { buildBitmapMap } = await import("@/lib/render");
+  async exportCurrentImage(project, assets, _bitmapLookup) {
     set({ busy: true, status: "Rendering export…" });
-    const bitmaps = await buildBitmapMap(assets, bitmapLookup);
+    const bitmaps = await loadNormalizedAssetBitmapMap(assets);
     const blob = await exportProjectImage(project, assets, bitmaps);
     const extension = project.export.format === "image/jpeg" ? "jpg" : "png";
     downloadBlob(blob, `${project.title.toLowerCase().replace(/\s+/g, "-")}.${extension}`);
@@ -1421,7 +1396,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     const assets = get().assets.filter((asset) => asset.projectId === project.id);
     set({ busy: true, status: "Packaging project bundle…" });
     const blob = await exportProjectBundle(project, versions, assets);
-    downloadBlob(blob, `${project.title.toLowerCase().replace(/\s+/g, "-")}.image-grid.zip`);
+    downloadBlob(blob, `${project.title.toLowerCase().replace(/\s+/g, "-")}.image-compositor.zip`);
     set({ busy: false, status: "Project bundle exported." });
   },
 
@@ -1457,7 +1432,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ busy: true, status: "Importing project bundle…" });
 
     if (resolution === "replace" && inspection.conflictProject) {
-      await deleteProjectData(inspection.conflictProject.id);
+      await deleteProjectDataAtomically(inspection.conflictProject.id);
     }
 
     const bundle = resolution === "copy" ? createImportCopy(inspection.bundle) : inspection.bundle;
@@ -1491,12 +1466,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (!entry) return;
 
     if (entry.kind === "project-change") {
-      const updatedProject: ProjectDocument = {
-        ...project,
-        ...structuredClone(entry.before),
-        updatedAt: new Date().toISOString(),
-      };
-      await db.projects.put(updatedProject);
+      const updatedProject = applySnapshotToProject(project, entry.before);
+      await putProjectDocument(updatedProject);
 
       set((state) => {
         const historyByProject = patchHistory(state.historyByProject, project.id, (currentHistory) => ({
@@ -1516,16 +1487,12 @@ export const useAppStore = create<AppState>((set, get) => ({
 
     if (entry.kind === "remove-assets") {
       const restoredAssets = entry.assets.map((removedAsset) => removedAsset.asset);
-      const updatedProject: ProjectDocument = {
-        ...project,
-        ...structuredClone(entry.before),
-        updatedAt: new Date().toISOString(),
-      };
+      const updatedProject = applySnapshotToProject(project, entry.before);
 
       await Promise.all([
         restoreRemovedAssetSnapshots(entry.assets),
         db.assets.bulkPut(restoredAssets),
-        db.projects.put(updatedProject),
+        putProjectDocument(updatedProject),
       ]);
 
       set((state) => {
@@ -1545,16 +1512,12 @@ export const useAppStore = create<AppState>((set, get) => ({
       return;
     }
 
-    const updatedProject: ProjectDocument = {
-      ...project,
-      ...structuredClone(entry.before),
-      updatedAt: new Date().toISOString(),
-    };
+    const updatedProject = applySnapshotToProject(project, entry.before);
     const assetIds = entry.assets.map((asset) => asset.id);
 
     await Promise.all([
       db.assets.bulkDelete(assetIds),
-      db.projects.put(updatedProject),
+      putProjectDocument(updatedProject),
     ]);
 
     set((state) => {
@@ -1582,12 +1545,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (!entry) return;
 
     if (entry.kind === "project-change") {
-      const updatedProject: ProjectDocument = {
-        ...project,
-        ...structuredClone(entry.after),
-        updatedAt: new Date().toISOString(),
-      };
-      await db.projects.put(updatedProject);
+      const updatedProject = applySnapshotToProject(project, entry.after);
+      await putProjectDocument(updatedProject);
 
       set((state) => {
         const historyByProject = patchHistory(state.historyByProject, project.id, (currentHistory) => ({
@@ -1608,16 +1567,12 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (entry.kind === "remove-assets") {
       const removedAssets = entry.assets.map((removedAsset) => removedAsset.asset);
       const removedAssetIds = removedAssets.map((asset) => asset.id);
-      const updatedProject: ProjectDocument = {
-        ...project,
-        ...structuredClone(entry.after),
-        updatedAt: new Date().toISOString(),
-      };
+      const updatedProject = applySnapshotToProject(project, entry.after);
 
       await Promise.all([
         deleteAssetFiles(removedAssets),
         db.assets.bulkDelete(removedAssetIds),
-        db.projects.put(updatedProject),
+        putProjectDocument(updatedProject),
       ]);
 
       set((state) => {
@@ -1637,15 +1592,11 @@ export const useAppStore = create<AppState>((set, get) => ({
       return;
     }
 
-    const updatedProject: ProjectDocument = {
-      ...project,
-      ...structuredClone(entry.after),
-      updatedAt: new Date().toISOString(),
-    };
+    const updatedProject = applySnapshotToProject(project, entry.after);
 
     await Promise.all([
       db.assets.bulkPut(entry.assets),
-      db.projects.put(updatedProject),
+      putProjectDocument(updatedProject),
     ]);
 
     set((state) => {

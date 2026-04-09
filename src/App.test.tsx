@@ -906,6 +906,11 @@ describe("App inspector grouping", () => {
   it("separates layer controls from project settings", () => {
     renderApp();
 
+    expect(screen.getByRole("region", { name: "Layers" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Preview" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Sources" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Inspector" })).toBeInTheDocument();
+
     const layerControls = screen.getByRole("region", {
       name: "Layer Controls",
     });
@@ -916,7 +921,7 @@ describe("App inspector grouping", () => {
     expect(within(layerControls).getByText("Editing Layer 1")).toBeInTheDocument();
     expect(within(layerControls).getByText("Layout")).toBeInTheDocument();
     expect(within(layerControls).getByText("Mapping")).toBeInTheDocument();
-    expect(within(layerControls).getByText("Effects")).toBeInTheDocument();
+    expect(within(layerControls).getByText("Effects + Finish")).toBeInTheDocument();
     expect(
       within(layerControls).queryByText("Canvas Background"),
     ).not.toBeInTheDocument();
@@ -932,6 +937,21 @@ describe("App inspector grouping", () => {
     expect(within(projectSettings).getByText("Canvas Background")).toBeInTheDocument();
     expect(within(projectSettings).getByLabelText("Export W")).toBeInTheDocument();
     expect(within(projectSettings).queryByText("Layout")).not.toBeInTheDocument();
+  });
+
+  it("keeps sources in a persistent rail layout", () => {
+    renderApp({
+      assets: [
+        createImageAsset("project_unused", { id: "asset_a", name: "Asset A" }),
+        createImageAsset("project_unused", { id: "asset_b", name: "Asset B" }),
+      ],
+    });
+
+    const sources = screen.getByRole("region", { name: "Sources" });
+    expect(within(sources).getByTestId("sources-rail")).toBeInTheDocument();
+    expect(
+      within(sources).getByText("Asset A").closest("[data-layout]"),
+    ).toHaveAttribute("data-layout", "rail");
   });
 
   it("replaces layer move buttons with drag handles", () => {

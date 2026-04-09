@@ -158,4 +158,23 @@ describe("SourceAssetCard", () => {
     expect(screen.getByText("mix control")).toBeInTheDocument();
     expect(screen.getByText("thumb")).toBeInTheDocument();
   });
+
+  it("supports the compact rail layout", () => {
+    render(
+      <SourceAssetCard
+        asset={imageAsset}
+        enabled
+        layout="rail"
+        onToggle={vi.fn()}
+        thumbnail={<div>thumb</div>}
+        topContent={<div>mix control</div>}
+      />,
+    );
+
+    expect(screen.getByText("Asset A").closest("[data-layout]")).toHaveAttribute(
+      "data-layout",
+      "rail",
+    );
+    expect(screen.getByText("mix control")).toBeInTheDocument();
+  });
 });

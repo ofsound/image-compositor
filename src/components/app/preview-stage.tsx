@@ -63,10 +63,11 @@ export function PreviewStage({
   }, [assetSignature, canvasRef, onRenderState, project]);
 
   return (
-    <div className="relative overflow-hidden rounded-lg bg-preview-bg">
+    <div className="relative flex h-full min-h-0 items-center justify-center overflow-hidden rounded-lg bg-preview-bg p-3">
       <canvas
         ref={canvasRef}
-        className="aspect-[3/2] w-full rounded-md bg-preview-canvas object-contain"
+        className="h-auto max-h-full w-full max-w-full rounded-md bg-preview-canvas object-contain"
+        style={{ aspectRatio: `${project.canvas.width} / ${project.canvas.height}` }}
       />
     </div>
   );

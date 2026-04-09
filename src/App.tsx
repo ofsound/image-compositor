@@ -103,6 +103,7 @@ import {
   getSourceWeight,
   setSourceWeight,
 } from "@/lib/source-weights";
+import { cn } from "@/lib/utils";
 import { useAppStore } from "@/state/use-app-store";
 import type {
   BlendMode,
@@ -162,10 +163,12 @@ function SourceThumbnail({
   previewPath,
   label,
   versionKey,
+  compact = false,
 }: {
   previewPath: string;
   label: string;
   versionKey: string;
+  compact?: boolean;
 }) {
   const previewUrl = useObjectUrl(previewPath, versionKey);
 
@@ -173,10 +176,16 @@ function SourceThumbnail({
     <img
       src={previewUrl}
       alt={label}
-      className="h-20 w-full rounded-md object-cover"
+      className={compact ? "h-24 w-full rounded-md object-cover" : "h-20 w-full rounded-md object-cover"}
     />
   ) : (
-    <div className="flex h-20 items-center justify-center rounded-md bg-surface-muted font-mono text-[10px] uppercase tracking-[0.1em] text-text-faint">
+    <div
+      className={
+        compact
+          ? "flex h-24 items-center justify-center rounded-md bg-surface-muted font-mono text-[10px] uppercase tracking-[0.1em] text-text-faint"
+          : "flex h-20 items-center justify-center rounded-md bg-surface-muted font-mono text-[10px] uppercase tracking-[0.1em] text-text-faint"
+      }
+    >
       Loading
     </div>
   );
@@ -521,6 +530,53 @@ function ControlBlock({
       </div>
       {children}
     </div>
+  );
+}
+
+function PanelShell({
+  title,
+  description,
+  actions,
+  sectionLabel,
+  className,
+  cardClassName,
+  contentClassName,
+  children,
+}: {
+  title: string;
+  description?: string;
+  actions?: React.ReactNode;
+  sectionLabel?: string;
+  className?: string;
+  cardClassName?: string;
+  contentClassName?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section
+      aria-label={sectionLabel ?? title}
+      className={cn("flex min-h-0 flex-col", className)}
+    >
+      <Card
+        className={cn(
+          "flex h-full min-h-0 flex-col overflow-hidden",
+          cardClassName,
+        )}
+      >
+        <CardHeader className="flex-row items-start justify-between gap-4 space-y-0 border-b border-border-subtle/60 pb-3">
+          <div className="min-w-0">
+            <CardTitle>{title}</CardTitle>
+            {description ? (
+              <CardDescription className="mt-1">{description}</CardDescription>
+            ) : null}
+          </div>
+          {actions ? <div className="shrink-0">{actions}</div> : null}
+        </CardHeader>
+        <CardContent className={cn("min-h-0 flex-1", contentClassName)}>
+          {children}
+        </CardContent>
+      </Card>
+    </section>
   );
 }
 
@@ -1539,9 +1595,9 @@ function App() {
   };
 
   return (
-    <div className="min-h-screen bg-app text-text">
+    <div className="h-dvh overflow-hidden bg-app text-text">
       <Toaster richColors position="top-right" />
-      <div className="flex min-h-screen flex-col">
+      <div className="flex h-full flex-col overflow-hidden">
         <div className="flex w-full shrink-0 items-center justify-between gap-4 border-b border-border bg-surface-raised px-4 py-2.5 backdrop-blur-sm">
           <div className="flex items-center gap-4">
             <div className="text-xs text-text-secondary">compositor</div>
@@ -1747,153 +1803,156 @@ function App() {
           </div>
         </div>
 
-        <div className="mx-auto flex min-h-0 w-full flex-1 flex-col gap-3 p-3">
-          <div className="grid flex-1 grid-cols-[minmax(0,1fr)_minmax(0,640px)] gap-3">
-            <div className="flex min-h-[720px] flex-col gap-3">
-              <Card className="flex min-h-[280px] flex-1 flex-col overflow-hidden rounded-none border-0 bg-transparent shadow-none backdrop-blur-none">
-                <CardContent className="space-y-3 p-0">
-                  <PreviewStage
-                    canvasRef={canvasRef}
-                    project={deferredProject}
-                    assets={previewAssets}
-                    onRenderState={setRenderState}
-                  />
-                </CardContent>
-              </Card>
-
-              <Card className="shrink-0">
-                <CardHeader className="flex-row items-center justify-between gap-4 space-y-0">
-                  <CardTitle>Layers</CardTitle>
-                  <Button
-                    className="w-fit shrink-0"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => void addLayer()}
-                  >
-                    <Plus className="h-3.5 w-3.5" />
-                    Add Layer
-                  </Button>
-                </CardHeader>
-                <CardContent>
-                  <DndContext
-                    sensors={layerSensors}
-                    collisionDetection={closestCenter}
-                    onDragEnd={handleLayerDragEnd}
-                  >
-                    <SortableContext
-                      items={displayLayers.map((layer) => layer.id)}
-                      strategy={verticalListSortingStrategy}
-                    >
-                      <div className="flex flex-col gap-2">
-                        {displayLayers.map((layer) => (
-                          <SortableLayerRow
-                            key={layer.id}
-                            layer={layer}
-                            isSelected={layer.id === selectedLayer?.id}
-                            thumbnailUrl={layerThumbnailUrls[layer.id] ?? null}
-                            canDelete={activeProject.layers.length > 1}
-                            onSelect={() => void selectLayer(layer.id)}
-                            onToggleVisibility={() => void toggleLayerVisibility(layer.id)}
-                            onDelete={() => void deleteLayer(layer.id)}
-                          />
-                        ))}
-                      </div>
-                    </SortableContext>
-                  </DndContext>
-                </CardContent>
-              </Card>
-
-              <Card className="shrink-0">
-                <CardHeader className="flex-row items-center justify-between gap-4 space-y-0">
-                  <CardTitle>Sources</CardTitle>
-                  <Button
-                    className="w-fit shrink-0"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => openAddSourceDialog("image")}
-                  >
-                    <ImagePlus className="h-3.5 w-3.5" />
-                    Add Source
-                  </Button>
-                </CardHeader>
-                <CardContent className="flex flex-col gap-3">
-                  {projectAssets.length === 0 ? (
-                    <div className="rounded-md bg-surface-sunken p-4 text-xs leading-relaxed text-text-faint">
-                      Add image, solid, or gradient sources to begin. Imported
-                      images stay immutable, while generated sources can be
-                      edited later.
-                    </div>
-                  ) : (
-                    <div className="flex gap-2 overflow-x-auto overflow-y-hidden pb-1">
-                      {projectAssets.map((asset) => {
-                        const enabled = activeProject.sourceIds.includes(asset.id);
-                        const mixWeight = getSourceWeight(
-                          activeProject.sourceMapping.sourceWeights,
-                          asset.id,
-                        );
-
-                        return (
-                          <SourceAssetCard
-                            key={asset.id}
-                            asset={asset}
-                            enabled={enabled}
-                            topContent={
-                              enabled ? (
-                                <div className="space-y-1.5">
-                                  <div className="flex items-center justify-between gap-2 font-mono text-[10px] uppercase tracking-[0.08em] text-text-muted">
-                                    <span>Mix</span>
-                                    <span>{formatSourceWeightValue(mixWeight)}</span>
-                                  </div>
-                                  <Slider
-                                    aria-label={`${asset.name} mix weight`}
-                                    min={0}
-                                    max={4}
-                                    step={0.05}
-                                    value={[mixWeight]}
-                                    onValueChange={(next) =>
-                                      updateSourceWeight(
-                                        asset.id,
-                                        next[0] ?? mixWeight,
-                                      )
-                                    }
-                                  />
-                                </div>
-                              ) : null
-                            }
-                            onToggle={toggleAssetEnabled}
-                            onRemove={(assetId) =>
-                              void handleRemoveSource(assetId)
-                            }
-                            onEdit={
-                              asset.kind === "image"
-                                ? undefined
-                                : openEditSourceDialog
-                            }
-                            thumbnail={
-                              <SourceThumbnail
-                                previewPath={asset.previewPath}
-                                label={asset.name}
-                                versionKey={getSourceContentSignature(asset)}
-                              />
-                            }
-                          />
-                        );
-                      })}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            </div>
-
-            <Card className="min-h-[720px] max-w-[640px] ">
-              <CardHeader>
-                <CardTitle>Inspector</CardTitle>
-              </CardHeader>
-              <CardContent className="flex flex-col gap-4 overflow-y-auto px-3 pb-3">
-                <section
-                  aria-labelledby="layer-controls-heading"
-                  className="space-y-4"
+        <div className="mx-auto flex min-h-0 w-full flex-1 overflow-hidden p-3">
+          <div className="grid min-h-0 flex-1 grid-cols-[228px_minmax(720px,1fr)_288px_560px] gap-3 overflow-hidden">
+            <PanelShell
+              title="Layers"
+              actions={
+                <Button
+                  className="w-fit shrink-0"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void addLayer()}
                 >
+                  <Plus className="h-3.5 w-3.5" />
+                  Add Layer
+                </Button>
+              }
+              contentClassName="min-h-0 overflow-y-auto pr-1"
+            >
+              <DndContext
+                sensors={layerSensors}
+                collisionDetection={closestCenter}
+                onDragEnd={handleLayerDragEnd}
+              >
+                <SortableContext
+                  items={displayLayers.map((layer) => layer.id)}
+                  strategy={verticalListSortingStrategy}
+                >
+                  <div className="flex flex-col gap-2">
+                    {displayLayers.map((layer) => (
+                      <SortableLayerRow
+                        key={layer.id}
+                        layer={layer}
+                        isSelected={layer.id === selectedLayer?.id}
+                        thumbnailUrl={layerThumbnailUrls[layer.id] ?? null}
+                        canDelete={activeProject.layers.length > 1}
+                        onSelect={() => void selectLayer(layer.id)}
+                        onToggleVisibility={() => void toggleLayerVisibility(layer.id)}
+                        onDelete={() => void deleteLayer(layer.id)}
+                      />
+                    ))}
+                  </div>
+                </SortableContext>
+              </DndContext>
+            </PanelShell>
+
+            <PanelShell
+              title="Preview"
+              sectionLabel="Preview"
+              cardClassName="rounded-none border-0 bg-transparent shadow-none backdrop-blur-none"
+              contentClassName="flex min-h-0 items-center justify-center p-0"
+            >
+              <PreviewStage
+                canvasRef={canvasRef}
+                project={deferredProject}
+                assets={previewAssets}
+                onRenderState={setRenderState}
+              />
+            </PanelShell>
+
+            <PanelShell
+              title="Sources"
+              actions={
+                <Button
+                  className="w-fit shrink-0"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => openAddSourceDialog("image")}
+                >
+                  <ImagePlus className="h-3.5 w-3.5" />
+                  Add Source
+                </Button>
+              }
+              contentClassName="min-h-0 overflow-y-auto pr-1"
+            >
+              {projectAssets.length === 0 ? (
+                <div className="rounded-md bg-surface-sunken p-4 text-xs leading-relaxed text-text-faint">
+                  Add image, solid, or gradient sources to begin. Imported
+                  images stay immutable, while generated sources can be edited
+                  later.
+                </div>
+              ) : (
+                <div className="flex flex-col gap-3" data-testid="sources-rail">
+                  {projectAssets.map((asset) => {
+                    const enabled = activeProject.sourceIds.includes(asset.id);
+                    const mixWeight = getSourceWeight(
+                      activeProject.sourceMapping.sourceWeights,
+                      asset.id,
+                    );
+
+                    return (
+                      <SourceAssetCard
+                        key={asset.id}
+                        asset={asset}
+                        enabled={enabled}
+                        layout="rail"
+                        topContent={
+                          enabled ? (
+                            <div className="space-y-1.5">
+                              <div className="flex items-center justify-between gap-2 font-mono text-[10px] uppercase tracking-[0.08em] text-text-muted">
+                                <span>Mix</span>
+                                <span>{formatSourceWeightValue(mixWeight)}</span>
+                              </div>
+                              <Slider
+                                aria-label={`${asset.name} mix weight`}
+                                min={0}
+                                max={4}
+                                step={0.05}
+                                value={[mixWeight]}
+                                onValueChange={(next) =>
+                                  updateSourceWeight(
+                                    asset.id,
+                                    next[0] ?? mixWeight,
+                                  )
+                                }
+                              />
+                            </div>
+                          ) : null
+                        }
+                        onToggle={toggleAssetEnabled}
+                        onRemove={(assetId) => void handleRemoveSource(assetId)}
+                        onEdit={
+                          asset.kind === "image"
+                            ? undefined
+                            : openEditSourceDialog
+                        }
+                        thumbnail={
+                          <SourceThumbnail
+                            previewPath={asset.previewPath}
+                            label={asset.name}
+                            versionKey={getSourceContentSignature(asset)}
+                            compact
+                          />
+                        }
+                      />
+                    );
+                  })}
+                </div>
+              )}
+            </PanelShell>
+
+            <div className="flex min-h-0 flex-col gap-3">
+              <section
+                aria-label="Inspector"
+                className="flex min-h-0 flex-1 flex-col"
+              >
+                <Card className="flex min-h-0 flex-1 flex-col overflow-hidden">
+                  <CardHeader>
+                    <CardTitle>Inspector</CardTitle>
+                  </CardHeader>
+                  <CardContent className="flex min-h-0 flex-1 flex-col overflow-y-auto px-3 pb-3">
+                    <section aria-label="Layer Controls" className="space-y-4">
                   <div className="rounded-md border border-border-subtle bg-surface-sunken/70 px-3 py-2.5">
                     <div
                       id="layer-controls-heading"
@@ -1906,7 +1965,7 @@ function App() {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-3 gap-6">
+                  <div className="grid grid-cols-3 gap-4">
                     <div className="min-w-0 space-y-4">
                     <div className="border-b border-border-subtle pb-1 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-text-muted">
                       Layout
@@ -3026,200 +3085,11 @@ function App() {
                         }))
                       }
                     />
-                    <div className="space-y-4 border-t border-border-subtle pt-4">
-                      <div className="border-b border-border-subtle pb-1 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-text-muted">
-                        Layer Finish
-                      </div>
-                      <SliderField
-                        label="Shadow X"
-                        min={-200}
-                        max={200}
-                        step={1}
-                        value={activeProject.finish.shadowOffsetX}
-                        formatter={(value) => `${Math.round(value)} px`}
-                        onChange={(value) =>
-                          patchProject((project) => ({
-                            ...project,
-                            finish: {
-                              ...project.finish,
-                              shadowOffsetX: value,
-                            },
-                          }))
-                        }
-                      />
-                      <SliderField
-                        label="Shadow Y"
-                        min={-200}
-                        max={200}
-                        step={1}
-                        value={activeProject.finish.shadowOffsetY}
-                        formatter={(value) => `${Math.round(value)} px`}
-                        onChange={(value) =>
-                          patchProject((project) => ({
-                            ...project,
-                            finish: {
-                              ...project.finish,
-                              shadowOffsetY: value,
-                            },
-                          }))
-                        }
-                      />
-                      <SliderField
-                        label="Shadow Blur"
-                        min={0}
-                        max={200}
-                        step={1}
-                        value={activeProject.finish.shadowBlur}
-                        formatter={(value) => `${Math.round(value)} px`}
-                        onChange={(value) =>
-                          patchProject((project) => ({
-                            ...project,
-                            finish: {
-                              ...project.finish,
-                              shadowBlur: value,
-                            },
-                          }))
-                        }
-                      />
-                      <SliderField
-                        label="Shadow Opacity"
-                        min={0}
-                        max={1}
-                        step={0.01}
-                        value={activeProject.finish.shadowOpacity}
-                        formatter={formatPercentValue}
-                        onChange={(value) =>
-                          patchProject((project) => ({
-                            ...project,
-                            finish: {
-                              ...project.finish,
-                              shadowOpacity: value,
-                            },
-                          }))
-                        }
-                      />
-                      <SourceColorField
-                        id="finish-shadow-color"
-                        label="Shadow Color"
-                        value={activeProject.finish.shadowColor}
-                        onChange={(value) =>
-                          patchProject((project) => ({
-                            ...project,
-                            finish: {
-                              ...project.finish,
-                              shadowColor: value,
-                            },
-                          }))
-                        }
-                      />
-                      <SliderField
-                        label="Brightness"
-                        min={0}
-                        max={2}
-                        step={0.01}
-                        value={activeProject.finish.brightness}
-                        formatter={formatPercentValue}
-                        onChange={(value) =>
-                          patchProject((project) => ({
-                            ...project,
-                            finish: {
-                              ...project.finish,
-                              brightness: value,
-                            },
-                          }))
-                        }
-                      />
-                      <SliderField
-                        label="Contrast"
-                        min={0}
-                        max={2}
-                        step={0.01}
-                        value={activeProject.finish.contrast}
-                        formatter={formatPercentValue}
-                        onChange={(value) =>
-                          patchProject((project) => ({
-                            ...project,
-                            finish: {
-                              ...project.finish,
-                              contrast: value,
-                            },
-                          }))
-                        }
-                      />
-                      <SliderField
-                        label="Saturate"
-                        min={0}
-                        max={2}
-                        step={0.01}
-                        value={activeProject.finish.saturate}
-                        formatter={formatPercentValue}
-                        onChange={(value) =>
-                          patchProject((project) => ({
-                            ...project,
-                            finish: {
-                              ...project.finish,
-                              saturate: value,
-                            },
-                          }))
-                        }
-                      />
-                      <SliderField
-                        label="Hue Rotate"
-                        min={-180}
-                        max={180}
-                        step={1}
-                        value={activeProject.finish.hueRotate}
-                        formatter={formatDegreeValue}
-                        onChange={(value) =>
-                          patchProject((project) => ({
-                            ...project,
-                            finish: {
-                              ...project.finish,
-                              hueRotate: value,
-                            },
-                          }))
-                        }
-                      />
-                      <SliderField
-                        label="Grayscale"
-                        min={0}
-                        max={1}
-                        step={0.01}
-                        value={activeProject.finish.grayscale}
-                        formatter={formatPercentValue}
-                        onChange={(value) =>
-                          patchProject((project) => ({
-                            ...project,
-                            finish: {
-                              ...project.finish,
-                              grayscale: value,
-                            },
-                          }))
-                        }
-                      />
-                      <SliderField
-                        label="Invert"
-                        min={0}
-                        max={1}
-                        step={0.01}
-                        value={activeProject.finish.invert}
-                        formatter={formatPercentValue}
-                        onChange={(value) =>
-                          patchProject((project) => ({
-                            ...project,
-                            finish: {
-                              ...project.finish,
-                              invert: value,
-                            },
-                          }))
-                        }
-                      />
-                    </div>
                   </div>
 
                   <div className="min-w-0 space-y-4">
                     <div className="border-b border-border-subtle pb-1 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-text-muted">
-                      Effects
+                      Effects + Finish
                     </div>
                     <SliderField
                       label="Blur"
@@ -3458,22 +3328,210 @@ function App() {
                         </ControlBlock>
                       </>
                     ) : null}
+                    <div className="space-y-4 border-t border-border-subtle pt-4">
+                      <div className="border-b border-border-subtle pb-1 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-text-muted">
+                        Layer Finish
+                      </div>
+                      <SliderField
+                        label="Shadow X"
+                        min={-200}
+                        max={200}
+                        step={1}
+                        value={activeProject.finish.shadowOffsetX}
+                        formatter={(value) => `${Math.round(value)} px`}
+                        onChange={(value) =>
+                          patchProject((project) => ({
+                            ...project,
+                            finish: {
+                              ...project.finish,
+                              shadowOffsetX: value,
+                            },
+                          }))
+                        }
+                      />
+                      <SliderField
+                        label="Shadow Y"
+                        min={-200}
+                        max={200}
+                        step={1}
+                        value={activeProject.finish.shadowOffsetY}
+                        formatter={(value) => `${Math.round(value)} px`}
+                        onChange={(value) =>
+                          patchProject((project) => ({
+                            ...project,
+                            finish: {
+                              ...project.finish,
+                              shadowOffsetY: value,
+                            },
+                          }))
+                        }
+                      />
+                      <SliderField
+                        label="Shadow Blur"
+                        min={0}
+                        max={200}
+                        step={1}
+                        value={activeProject.finish.shadowBlur}
+                        formatter={(value) => `${Math.round(value)} px`}
+                        onChange={(value) =>
+                          patchProject((project) => ({
+                            ...project,
+                            finish: {
+                              ...project.finish,
+                              shadowBlur: value,
+                            },
+                          }))
+                        }
+                      />
+                      <SliderField
+                        label="Shadow Opacity"
+                        min={0}
+                        max={1}
+                        step={0.01}
+                        value={activeProject.finish.shadowOpacity}
+                        formatter={formatPercentValue}
+                        onChange={(value) =>
+                          patchProject((project) => ({
+                            ...project,
+                            finish: {
+                              ...project.finish,
+                              shadowOpacity: value,
+                            },
+                          }))
+                        }
+                      />
+                      <SourceColorField
+                        id="finish-shadow-color"
+                        label="Shadow Color"
+                        value={activeProject.finish.shadowColor}
+                        onChange={(value) =>
+                          patchProject((project) => ({
+                            ...project,
+                            finish: {
+                              ...project.finish,
+                              shadowColor: value,
+                            },
+                          }))
+                        }
+                      />
+                      <SliderField
+                        label="Brightness"
+                        min={0}
+                        max={2}
+                        step={0.01}
+                        value={activeProject.finish.brightness}
+                        formatter={formatPercentValue}
+                        onChange={(value) =>
+                          patchProject((project) => ({
+                            ...project,
+                            finish: {
+                              ...project.finish,
+                              brightness: value,
+                            },
+                          }))
+                        }
+                      />
+                      <SliderField
+                        label="Contrast"
+                        min={0}
+                        max={2}
+                        step={0.01}
+                        value={activeProject.finish.contrast}
+                        formatter={formatPercentValue}
+                        onChange={(value) =>
+                          patchProject((project) => ({
+                            ...project,
+                            finish: {
+                              ...project.finish,
+                              contrast: value,
+                            },
+                          }))
+                        }
+                      />
+                      <SliderField
+                        label="Saturate"
+                        min={0}
+                        max={2}
+                        step={0.01}
+                        value={activeProject.finish.saturate}
+                        formatter={formatPercentValue}
+                        onChange={(value) =>
+                          patchProject((project) => ({
+                            ...project,
+                            finish: {
+                              ...project.finish,
+                              saturate: value,
+                            },
+                          }))
+                        }
+                      />
+                      <SliderField
+                        label="Hue Rotate"
+                        min={-180}
+                        max={180}
+                        step={1}
+                        value={activeProject.finish.hueRotate}
+                        formatter={formatDegreeValue}
+                        onChange={(value) =>
+                          patchProject((project) => ({
+                            ...project,
+                            finish: {
+                              ...project.finish,
+                              hueRotate: value,
+                            },
+                          }))
+                        }
+                      />
+                      <SliderField
+                        label="Grayscale"
+                        min={0}
+                        max={1}
+                        step={0.01}
+                        value={activeProject.finish.grayscale}
+                        formatter={formatPercentValue}
+                        onChange={(value) =>
+                          patchProject((project) => ({
+                            ...project,
+                            finish: {
+                              ...project.finish,
+                              grayscale: value,
+                            },
+                          }))
+                        }
+                      />
+                      <SliderField
+                        label="Invert"
+                        min={0}
+                        max={1}
+                        step={0.01}
+                        value={activeProject.finish.invert}
+                        formatter={formatPercentValue}
+                        onChange={(value) =>
+                          patchProject((project) => ({
+                            ...project,
+                            finish: {
+                              ...project.finish,
+                              invert: value,
+                            },
+                          }))
+                        }
+                      />
+                    </div>
                   </div>
-                </div>
-                </section>
+                  </div>
+                    </section>
+                  </CardContent>
+                </Card>
+              </section>
 
-                <section aria-labelledby="project-settings-heading">
-                  <Card className="border-border-subtle bg-surface-sunken/50 shadow-none">
-                    <CardHeader className="pb-3">
-                      <CardTitle id="project-settings-heading">
-                        Project Settings
-                      </CardTitle>
-                    <CardDescription>
-                      Canvas and export controls apply to the full composition.
-                    </CardDescription>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                      <div className="grid gap-6 md:grid-cols-2 md:items-start">
+              <PanelShell
+                title="Project Settings"
+                description="Canvas and export controls apply to the full composition."
+                sectionLabel="Project Settings"
+                cardClassName="border-border-subtle bg-surface-sunken/50 shadow-none"
+                contentClassName="overflow-y-auto space-y-4"
+              >
+                <div className="grid gap-6 md:grid-cols-2 md:items-start">
                         <section
                           aria-labelledby="project-canvas-heading"
                           className="min-w-0 space-y-4"
@@ -3686,11 +3744,8 @@ function App() {
                         />
                         </section>
                       </div>
-                    </CardContent>
-                  </Card>
-                </section>
-              </CardContent>
-            </Card>
+              </PanelShell>
+            </div>
           </div>
         </div>
       </div>

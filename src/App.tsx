@@ -840,6 +840,7 @@ function App() {
         activeProject.layout.family,
         activeProject.layout.shapeMode,
       );
+  const inspectorLayerName = selectedLayer?.name ?? "Selected Layer";
 
   const captureThumbnail = () =>
     new Promise<Blob | null>((resolve) => {
@@ -1662,9 +1663,25 @@ function App() {
               <CardHeader>
                 <CardTitle>Inspector</CardTitle>
               </CardHeader>
-              <CardContent className="overflow-y-auto px-3 pb-2">
-                <div className="grid grid-cols-3 gap-6">
-                  <div className="min-w-0 space-y-4">
+              <CardContent className="flex flex-col gap-4 overflow-y-auto px-3 pb-3">
+                <section
+                  aria-labelledby="layer-controls-heading"
+                  className="space-y-4"
+                >
+                  <div className="rounded-md border border-border-subtle bg-surface-sunken/70 px-3 py-2.5">
+                    <div
+                      id="layer-controls-heading"
+                      className="font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-text-muted"
+                    >
+                      Layer Controls
+                    </div>
+                    <div className="mt-1 text-sm font-medium text-text">
+                      Editing {inspectorLayerName}
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-6">
+                    <div className="min-w-0 space-y-4">
                     <div className="border-b border-border-subtle pb-1 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-text-muted">
                       Layout
                     </div>
@@ -2583,108 +2600,6 @@ function App() {
                         }))
                       }
                     />
-                    <SliderField
-                      label="Canvas W"
-                      min={1200}
-                      max={3840}
-                      step={10}
-                      value={activeProject.canvas.width}
-                      formatter={(value) => `${Math.round(value)} px`}
-                      onChange={(value) =>
-                        patchProject((project) => {
-                          const canvas = {
-                            ...project.canvas,
-                            width: Math.round(value),
-                          };
-                          return {
-                            ...project,
-                            canvas,
-                            export: {
-                              ...project.export,
-                              ...lockExportDimensionsToCanvas(
-                                canvas,
-                                project.export,
-                                "width",
-                              ),
-                            },
-                          };
-                        })
-                      }
-                    />
-                    <SliderField
-                      label="Canvas H"
-                      min={800}
-                      max={3200}
-                      step={10}
-                      value={activeProject.canvas.height}
-                      formatter={(value) => `${Math.round(value)} px`}
-                      onChange={(value) =>
-                        patchProject((project) => {
-                          const canvas = {
-                            ...project.canvas,
-                            height: Math.round(value),
-                          };
-                          return {
-                            ...project,
-                            canvas,
-                            export: {
-                              ...project.export,
-                              ...lockExportDimensionsToCanvas(
-                                canvas,
-                                project.export,
-                                "width",
-                              ),
-                            },
-                          };
-                        })
-                      }
-                    />
-                    <ControlBlock
-                      label="Background Layer"
-                      value={`${Math.round(activeProject.canvas.backgroundAlpha * 100)}%`}
-                    >
-                      <SourceColorField
-                        id="canvas-background-color"
-                        label="Color"
-                        value={activeProject.canvas.background}
-                        onChange={(value) =>
-                          patchProject((project) => ({
-                            ...project,
-                            canvas: {
-                              ...project.canvas,
-                              background: value,
-                            },
-                          }))
-                        }
-                      />
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between text-xs text-text-muted">
-                          <span>Alpha</span>
-                          <span className="font-mono text-[10px] text-text-faint">
-                            {Math.round(
-                              activeProject.canvas.backgroundAlpha * 100,
-                            )}
-                            %
-                          </span>
-                        </div>
-                        <Slider
-                          min={0}
-                          max={1}
-                          step={0.01}
-                          value={[activeProject.canvas.backgroundAlpha]}
-                          onValueChange={(next) =>
-                            patchProject((project) => ({
-                              ...project,
-                              canvas: {
-                                ...project.canvas,
-                                backgroundAlpha:
-                                  next[0] ?? project.canvas.backgroundAlpha,
-                              },
-                            }))
-                          }
-                        />
-                      </div>
-                    </ControlBlock>
                   </div>
 
                   <div className="min-w-0 space-y-4">
@@ -3317,95 +3232,237 @@ function App() {
                         </ControlBlock>
                       </>
                     ) : null}
-                    <Separator />
-                    <ControlBlock label="Export Format">
-                      <Select
-                        value={activeProject.export.format}
-                        onValueChange={(value) =>
-                          patchProject((project) => ({
-                            ...project,
-                            export: {
-                              ...project.export,
-                              format: value as typeof project.export.format,
-                            },
-                          }))
-                        }
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="image/png">PNG</SelectItem>
-                          <SelectItem value="image/jpeg">JPEG</SelectItem>
-                          <SelectItem value="image/png-transparent">
-                            Transparent PNG
-                          </SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </ControlBlock>
-                    <SliderField
-                      label="Export W"
-                      min={1920}
-                      max={7680}
-                      step={16}
-                      value={activeProject.export.width}
-                      formatter={(value) => `${Math.round(value)} px`}
-                      onChange={(value) =>
-                        patchProject((project) => ({
-                          ...project,
-                          export: {
-                            ...project.export,
-                            ...lockExportDimensionsToCanvas(
-                              project.canvas,
-                              {
-                                ...project.export,
-                                width: Math.round(value),
-                              },
-                              "width",
-                            ),
-                          },
-                        }))
-                      }
-                    />
-                    <SliderField
-                      label="Export H"
-                      min={1080}
-                      max={7680}
-                      step={16}
-                      value={activeProject.export.height}
-                      formatter={(value) => `${Math.round(value)} px`}
-                      onChange={(value) =>
-                        patchProject((project) => ({
-                          ...project,
-                          export: {
-                            ...project.export,
-                            ...lockExportDimensionsToCanvas(
-                              project.canvas,
-                              {
-                                ...project.export,
-                                height: Math.round(value),
-                              },
-                              "height",
-                            ),
-                          },
-                        }))
-                      }
-                    />
-                    <SliderField
-                      label="Export Quality"
-                      min={0.7}
-                      max={1}
-                      step={0.01}
-                      value={activeProject.export.quality}
-                      onChange={(value) =>
-                        patchProject((project) => ({
-                          ...project,
-                          export: { ...project.export, quality: value },
-                        }))
-                      }
-                    />
                   </div>
                 </div>
+                </section>
+
+                <section aria-labelledby="project-settings-heading">
+                  <Card className="border-border-subtle bg-surface-sunken/50 shadow-none">
+                    <CardHeader className="pb-3">
+                      <CardTitle id="project-settings-heading">
+                        Project Settings
+                      </CardTitle>
+                    <CardDescription>
+                      Canvas and export controls apply to the full composition.
+                    </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="grid gap-6 md:grid-cols-2 md:items-start">
+                        <section
+                          aria-labelledby="project-canvas-heading"
+                          className="min-w-0 space-y-4"
+                        >
+                        <div
+                          id="project-canvas-heading"
+                          className="border-b border-border-subtle pb-1 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-text-muted"
+                        >
+                          Canvas
+                        </div>
+                        <SliderField
+                          label="Canvas W"
+                          min={1200}
+                          max={3840}
+                          step={10}
+                          value={activeProject.canvas.width}
+                          formatter={(value) => `${Math.round(value)} px`}
+                          onChange={(value) =>
+                            patchProject((project) => {
+                              const canvas = {
+                                ...project.canvas,
+                                width: Math.round(value),
+                              };
+                              return {
+                                ...project,
+                                canvas,
+                                export: {
+                                  ...project.export,
+                                  ...lockExportDimensionsToCanvas(
+                                    canvas,
+                                    project.export,
+                                    "width",
+                                  ),
+                                },
+                              };
+                            })
+                          }
+                        />
+                        <SliderField
+                          label="Canvas H"
+                          min={800}
+                          max={3200}
+                          step={10}
+                          value={activeProject.canvas.height}
+                          formatter={(value) => `${Math.round(value)} px`}
+                          onChange={(value) =>
+                            patchProject((project) => {
+                              const canvas = {
+                                ...project.canvas,
+                                height: Math.round(value),
+                              };
+                              return {
+                                ...project,
+                                canvas,
+                                export: {
+                                  ...project.export,
+                                  ...lockExportDimensionsToCanvas(
+                                    canvas,
+                                    project.export,
+                                    "width",
+                                  ),
+                                },
+                              };
+                            })
+                          }
+                        />
+                        <ControlBlock
+                          label="Canvas Background"
+                          value={`${Math.round(activeProject.canvas.backgroundAlpha * 100)}%`}
+                        >
+                          <SourceColorField
+                            id="canvas-background-color"
+                            label="Color"
+                            value={activeProject.canvas.background}
+                            onChange={(value) =>
+                              patchProject((project) => ({
+                                ...project,
+                                canvas: {
+                                  ...project.canvas,
+                                  background: value,
+                                },
+                              }))
+                            }
+                          />
+                          <div className="space-y-2">
+                            <div className="flex items-center justify-between text-xs text-text-muted">
+                              <span>Alpha</span>
+                              <span className="font-mono text-[10px] text-text-faint">
+                                {Math.round(
+                                  activeProject.canvas.backgroundAlpha * 100,
+                                )}
+                                %
+                              </span>
+                            </div>
+                            <Slider
+                              min={0}
+                              max={1}
+                              step={0.01}
+                              value={[activeProject.canvas.backgroundAlpha]}
+                              onValueChange={(next) =>
+                                patchProject((project) => ({
+                                  ...project,
+                                  canvas: {
+                                    ...project.canvas,
+                                    backgroundAlpha:
+                                      next[0] ?? project.canvas.backgroundAlpha,
+                                  },
+                                }))
+                              }
+                            />
+                          </div>
+                        </ControlBlock>
+                        </section>
+
+                        <section
+                          aria-labelledby="project-export-heading"
+                          className="min-w-0 space-y-4"
+                        >
+                        <div
+                          id="project-export-heading"
+                          className="border-b border-border-subtle pb-1 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-text-muted"
+                        >
+                          Export
+                        </div>
+                        <ControlBlock label="Export Format">
+                          <Select
+                            value={activeProject.export.format}
+                            onValueChange={(value) =>
+                              patchProject((project) => ({
+                                ...project,
+                                export: {
+                                  ...project.export,
+                                  format: value as typeof project.export.format,
+                                },
+                              }))
+                            }
+                          >
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="image/png">PNG</SelectItem>
+                              <SelectItem value="image/jpeg">JPEG</SelectItem>
+                              <SelectItem value="image/png-transparent">
+                                Transparent PNG
+                              </SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </ControlBlock>
+                        <SliderField
+                          label="Export W"
+                          min={1920}
+                          max={7680}
+                          step={16}
+                          value={activeProject.export.width}
+                          formatter={(value) => `${Math.round(value)} px`}
+                          onChange={(value) =>
+                            patchProject((project) => ({
+                              ...project,
+                              export: {
+                                ...project.export,
+                                ...lockExportDimensionsToCanvas(
+                                  project.canvas,
+                                  {
+                                    ...project.export,
+                                    width: Math.round(value),
+                                  },
+                                  "width",
+                                ),
+                              },
+                            }))
+                          }
+                        />
+                        <SliderField
+                          label="Export H"
+                          min={1080}
+                          max={7680}
+                          step={16}
+                          value={activeProject.export.height}
+                          formatter={(value) => `${Math.round(value)} px`}
+                          onChange={(value) =>
+                            patchProject((project) => ({
+                              ...project,
+                              export: {
+                                ...project.export,
+                                ...lockExportDimensionsToCanvas(
+                                  project.canvas,
+                                  {
+                                    ...project.export,
+                                    height: Math.round(value),
+                                  },
+                                  "height",
+                                ),
+                              },
+                            }))
+                          }
+                        />
+                        <SliderField
+                          label="Export Quality"
+                          min={0.7}
+                          max={1}
+                          step={0.01}
+                          value={activeProject.export.quality}
+                          onChange={(value) =>
+                            patchProject((project) => ({
+                              ...project,
+                              export: { ...project.export, quality: value },
+                            }))
+                          }
+                        />
+                        </section>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </section>
               </CardContent>
             </Card>
           </div>

@@ -763,6 +763,66 @@ describe("App conditional sliders", () => {
   });
 });
 
+describe("App inspector grouping", () => {
+  beforeEach(() => {
+    mockedUseAppStore.mockReset();
+    renderGeneratedSourceToCanvasSpy.mockImplementation(() => undefined);
+    renderGeneratedSourceToCanvasSpy.mockClear();
+  });
+
+  it("separates layer controls from project settings", () => {
+    renderApp();
+
+    const layerControls = screen.getByRole("region", {
+      name: "Layer Controls",
+    });
+    const projectSettings = screen.getByRole("region", {
+      name: "Project Settings",
+    });
+
+    expect(within(layerControls).getByText("Editing Layer 1")).toBeInTheDocument();
+    expect(within(layerControls).getByText("Layout")).toBeInTheDocument();
+    expect(within(layerControls).getByText("Mapping")).toBeInTheDocument();
+    expect(within(layerControls).getByText("Effects")).toBeInTheDocument();
+    expect(
+      within(layerControls).queryByText("Canvas Background"),
+    ).not.toBeInTheDocument();
+
+    expect(
+      within(projectSettings).getByText(
+        "Canvas and export controls apply to the full composition.",
+      ),
+    ).toBeInTheDocument();
+    expect(within(projectSettings).getByText("Canvas")).toBeInTheDocument();
+    expect(within(projectSettings).getByText("Export")).toBeInTheDocument();
+    expect(within(projectSettings).getByLabelText("Canvas W")).toBeInTheDocument();
+    expect(within(projectSettings).getByText("Canvas Background")).toBeInTheDocument();
+    expect(within(projectSettings).getByLabelText("Export W")).toBeInTheDocument();
+    expect(within(projectSettings).queryByText("Layout")).not.toBeInTheDocument();
+  });
+
+  it("keeps moved canvas controls wired to project updates", () => {
+    const state = createStoreState();
+    mockedUseAppStore.mockReturnValue(state);
+
+    render(<App />);
+
+    const projectSettings = screen.getByRole("region", {
+      name: "Project Settings",
+    });
+    const slider = within(projectSettings).getByLabelText("Canvas W");
+
+    fireEvent.keyDown(slider, { key: "End" });
+    fireEvent.keyUp(slider, { key: "End" });
+
+    expect(state.updateProject).toHaveBeenCalledTimes(1);
+
+    const [[update]] = state.updateProject.mock.calls;
+    const nextProject = update(structuredClone(state.projects[0]!));
+    expect(nextProject.canvas.width).toBe(3840);
+  });
+});
+
 describe("App gradient sources", () => {
   beforeEach(() => {
     mockedUseAppStore.mockReset();

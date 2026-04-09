@@ -4,6 +4,8 @@ import { readBlob, writeBlob } from "@/lib/opfs";
 import { clamp } from "@/lib/utils";
 import type {
   GradientDirection,
+  GradientMode,
+  GradientSourceRecipe,
   ProcessedAssetPayload,
   SourceAsset,
   SourceKind,
@@ -24,7 +26,15 @@ const COMMON_EXTENSIONS = [
 ];
 
 const PREVIEW_MAX_DIMENSION = 640;
+const DEFAULT_GRADIENT_MODE: GradientMode = "linear";
 const DEFAULT_GRADIENT_DIRECTION: GradientDirection = "diagonal-down";
+const DEFAULT_VIA_POSITION = 0.5;
+const DEFAULT_CENTER = 0.5;
+const DEFAULT_RADIAL_RADIUS = 1;
+const DEFAULT_RADIAL_INNER_RADIUS = 0;
+const DEFAULT_CONIC_ANGLE = 0;
+const DEFAULT_CONIC_SPAN = 360;
+const DEFAULT_CONIC_REPEAT = false;
 
 export const ACCEPTED_IMAGE_TYPES = COMMON_EXTENSIONS.join(",");
 
@@ -35,9 +45,19 @@ export interface SolidSourceInput {
 
 export interface GradientSourceInput {
   name?: string;
+  mode: GradientMode;
   from: string;
   to: string;
   direction: GradientDirection;
+  viaColor: string | null;
+  viaPosition: number;
+  centerX: number;
+  centerY: number;
+  radialRadius: number;
+  radialInnerRadius: number;
+  conicAngle: number;
+  conicSpan: number;
+  conicRepeat: boolean;
 }
 
 type GeneratedSourceInput =
@@ -51,6 +71,90 @@ type LegacySourceAsset = Omit<SourceAsset, "kind"> & {
 
 function getAssetExtension(fileName: string) {
   return fileName.split(".").pop() || "bin";
+}
+
+function degreesToRadians(value: number) {
+  return (value * Math.PI) / 180;
+}
+
+function clampNormalized(value: number, fallback: number) {
+  return Number.isFinite(value) ? clamp(value, 0, 1) : fallback;
+}
+
+function clampRange(value: number, min: number, max: number, fallback: number) {
+  return Number.isFinite(value) ? clamp(value, min, max) : fallback;
+}
+
+function getDefaultGradientRecipe(): GradientSourceRecipe {
+  return {
+    mode: DEFAULT_GRADIENT_MODE,
+    from: "#000000",
+    to: "#ffffff",
+    direction: DEFAULT_GRADIENT_DIRECTION,
+    viaColor: null,
+    viaPosition: DEFAULT_VIA_POSITION,
+    centerX: DEFAULT_CENTER,
+    centerY: DEFAULT_CENTER,
+    radialRadius: DEFAULT_RADIAL_RADIUS,
+    radialInnerRadius: DEFAULT_RADIAL_INNER_RADIUS,
+    conicAngle: DEFAULT_CONIC_ANGLE,
+    conicSpan: DEFAULT_CONIC_SPAN,
+    conicRepeat: DEFAULT_CONIC_REPEAT,
+  };
+}
+
+export function getDefaultGradientInput(): GradientSourceInput {
+  return {
+    name: "",
+    ...getDefaultGradientRecipe(),
+  };
+}
+
+function normalizeGradientRecipe(
+  input: Omit<GradientSourceInput, "name">,
+): GradientSourceRecipe {
+  const defaults = getDefaultGradientRecipe();
+  const direction = input.direction;
+  const mode = input.mode;
+  const viaColor =
+    typeof input.viaColor === "string" && input.viaColor.trim().length > 0
+      ? normalizeHexColor(input.viaColor, defaults.to)
+      : null;
+
+  return {
+    mode:
+      mode === "linear" || mode === "radial" || mode === "conic"
+        ? mode
+        : defaults.mode,
+    from: normalizeHexColor(input.from, defaults.from),
+    to: normalizeHexColor(input.to, defaults.to),
+    direction:
+      direction === "horizontal" ||
+      direction === "vertical" ||
+      direction === "diagonal-down" ||
+      direction === "diagonal-up"
+        ? direction
+        : defaults.direction,
+    viaColor,
+    viaPosition: clampRange(input.viaPosition, 0, 1, defaults.viaPosition),
+    centerX: clampNormalized(input.centerX, defaults.centerX),
+    centerY: clampNormalized(input.centerY, defaults.centerY),
+    radialRadius: clampRange(input.radialRadius, 0, 1, defaults.radialRadius),
+    radialInnerRadius: clampRange(
+      input.radialInnerRadius,
+      0,
+      0.95,
+      defaults.radialInnerRadius,
+    ),
+    conicAngle: Number.isFinite(input.conicAngle)
+      ? input.conicAngle
+      : defaults.conicAngle,
+    conicSpan: clampRange(input.conicSpan, 1, 360, defaults.conicSpan),
+    conicRepeat:
+      typeof input.conicRepeat === "boolean"
+        ? input.conicRepeat
+        : defaults.conicRepeat,
+  };
 }
 
 function samplePalette(data: ImageData) {
@@ -124,6 +228,99 @@ function renderScaledCanvas(source: HTMLCanvasElement, maxDimension: number) {
   return canvas;
 }
 
+function buildGradientStops(recipe: GradientSourceRecipe) {
+  const stops = [
+    { offset: 0, color: recipe.from },
+    ...(recipe.viaColor
+      ? [{ offset: recipe.viaPosition, color: recipe.viaColor }]
+      : []),
+    { offset: 1, color: recipe.to },
+  ];
+
+  return stops
+    .map((stop) => ({
+      offset: clamp(stop.offset, 0, 1),
+      color: normalizeHexColor(stop.color),
+    }))
+    .sort((a, b) => a.offset - b.offset);
+}
+
+function createLinearGradientForDirection(
+  context: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  direction: GradientDirection,
+) {
+  if (direction === "horizontal") {
+    return context.createLinearGradient(0, 0, width, 0);
+  }
+
+  if (direction === "vertical") {
+    return context.createLinearGradient(0, 0, 0, height);
+  }
+
+  if (direction === "diagonal-up") {
+    return context.createLinearGradient(0, height, width, 0);
+  }
+
+  return context.createLinearGradient(0, 0, width, height);
+}
+
+function getGradientCenter(
+  recipe: GradientSourceRecipe,
+  width: number,
+  height: number,
+) {
+  return {
+    x: clamp(recipe.centerX, 0, 1) * width,
+    y: clamp(recipe.centerY, 0, 1) * height,
+  };
+}
+
+function getFarthestCornerDistance(
+  center: { x: number; y: number },
+  width: number,
+  height: number,
+) {
+  return Math.max(
+    Math.hypot(center.x, center.y),
+    Math.hypot(width - center.x, center.y),
+    Math.hypot(center.x, height - center.y),
+    Math.hypot(width - center.x, height - center.y),
+  );
+}
+
+function applyConicColorStops(
+  gradient: CanvasGradient,
+  recipe: GradientSourceRecipe,
+  stops: ReturnType<typeof buildGradientStops>,
+) {
+  const spanFraction = clamp(recipe.conicSpan, 1, 360) / 360;
+
+  if (!recipe.conicRepeat || spanFraction >= 1) {
+    for (const stop of stops) {
+      gradient.addColorStop(stop.offset * spanFraction, stop.color);
+    }
+    if (spanFraction < 1) {
+      gradient.addColorStop(spanFraction, stops.at(-1)?.color ?? recipe.to);
+      gradient.addColorStop(1, stops.at(-1)?.color ?? recipe.to);
+    }
+    return;
+  }
+
+  const cycleCount = Math.max(1, Math.ceil(1 / spanFraction));
+  for (let cycle = 0; cycle < cycleCount; cycle += 1) {
+    const cycleStart = cycle * spanFraction;
+    const cycleEnd = Math.min(1, cycleStart + spanFraction);
+    for (const stop of stops) {
+      const offset = cycleStart + stop.offset * spanFraction;
+      if (offset > 1) continue;
+      gradient.addColorStop(offset, stop.color);
+    }
+    gradient.addColorStop(cycleEnd, stops.at(-1)?.color ?? recipe.to);
+  }
+}
+
 function drawGeneratedSource(
   context: CanvasRenderingContext2D,
   width: number,
@@ -136,17 +333,52 @@ function drawGeneratedSource(
     return;
   }
 
+  const recipe = source.recipe;
+  const stops = buildGradientStops(recipe);
   const gradient =
-    source.recipe.direction === "horizontal"
-      ? context.createLinearGradient(0, 0, width, 0)
-      : source.recipe.direction === "vertical"
-        ? context.createLinearGradient(0, 0, 0, height)
-        : source.recipe.direction === "diagonal-up"
-          ? context.createLinearGradient(0, height, width, 0)
-          : context.createLinearGradient(0, 0, width, height);
+    recipe.mode === "radial"
+      ? (() => {
+          const center = getGradientCenter(recipe, width, height);
+          const outerRadius = Math.max(
+            1,
+            getFarthestCornerDistance(center, width, height) *
+              clamp(recipe.radialRadius, 0, 1),
+          );
+          const innerRadius =
+            clamp(recipe.radialInnerRadius, 0, 0.95) * outerRadius;
+          return context.createRadialGradient(
+            center.x,
+            center.y,
+            innerRadius,
+            center.x,
+            center.y,
+            outerRadius,
+          );
+        })()
+      : recipe.mode === "conic"
+        ? (() => {
+            const center = getGradientCenter(recipe, width, height);
+            return context.createConicGradient(
+              degreesToRadians(recipe.conicAngle),
+              center.x,
+              center.y,
+            );
+          })()
+        : createLinearGradientForDirection(
+            context,
+            width,
+            height,
+            recipe.direction,
+          );
 
-  gradient.addColorStop(0, normalizeHexColor(source.recipe.from));
-  gradient.addColorStop(1, normalizeHexColor(source.recipe.to));
+  if (recipe.mode === "conic") {
+    applyConicColorStops(gradient, recipe, stops);
+  } else {
+    for (const stop of stops) {
+      gradient.addColorStop(stop.offset, stop.color);
+    }
+  }
+
   context.fillStyle = gradient;
   context.fillRect(0, 0, width, height);
 }
@@ -193,9 +425,11 @@ function buildGeneratedSourceName(source: GeneratedSourceInput) {
     return `Solid ${normalizeHexColor(source.recipe.color).toUpperCase()}`;
   }
 
-  return `Gradient ${normalizeHexColor(source.recipe.from).toUpperCase()} -> ${normalizeHexColor(
-    source.recipe.to,
-  ).toUpperCase()}`;
+  const modeLabel =
+    source.recipe.mode[0]!.toUpperCase() + source.recipe.mode.slice(1);
+  return `${modeLabel} Gradient ${normalizeHexColor(
+    source.recipe.from,
+  ).toUpperCase()} -> ${normalizeHexColor(source.recipe.to).toUpperCase()}`;
 }
 
 function buildGeneratedOriginalFileName(
@@ -229,10 +463,29 @@ export function getSourceContentSignature(asset: SourceAsset) {
   }
 
   if (asset.kind === "gradient") {
-    return `${base}|${asset.recipe.from}|${asset.recipe.to}|${asset.recipe.direction}`;
+    return [
+      base,
+      asset.recipe.mode,
+      asset.recipe.from,
+      asset.recipe.to,
+      asset.recipe.direction,
+      asset.recipe.viaColor ?? "",
+      asset.recipe.viaPosition,
+      asset.recipe.centerX,
+      asset.recipe.centerY,
+      asset.recipe.radialRadius,
+      asset.recipe.radialInnerRadius,
+      asset.recipe.conicAngle,
+      asset.recipe.conicSpan,
+      asset.recipe.conicRepeat ? 1 : 0,
+    ].join("|");
   }
 
   return base;
+}
+
+export function getDefaultGradientMode(): GradientMode {
+  return DEFAULT_GRADIENT_MODE;
 }
 
 export function getDefaultGradientDirection(): GradientDirection {
@@ -247,18 +500,9 @@ export function normalizeSolidInput(input: SolidSourceInput): SolidSourceInput {
 }
 
 export function normalizeGradientInput(input: GradientSourceInput): GradientSourceInput {
-  const direction = input.direction;
   return {
     name: input.name?.trim() ?? "",
-    from: normalizeHexColor(input.from, "#000000"),
-    to: normalizeHexColor(input.to, "#ffffff"),
-    direction:
-      direction === "horizontal" ||
-      direction === "vertical" ||
-      direction === "diagonal-down" ||
-      direction === "diagonal-up"
-        ? direction
-        : DEFAULT_GRADIENT_DIRECTION,
+    ...normalizeGradientRecipe(input),
   };
 }
 
@@ -279,20 +523,54 @@ export function normalizeSourceAsset(asset: LegacySourceAsset): SourceAsset {
     return {
       ...asset,
       kind: "gradient",
-      recipe: {
-        from: normalizeHexColor(recipe?.from ?? asset.palette[0] ?? asset.averageColor ?? "#000000"),
-        to: normalizeHexColor(
-          recipe?.to ?? asset.palette[1] ?? asset.averageColor ?? "#ffffff",
-          "#ffffff",
-        ),
-        direction:
-          recipe?.direction === "horizontal" ||
-          recipe?.direction === "vertical" ||
-          recipe?.direction === "diagonal-down" ||
-          recipe?.direction === "diagonal-up"
-            ? recipe.direction
-            : DEFAULT_GRADIENT_DIRECTION,
-      },
+      recipe: normalizeGradientRecipe({
+        mode: recipe?.mode ?? DEFAULT_GRADIENT_MODE,
+        from:
+          recipe?.from ??
+          asset.palette[0] ??
+          asset.averageColor ??
+          getDefaultGradientRecipe().from,
+        to:
+          recipe?.to ??
+          asset.palette[1] ??
+          asset.averageColor ??
+          getDefaultGradientRecipe().to,
+        direction: recipe?.direction ?? DEFAULT_GRADIENT_DIRECTION,
+        viaColor:
+          typeof recipe?.viaColor === "string" ? recipe.viaColor : null,
+        viaPosition:
+          typeof recipe?.viaPosition === "number"
+            ? recipe.viaPosition
+            : DEFAULT_VIA_POSITION,
+        centerX:
+          typeof recipe?.centerX === "number"
+            ? recipe.centerX
+            : DEFAULT_CENTER,
+        centerY:
+          typeof recipe?.centerY === "number"
+            ? recipe.centerY
+            : DEFAULT_CENTER,
+        radialRadius:
+          typeof recipe?.radialRadius === "number"
+            ? recipe.radialRadius
+            : DEFAULT_RADIAL_RADIUS,
+        radialInnerRadius:
+          typeof recipe?.radialInnerRadius === "number"
+            ? recipe.radialInnerRadius
+            : DEFAULT_RADIAL_INNER_RADIUS,
+        conicAngle:
+          typeof recipe?.conicAngle === "number"
+            ? recipe.conicAngle
+            : DEFAULT_CONIC_ANGLE,
+        conicSpan:
+          typeof recipe?.conicSpan === "number"
+            ? recipe.conicSpan
+            : DEFAULT_CONIC_SPAN,
+        conicRepeat:
+          typeof recipe?.conicRepeat === "boolean"
+            ? recipe.conicRepeat
+            : DEFAULT_CONIC_REPEAT,
+      }),
     };
   }
 
@@ -384,7 +662,7 @@ export async function createGeneratedSourceAsset(
       : ({
           kind: "gradient" as const,
           name: source.name,
-          recipe: normalizeGradientInput(source.recipe),
+          recipe: normalizeGradientRecipe(source.recipe),
         } satisfies GeneratedSourceInput);
   const payload = await buildGeneratedSourcePayload(
     normalizedSource,
@@ -437,7 +715,7 @@ export async function updateGeneratedSourceAsset(
       : {
           kind: "gradient" as const,
           name: source.name,
-          recipe: normalizeGradientInput(source as GradientSourceInput),
+          recipe: normalizeGradientRecipe(source as GradientSourceInput),
         } satisfies GeneratedSourceInput;
 
   const payload = await buildGeneratedSourcePayload(

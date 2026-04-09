@@ -30,9 +30,19 @@ const gradientAsset: SourceAsset = {
   kind: "gradient",
   name: "Sunrise",
   recipe: {
+    mode: "linear",
     from: "#112233",
     to: "#ffaa00",
     direction: "horizontal",
+    viaColor: null,
+    viaPosition: 0.5,
+    centerX: 0.5,
+    centerY: 0.5,
+    radialRadius: 1,
+    radialInnerRadius: 0,
+    conicAngle: 0,
+    conicSpan: 360,
+    conicRepeat: false,
   },
 };
 

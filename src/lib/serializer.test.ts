@@ -287,9 +287,19 @@ describe("createImportCopy", () => {
           kind: "gradient",
           name: "Gradient One",
           recipe: {
+            mode: "linear",
             from: "#112233",
             to: "#ffaa00",
             direction: "vertical",
+            viaColor: null,
+            viaPosition: 0.5,
+            centerX: 0.5,
+            centerY: 0.5,
+            radialRadius: 1,
+            radialInnerRadius: 0,
+            conicAngle: 0,
+            conicSpan: 360,
+            conicRepeat: false,
           },
         },
       ],
@@ -327,9 +337,19 @@ describe("createImportCopy", () => {
       throw new Error("Expected copied generated source metadata.");
     }
     expect(copiedAsset.recipe).toEqual({
+      mode: "linear",
       from: "#112233",
       to: "#ffaa00",
       direction: "vertical",
+      viaColor: null,
+      viaPosition: 0.5,
+      centerX: 0.5,
+      centerY: 0.5,
+      radialRadius: 1,
+      radialInnerRadius: 0,
+      conicAngle: 0,
+      conicSpan: 360,
+      conicRepeat: false,
     });
     expect(copy.projectDoc.sourceIds).toEqual([copy.assetDocs[0]?.id]);
   });

@@ -1,4 +1,5 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createProjectDocument } from "@/lib/project-defaults";
 import App, {
@@ -159,6 +160,39 @@ function createImageAsset(projectId: string): SourceAsset {
     palette: ["#112233"],
     luminance: 0.25,
     createdAt: "2026-04-06T00:00:00.000Z",
+  };
+}
+
+function createGradientAsset(
+  projectId: string,
+  overrides?: {
+    id?: string;
+    name?: string;
+    mode?: "linear" | "radial" | "conic";
+  },
+): SourceAsset {
+  return {
+    ...createImageAsset(projectId),
+    id: overrides?.id ?? "asset_gradient",
+    kind: "gradient",
+    name: overrides?.name ?? "Gradient Source",
+    originalFileName: `${overrides?.id ?? "asset_gradient"}.png`,
+    mimeType: "image/png",
+    recipe: {
+      mode: overrides?.mode ?? "linear",
+      from: "#112233",
+      to: "#f97316",
+      direction: "diagonal-down",
+      viaColor: overrides?.mode === "linear" ? null : "#778899",
+      viaPosition: 0.35,
+      centerX: 0.25,
+      centerY: 0.75,
+      radialRadius: 0.6,
+      radialInnerRadius: 0.2,
+      conicAngle: 120,
+      conicSpan: 180,
+      conicRepeat: true,
+    },
   };
 }
 
@@ -550,6 +584,121 @@ describe("App conditional sliders", () => {
     const [[update]] = state.updateProject.mock.calls;
     const nextProject = update(structuredClone(state.projects[0]!));
     expect(nextProject.layout.organicVariation).toBe(4096);
+  });
+});
+
+describe("App gradient sources", () => {
+  beforeEach(() => {
+    mockedUseAppStore.mockReset();
+  });
+
+  it("opens the gradient dialog with linear defaults", async () => {
+    const user = userEvent.setup();
+    renderApp();
+
+    await user.click(screen.getAllByText("Add Source")[0]!);
+    await user.click(screen.getByRole("tab", { name: "Gradient" }));
+    const dialog = screen.getByRole("dialog");
+
+    expect(within(dialog).getByText("Mode")).toBeInTheDocument();
+    expect(within(dialog).getByText("Linear")).toBeInTheDocument();
+    expect(within(dialog).getByText("Direction")).toBeInTheDocument();
+    expect(within(dialog).queryByLabelText("Center X")).not.toBeInTheDocument();
+    expect(within(dialog).queryByLabelText("Angle")).not.toBeInTheDocument();
+  });
+
+  it("shows radial controls and repopulates them when editing a radial gradient", async () => {
+    const user = userEvent.setup();
+    const state = createStoreState({
+      assets: [createGradientAsset("project_unused", { mode: "radial", name: "Radial Burst" })],
+    });
+    mockedUseAppStore.mockReturnValue(state);
+
+    render(<App />);
+
+    await user.click(screen.getByLabelText("Edit Radial Burst"));
+    const dialog = screen.getByRole("dialog");
+
+    expect(within(dialog).getByText("Radial")).toBeInTheDocument();
+    expect(within(dialog).getByLabelText("Center X")).toBeInTheDocument();
+    expect(within(dialog).getByLabelText("Center Y")).toBeInTheDocument();
+    expect(within(dialog).getByLabelText("Outer Radius")).toBeInTheDocument();
+    expect(within(dialog).getByLabelText("Inner Radius")).toBeInTheDocument();
+    expect(within(dialog).queryByText("Direction")).not.toBeInTheDocument();
+    expect(within(dialog).queryByLabelText("Angle")).not.toBeInTheDocument();
+    expect(
+      within(dialog).getByLabelText("Enable midpoint color"),
+    ).toBeInTheDocument();
+    expect(within(dialog).getAllByDisplayValue("#778899")).toHaveLength(2);
+    expect(within(dialog).getByText("25%")).toBeInTheDocument();
+    expect(within(dialog).getByText("75%")).toBeInTheDocument();
+  });
+
+  it("shows conic controls when switching the gradient mode", async () => {
+    const user = userEvent.setup();
+    renderApp();
+
+    await user.click(screen.getAllByText("Add Source")[0]!);
+    await user.click(screen.getByRole("tab", { name: "Gradient" }));
+    const dialog = screen.getByRole("dialog");
+    const [modeTrigger] = within(dialog).getAllByRole("combobox");
+    await user.click(modeTrigger!);
+    await user.click(await screen.findByRole("option", { name: "Conic" }));
+
+    expect(within(dialog).getByLabelText("Center X")).toBeInTheDocument();
+    expect(within(dialog).getByLabelText("Center Y")).toBeInTheDocument();
+    expect(within(dialog).getByLabelText("Angle")).toBeInTheDocument();
+    expect(within(dialog).getByLabelText("Span")).toBeInTheDocument();
+    expect(within(dialog).getByLabelText("Repeat span")).toBeInTheDocument();
+    expect(within(dialog).queryByText("Direction")).not.toBeInTheDocument();
+    expect(within(dialog).queryByLabelText("Outer Radius")).not.toBeInTheDocument();
+  });
+
+  it("submits normalized conic gradient recipes", async () => {
+    const user = userEvent.setup();
+    const state = createStoreState();
+    mockedUseAppStore.mockReturnValue(state);
+
+    render(<App />);
+
+    await user.click(screen.getAllByText("Add Source")[0]!);
+    await user.click(screen.getByRole("tab", { name: "Gradient" }));
+    const dialog = screen.getByRole("dialog");
+
+    const [modeTrigger] = within(dialog).getAllByRole("combobox");
+    await user.click(modeTrigger!);
+    await user.click(await screen.findByRole("option", { name: "Conic" }));
+
+    await user.click(within(dialog).getByLabelText("Enable midpoint color"));
+    fireEvent.change(within(dialog).getByLabelText("Start color"), {
+      target: { value: "#010203" },
+    });
+    fireEvent.change(within(dialog).getByLabelText("End color"), {
+      target: { value: "#aabbcc" },
+    });
+    fireEvent.change(within(dialog).getAllByDisplayValue("#94a3b8")[0]!, {
+      target: { value: "#445566" },
+    });
+    fireEvent.keyDown(within(dialog).getByLabelText("Center X"), { key: "Home" });
+    fireEvent.keyDown(within(dialog).getByLabelText("Center Y"), { key: "End" });
+    fireEvent.keyDown(within(dialog).getByLabelText("Angle"), { key: "ArrowRight" });
+    await user.click(within(dialog).getByLabelText("Repeat span"));
+    await user.click(within(dialog).getByRole("button", { name: "Add source" }));
+
+    expect(state.addGradientSource).toHaveBeenCalledTimes(1);
+    expect(state.addGradientSource).toHaveBeenCalledWith(
+      expect.objectContaining({
+        mode: "conic",
+        from: "#010203",
+        to: "#aabbcc",
+        viaColor: "#445566",
+        centerX: expect.any(Number),
+        centerY: expect.any(Number),
+        conicAngle: expect.any(Number),
+        conicSpan: 360,
+        conicRepeat: true,
+      }),
+    );
   });
 });
 

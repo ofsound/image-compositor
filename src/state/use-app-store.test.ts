@@ -7,6 +7,7 @@ const {
   processImageFile,
   deleteBlob,
   readBlob,
+  updateGeneratedSourceAsset,
   writeBlob,
 } = vi.hoisted(() => ({
   db: {
@@ -48,6 +49,7 @@ const {
   processImageFile: vi.fn(),
   deleteBlob: vi.fn<() => Promise<void>>(async () => undefined),
   readBlob: vi.fn<(path: string) => Promise<Blob | null>>(async () => null),
+  updateGeneratedSourceAsset: vi.fn(),
   writeBlob: vi.fn<(path: string, blob: Blob) => Promise<void>>(async () => undefined),
 }));
 
@@ -56,7 +58,7 @@ vi.mock("@/lib/assets", () => ({
   duplicateSourceAsset: vi.fn(),
   normalizeSourceAsset: vi.fn((asset) => asset),
   persistProcessedAsset,
-  updateGeneratedSourceAsset: vi.fn(),
+  updateGeneratedSourceAsset,
 }));
 
 vi.mock("@/lib/db", () => ({ db }));
@@ -73,7 +75,7 @@ vi.mock("@/lib/serializer", () => ({
 
 import { createProjectDocument } from "@/lib/project-defaults";
 import { useAppStore } from "@/state/use-app-store";
-import type { SourceAsset } from "@/types/project";
+import type { GradientSourceAsset, SourceAsset } from "@/types/project";
 
 function resetStore() {
   const project = createProjectDocument("History Test");
@@ -135,6 +137,43 @@ function createImageAsset(projectId: string, id: string): SourceAsset {
     palette: ["#112233"],
     luminance: 0.25,
     createdAt: "2026-04-05T00:00:00.000Z",
+  };
+}
+
+function createGradientAsset(projectId: string): GradientSourceAsset {
+  const base = createImageAsset(projectId, "asset_gradient");
+  return {
+    id: base.id,
+    kind: "gradient",
+    projectId: base.projectId,
+    name: "Gradient",
+    originalFileName: "asset_gradient.png",
+    mimeType: "image/png",
+    width: base.width,
+    height: base.height,
+    orientation: base.orientation,
+    originalPath: "assets/original/asset_gradient.png",
+    normalizedPath: base.normalizedPath,
+    previewPath: base.previewPath,
+    averageColor: base.averageColor,
+    palette: base.palette,
+    luminance: base.luminance,
+    createdAt: base.createdAt,
+    recipe: {
+      mode: "conic",
+      from: "#112233",
+      to: "#ddeeff",
+      direction: "vertical",
+      viaColor: "#778899",
+      viaPosition: 0.4,
+      centerX: 0.35,
+      centerY: 0.65,
+      radialRadius: 1,
+      radialInnerRadius: 0,
+      conicAngle: 30,
+      conicSpan: 180,
+      conicRepeat: true,
+    },
   };
 }
 
@@ -357,5 +396,58 @@ describe("useAppStore import progress", () => {
     });
 
     expect(useAppStore.getState().sourceImportProgress).toBeNull();
+  });
+
+  it("updates generated gradients with the expanded recipe while keeping the asset id", async () => {
+    const project = useAppStore.getState().projects[0]!;
+    const asset = createGradientAsset(project.id);
+    const updatedAsset: GradientSourceAsset = {
+      ...asset,
+      name: "Updated Gradient",
+      recipe: {
+        ...asset.recipe,
+        mode: "radial",
+        centerX: 0.5,
+        centerY: 0.5,
+        radialRadius: 0.75,
+        radialInnerRadius: 0.1,
+        conicRepeat: false,
+      },
+    };
+    useAppStore.setState((state) => ({
+      ...state,
+      assets: [asset],
+      projects: [{ ...project, sourceIds: [asset.id] }],
+    }));
+    vi.mocked(updateGeneratedSourceAsset).mockResolvedValueOnce(updatedAsset);
+
+    await useAppStore.getState().updateGeneratedSource(asset.id, {
+      name: "Updated Gradient",
+      mode: "radial",
+      from: "#112233",
+      to: "#ddeeff",
+      direction: "vertical",
+      viaColor: "#778899",
+      viaPosition: 0.4,
+      centerX: 0.5,
+      centerY: 0.5,
+      radialRadius: 0.75,
+      radialInnerRadius: 0.1,
+      conicAngle: 30,
+      conicSpan: 180,
+      conicRepeat: false,
+    });
+
+    expect(updateGeneratedSourceAsset).toHaveBeenCalledWith(
+      asset,
+      expect.objectContaining({
+        mode: "radial",
+        radialRadius: 0.75,
+        radialInnerRadius: 0.1,
+      }),
+    );
+    expect(useAppStore.getState().assets[0]?.id).toBe(asset.id);
+    expect(useAppStore.getState().assets[0]).toEqual(updatedAsset);
+    expect(db.assets.put).toHaveBeenCalledWith(updatedAsset);
   });
 });

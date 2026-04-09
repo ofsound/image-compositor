@@ -23,6 +23,7 @@ export type KaleidoscopeMirrorMode =
   | "mirror-all";
 export type CropDistribution = "center" | "distributed";
 export type SourceKind = "image" | "solid" | "gradient";
+export type GradientMode = "linear" | "radial" | "conic";
 export type GradientDirection =
   | "horizontal"
   | "vertical"
@@ -76,13 +77,25 @@ export interface SolidSourceAsset extends BaseSourceAsset {
   };
 }
 
+export interface GradientSourceRecipe {
+  mode: GradientMode;
+  from: string;
+  to: string;
+  direction: GradientDirection;
+  viaColor: string | null;
+  viaPosition: number;
+  centerX: number;
+  centerY: number;
+  radialRadius: number;
+  radialInnerRadius: number;
+  conicAngle: number;
+  conicSpan: number;
+  conicRepeat: boolean;
+}
+
 export interface GradientSourceAsset extends BaseSourceAsset {
   kind: "gradient";
-  recipe: {
-    from: string;
-    to: string;
-    direction: GradientDirection;
-  };
+  recipe: GradientSourceRecipe;
 }
 
 export type SourceAsset =

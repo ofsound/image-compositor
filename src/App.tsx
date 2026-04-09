@@ -56,6 +56,7 @@ import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import {
   ACCEPTED_IMAGE_TYPES,
+  getDefaultGradientInput,
   getDefaultGradientDirection,
   getSourceContentSignature,
   normalizeGradientInput,
@@ -71,6 +72,7 @@ import type {
   BundleImportInspection,
   CropDistribution,
   GradientDirection,
+  GradientMode,
   GradientSourceAsset,
   GeometryShape,
   KaleidoscopeMirrorMode,
@@ -140,6 +142,7 @@ function SourceThumbnail({
 }
 
 const SOURCE_DIALOG_MODES: SourceKind[] = ["image", "solid", "gradient"];
+const GRADIENT_MODES: GradientMode[] = ["linear", "radial", "conic"];
 const GRADIENT_DIRECTIONS: GradientDirection[] = [
   "horizontal",
   "vertical",
@@ -159,6 +162,18 @@ function formatGradientDirectionLabel(direction: GradientDirection) {
   if (direction === "diagonal-down") return "Diagonal down";
   if (direction === "diagonal-up") return "Diagonal up";
   return direction[0]!.toUpperCase() + direction.slice(1);
+}
+
+function formatGradientModeLabel(mode: GradientMode) {
+  return mode[0]!.toUpperCase() + mode.slice(1);
+}
+
+function formatPercentValue(value: number) {
+  return `${Math.round(value * 100)}%`;
+}
+
+function formatDegreeValue(value: number) {
+  return `${Math.round(value)}°`;
 }
 
 export function getGeometryOptions(family: LayoutFamily): GeometryShape[] {
@@ -372,8 +387,26 @@ function App() {
   const [gradientSourceName, setGradientSourceName] = useState("");
   const [gradientSourceFrom, setGradientSourceFrom] = useState("#0f172a");
   const [gradientSourceTo, setGradientSourceTo] = useState("#f97316");
+  const [gradientSourceMode, setGradientSourceMode] =
+    useState<GradientMode>("linear");
   const [gradientSourceDirection, setGradientSourceDirection] =
     useState<GradientDirection>(getDefaultGradientDirection());
+  const [gradientSourceViaEnabled, setGradientSourceViaEnabled] =
+    useState(false);
+  const [gradientSourceViaColor, setGradientSourceViaColor] =
+    useState("#94a3b8");
+  const [gradientSourceViaPosition, setGradientSourceViaPosition] =
+    useState(0.5);
+  const [gradientSourceCenterX, setGradientSourceCenterX] = useState(0.5);
+  const [gradientSourceCenterY, setGradientSourceCenterY] = useState(0.5);
+  const [gradientSourceRadialRadius, setGradientSourceRadialRadius] =
+    useState(1);
+  const [gradientSourceRadialInnerRadius, setGradientSourceRadialInnerRadius] =
+    useState(0);
+  const [gradientSourceConicAngle, setGradientSourceConicAngle] = useState(0);
+  const [gradientSourceConicSpan, setGradientSourceConicSpan] = useState(360);
+  const [gradientSourceConicRepeat, setGradientSourceConicRepeat] =
+    useState(false);
   const [pendingImportInspection, setPendingImportInspection] =
     useState<BundleImportInspection | null>(null);
 
@@ -489,6 +522,9 @@ function App() {
   const activeAssetSignature = activeAssets.map((asset) => asset.id).join("|");
   const purgeDialogProject =
     projects.find((project) => project.id === purgeDialogProjectId) ?? null;
+  const isLinearGradientMode = gradientSourceMode === "linear";
+  const isRadialGradientMode = gradientSourceMode === "radial";
+  const isConicGradientMode = gradientSourceMode === "conic";
 
   useEffect(() => {
     setRenderState({
@@ -625,12 +661,24 @@ function App() {
   };
 
   const resetGeneratedSourceForms = () => {
+    const defaultGradient = getDefaultGradientInput();
     setSolidSourceName("");
     setSolidSourceColor("#0f172a");
-    setGradientSourceName("");
-    setGradientSourceFrom("#0f172a");
-    setGradientSourceTo("#f97316");
-    setGradientSourceDirection(getDefaultGradientDirection());
+    setGradientSourceName(defaultGradient.name ?? "");
+    setGradientSourceFrom(defaultGradient.from);
+    setGradientSourceTo(defaultGradient.to);
+    setGradientSourceMode(defaultGradient.mode);
+    setGradientSourceDirection(defaultGradient.direction);
+    setGradientSourceViaEnabled(defaultGradient.viaColor !== null);
+    setGradientSourceViaColor(defaultGradient.viaColor ?? "#94a3b8");
+    setGradientSourceViaPosition(defaultGradient.viaPosition);
+    setGradientSourceCenterX(defaultGradient.centerX);
+    setGradientSourceCenterY(defaultGradient.centerY);
+    setGradientSourceRadialRadius(defaultGradient.radialRadius);
+    setGradientSourceRadialInnerRadius(defaultGradient.radialInnerRadius);
+    setGradientSourceConicAngle(defaultGradient.conicAngle);
+    setGradientSourceConicSpan(defaultGradient.conicSpan);
+    setGradientSourceConicRepeat(defaultGradient.conicRepeat);
   };
 
   const openAddSourceDialog = (mode: SourceKind = "image") => {
@@ -656,7 +704,18 @@ function App() {
       setGradientSourceName(asset.name);
       setGradientSourceFrom(asset.recipe.from);
       setGradientSourceTo(asset.recipe.to);
+      setGradientSourceMode(asset.recipe.mode);
       setGradientSourceDirection(asset.recipe.direction);
+      setGradientSourceViaEnabled(asset.recipe.viaColor !== null);
+      setGradientSourceViaColor(asset.recipe.viaColor ?? "#94a3b8");
+      setGradientSourceViaPosition(asset.recipe.viaPosition);
+      setGradientSourceCenterX(asset.recipe.centerX);
+      setGradientSourceCenterY(asset.recipe.centerY);
+      setGradientSourceRadialRadius(asset.recipe.radialRadius);
+      setGradientSourceRadialInnerRadius(asset.recipe.radialInnerRadius);
+      setGradientSourceConicAngle(asset.recipe.conicAngle);
+      setGradientSourceConicSpan(asset.recipe.conicSpan);
+      setGradientSourceConicRepeat(asset.recipe.conicRepeat);
     }
     setSourceDialogOpen(true);
   };
@@ -688,9 +747,19 @@ function App() {
 
     const input = normalizeGradientInput({
       name: gradientSourceName,
+      mode: gradientSourceMode,
       from: gradientSourceFrom,
       to: gradientSourceTo,
       direction: gradientSourceDirection,
+      viaColor: gradientSourceViaEnabled ? gradientSourceViaColor : null,
+      viaPosition: gradientSourceViaPosition,
+      centerX: gradientSourceCenterX,
+      centerY: gradientSourceCenterY,
+      radialRadius: gradientSourceRadialRadius,
+      radialInnerRadius: gradientSourceRadialInnerRadius,
+      conicAngle: gradientSourceConicAngle,
+      conicSpan: gradientSourceConicSpan,
+      conicRepeat: gradientSourceConicRepeat,
     });
     if (editingSource?.kind === "gradient") {
       await updateGeneratedSource(editingSource.id, input);
@@ -2481,7 +2550,7 @@ function App() {
             </DialogTitle>
             <DialogDescription>
               Build the source pool from imported images, solid fills, and
-              two-color gradients.
+              shaped gradients.
             </DialogDescription>
           </DialogHeader>
           <Tabs
@@ -2559,6 +2628,26 @@ function App() {
                   }
                 />
               </div>
+              <div className="space-y-2">
+                <Label>Mode</Label>
+                <Select
+                  value={gradientSourceMode}
+                  onValueChange={(value) =>
+                    setGradientSourceMode(value as GradientMode)
+                  }
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {GRADIENT_MODES.map((mode) => (
+                      <SelectItem key={mode} value={mode}>
+                        {formatGradientModeLabel(mode)}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
               <SourceColorField
                 id="gradient-source-from"
                 label="Start color"
@@ -2571,26 +2660,149 @@ function App() {
                 value={gradientSourceTo}
                 onChange={setGradientSourceTo}
               />
-              <div className="space-y-2">
-                <Label>Direction</Label>
-                <Select
-                  value={gradientSourceDirection}
-                  onValueChange={(value) =>
-                    setGradientSourceDirection(value as GradientDirection)
-                  }
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {GRADIENT_DIRECTIONS.map((direction) => (
-                      <SelectItem key={direction} value={direction}>
-                        {formatGradientDirectionLabel(direction)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+              <div className="rounded-md border border-border-subtle bg-surface-sunken/60 p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <Label htmlFor="gradient-source-via-enabled">
+                      Midpoint color
+                    </Label>
+                    <div className="text-xs text-text-muted">
+                      Insert an optional third stop into the blend.
+                    </div>
+                  </div>
+                  <Switch
+                    id="gradient-source-via-enabled"
+                    checked={gradientSourceViaEnabled}
+                    onCheckedChange={setGradientSourceViaEnabled}
+                    aria-label="Enable midpoint color"
+                  />
+                </div>
               </div>
+              {gradientSourceViaEnabled ? (
+                <>
+                  <SourceColorField
+                    id="gradient-source-via-color"
+                    label="Midpoint color"
+                    value={gradientSourceViaColor}
+                    onChange={setGradientSourceViaColor}
+                  />
+                  <SliderField
+                    label="Midpoint Position"
+                    min={0}
+                    max={1}
+                    step={0.01}
+                    value={gradientSourceViaPosition}
+                    formatter={formatPercentValue}
+                    onChange={setGradientSourceViaPosition}
+                  />
+                </>
+              ) : null}
+              {isLinearGradientMode ? (
+                <div className="space-y-2">
+                  <Label>Direction</Label>
+                  <Select
+                    value={gradientSourceDirection}
+                    onValueChange={(value) =>
+                      setGradientSourceDirection(value as GradientDirection)
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {GRADIENT_DIRECTIONS.map((direction) => (
+                        <SelectItem key={direction} value={direction}>
+                          {formatGradientDirectionLabel(direction)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              ) : null}
+              {isRadialGradientMode || isConicGradientMode ? (
+                <>
+                  <SliderField
+                    label="Center X"
+                    min={0}
+                    max={1}
+                    step={0.01}
+                    value={gradientSourceCenterX}
+                    formatter={formatPercentValue}
+                    onChange={setGradientSourceCenterX}
+                  />
+                  <SliderField
+                    label="Center Y"
+                    min={0}
+                    max={1}
+                    step={0.01}
+                    value={gradientSourceCenterY}
+                    formatter={formatPercentValue}
+                    onChange={setGradientSourceCenterY}
+                  />
+                </>
+              ) : null}
+              {isRadialGradientMode ? (
+                <>
+                  <SliderField
+                    label="Outer Radius"
+                    min={0}
+                    max={1}
+                    step={0.01}
+                    value={gradientSourceRadialRadius}
+                    formatter={formatPercentValue}
+                    onChange={setGradientSourceRadialRadius}
+                  />
+                  <SliderField
+                    label="Inner Radius"
+                    min={0}
+                    max={0.95}
+                    step={0.01}
+                    value={gradientSourceRadialInnerRadius}
+                    formatter={formatPercentValue}
+                    onChange={setGradientSourceRadialInnerRadius}
+                  />
+                </>
+              ) : null}
+              {isConicGradientMode ? (
+                <>
+                  <SliderField
+                    label="Angle"
+                    min={0}
+                    max={360}
+                    step={1}
+                    value={gradientSourceConicAngle}
+                    formatter={formatDegreeValue}
+                    onChange={setGradientSourceConicAngle}
+                  />
+                  <SliderField
+                    label="Span"
+                    min={1}
+                    max={360}
+                    step={1}
+                    value={gradientSourceConicSpan}
+                    formatter={formatDegreeValue}
+                    onChange={setGradientSourceConicSpan}
+                  />
+                  <div className="rounded-md border border-border-subtle bg-surface-sunken/60 p-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <Label htmlFor="gradient-source-conic-repeat">
+                          Repeat span
+                        </Label>
+                        <div className="text-xs text-text-muted">
+                          Tile the span pattern around the full circle.
+                        </div>
+                      </div>
+                      <Switch
+                        id="gradient-source-conic-repeat"
+                        checked={gradientSourceConicRepeat}
+                        onCheckedChange={setGradientSourceConicRepeat}
+                        aria-label="Repeat span"
+                      />
+                    </div>
+                  </div>
+                </>
+              ) : null}
               <div className="flex justify-end gap-2">
                 <Button
                   variant="outline"

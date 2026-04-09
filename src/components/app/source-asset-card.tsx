@@ -10,6 +10,7 @@ interface SourceAssetCardProps {
   asset: SourceAsset;
   enabled: boolean;
   thumbnail: ReactNode;
+  topContent?: ReactNode;
   onToggle: (assetId: string) => void;
   onEdit?: (assetId: string) => void;
   onRemove?: (assetId: string) => void;
@@ -19,6 +20,7 @@ export function SourceAssetCard({
   asset,
   enabled,
   thumbnail,
+  topContent,
   onToggle,
   onEdit,
   onRemove,
@@ -50,6 +52,7 @@ export function SourceAssetCard({
       )}
       data-state={enabled ? "enabled" : "disabled"}
     >
+      {topContent ? <div className="mb-3">{topContent}</div> : null}
       <div className="relative">
         <div className={cn(!enabled && "opacity-55")}>{thumbnail}</div>
         {onRemove ? (

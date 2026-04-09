@@ -604,14 +604,6 @@ function App() {
   const activeVersions = activeProject
     ? versions.filter((version) => version.projectId === activeProject.id)
     : [];
-  const activeSourceWeights = activeAssets.map((asset) => ({
-    asset,
-    weight: getSourceWeight(activeProject?.sourceMapping.sourceWeights, asset.id),
-  }));
-  const activeSourceWeightTotal = activeSourceWeights.reduce(
-    (sum, entry) => sum + entry.weight,
-    0,
-  );
   const activeAssetSignature = activeAssets.map((asset) => asset.id).join("|");
   const purgeDialogProject =
     projects.find((project) => project.id === purgeDialogProjectId) ?? null;
@@ -742,15 +734,6 @@ function App() {
           assetId,
           value,
         ),
-      },
-    }));
-  };
-  const resetSourceMix = () => {
-    patchProject((project) => ({
-      ...project,
-      sourceMapping: {
-        ...project.sourceMapping,
-        sourceWeights: {},
       },
     }));
   };
@@ -1199,78 +1182,42 @@ function App() {
                       edited later.
                     </div>
                   ) : (
-                    <>
-                      <div className="rounded-md border border-border-subtle bg-surface-sunken/70 p-3">
-                        <div className="flex items-start justify-between gap-4">
-                          <div className="space-y-1">
-                            <div className="text-sm font-medium text-text">
-                              Source Mix
-                            </div>
-                            <div className="text-xs leading-relaxed text-text-muted">
-                              Adjust how often each enabled source appears in
-                              the compositor.
-                            </div>
-                          </div>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={resetSourceMix}
-                            disabled={activeAssets.length === 0}
-                          >
-                            Reset
-                          </Button>
-                        </div>
-                        {activeSourceWeights.length > 0 ? (
-                          <div className="mt-3 flex gap-2 overflow-x-auto overflow-y-hidden pb-1">
-                            {activeSourceWeights.map(({ asset, weight }) => {
-                              const share =
-                                activeSourceWeightTotal > 0
-                                  ? weight / activeSourceWeightTotal
-                                  : 1 / activeSourceWeights.length;
+                    <div className="flex gap-2 overflow-x-auto overflow-y-hidden pb-1">
+                      {projectAssets.map((asset) => {
+                        const enabled = activeProject.sourceIds.includes(asset.id);
+                        const mixWeight = getSourceWeight(
+                          activeProject.sourceMapping.sourceWeights,
+                          asset.id,
+                        );
 
-                              return (
-                                <div
-                                  key={asset.id}
-                                  className="min-w-[9.5rem] flex-1 rounded-md border border-border-subtle bg-surface px-3 py-3"
-                                >
-                                  <div className="truncate text-xs font-medium text-text">
-                                    {asset.name}
-                                  </div>
-                                  <div className="mt-1 flex items-center justify-between font-mono text-[10px] uppercase tracking-[0.08em] text-text-muted">
-                                    <span>{formatSourceWeightValue(weight)}</span>
-                                    <span>{formatPercentValue(share)}</span>
-                                  </div>
-                                  <div className="mt-3">
-                                    <Slider
-                                      aria-label={`${asset.name} mix weight`}
-                                      min={0}
-                                      max={4}
-                                      step={0.05}
-                                      value={[weight]}
-                                      onValueChange={(next) =>
-                                        updateSourceWeight(
-                                          asset.id,
-                                          next[0] ?? weight,
-                                        )
-                                      }
-                                    />
-                                  </div>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        ) : (
-                          <div className="mt-3 rounded-md bg-surface px-3 py-2 text-xs text-text-faint">
-                            Enable at least one source to mix it here.
-                          </div>
-                        )}
-                      </div>
-                      <div className="flex gap-2 overflow-x-auto overflow-y-hidden pb-1">
-                        {projectAssets.map((asset) => (
+                        return (
                           <SourceAssetCard
                             key={asset.id}
                             asset={asset}
-                            enabled={activeProject.sourceIds.includes(asset.id)}
+                            enabled={enabled}
+                            topContent={
+                              enabled ? (
+                                <div className="space-y-1.5">
+                                  <div className="flex items-center justify-between gap-2 font-mono text-[10px] uppercase tracking-[0.08em] text-text-muted">
+                                    <span>Mix</span>
+                                    <span>{formatSourceWeightValue(mixWeight)}</span>
+                                  </div>
+                                  <Slider
+                                    aria-label={`${asset.name} mix weight`}
+                                    min={0}
+                                    max={4}
+                                    step={0.05}
+                                    value={[mixWeight]}
+                                    onValueChange={(next) =>
+                                      updateSourceWeight(
+                                        asset.id,
+                                        next[0] ?? mixWeight,
+                                      )
+                                    }
+                                  />
+                                </div>
+                              ) : null
+                            }
                             onToggle={toggleAssetEnabled}
                             onRemove={(assetId) =>
                               void handleRemoveSource(assetId)
@@ -1288,9 +1235,9 @@ function App() {
                               />
                             }
                           />
-                        ))}
-                      </div>
-                    </>
+                        );
+                      })}
+                    </div>
                   )}
                 </CardContent>
               </Card>
@@ -2485,7 +2432,7 @@ function App() {
                     <SliderField
                       label="Rotation Jitter"
                       min={0}
-                      max={90}
+                      max={180}
                       step={1}
                       value={activeProject.effects.rotationJitter}
                       formatter={(value) => `${Math.round(value)}°`}

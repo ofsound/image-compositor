@@ -143,4 +143,19 @@ describe("SourceAssetCard", () => {
 
     expect(onEdit).toHaveBeenCalledWith("asset_gradient");
   });
+
+  it("renders optional top content above the thumbnail", () => {
+    render(
+      <SourceAssetCard
+        asset={imageAsset}
+        enabled
+        onToggle={vi.fn()}
+        thumbnail={<div>thumb</div>}
+        topContent={<div>mix control</div>}
+      />,
+    );
+
+    expect(screen.getByText("mix control")).toBeInTheDocument();
+    expect(screen.getByText("thumb")).toBeInTheDocument();
+  });
 });

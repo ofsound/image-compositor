@@ -150,6 +150,10 @@ export interface LayoutSettings {
   radialChildRotationMode: RadialChildRotationMode;
   symmetryMode: "none" | "mirror-x" | "mirror-y" | "quad" | "radial";
   symmetryCopies: number;
+  symmetryCenterX: number;
+  symmetryCenterY: number;
+  symmetryAngleOffset: number;
+  symmetryJitter: number;
   hidePercentage: number;
   letterbox: number;
   wedgeAngle: number;

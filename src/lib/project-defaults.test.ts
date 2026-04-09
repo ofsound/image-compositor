@@ -27,6 +27,10 @@ describe("createProjectDocument", () => {
     expect(project.layout.radialRingPhaseStep).toBe(0);
     expect(project.layout.radialInnerRadius).toBe(0);
     expect(project.layout.radialChildRotationMode).toBe("tangent");
+    expect(project.layout.symmetryCenterX).toBe(0.5);
+    expect(project.layout.symmetryCenterY).toBe(0.5);
+    expect(project.layout.symmetryAngleOffset).toBe(0);
+    expect(project.layout.symmetryJitter).toBe(0);
     expect(project.layout.organicVariation).toBe(0);
     expect(project.layout.hollowRatio).toBe(0.48);
     expect(project.layout.flowCurvature).toBe(0.44);

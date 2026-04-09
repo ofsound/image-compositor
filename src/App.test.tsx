@@ -657,7 +657,6 @@ describe("App conditional sliders", () => {
       },
     });
 
-    expect(screen.getByText("Source Mix")).toBeInTheDocument();
     expect(screen.getByLabelText("Asset A mix weight")).toBeInTheDocument();
     expect(screen.queryByLabelText("Asset B mix weight")).not.toBeInTheDocument();
     expect(screen.getByText("2.5x")).toBeInTheDocument();

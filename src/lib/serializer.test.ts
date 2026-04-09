@@ -114,8 +114,20 @@ const bundle: ImportedProjectBundle = {
       blendMode: "source-over",
       opacity: 1,
       overlap: 0,
-      shadow: 0,
       feather: 0,
+    },
+    finish: {
+      shadowOffsetX: 18,
+      shadowOffsetY: 24,
+      shadowBlur: 36,
+      shadowOpacity: 0.28,
+      shadowColor: "#180f08",
+      brightness: 1.12,
+      contrast: 0.94,
+      saturate: 1.18,
+      hueRotate: 24,
+      grayscale: 0.08,
+      invert: 0.04,
     },
     export: {
       format: "image/png",
@@ -227,8 +239,20 @@ const bundle: ImportedProjectBundle = {
           blendMode: "source-over",
           opacity: 1,
           overlap: 0,
-          shadow: 0,
           feather: 0,
+        },
+        finish: {
+          shadowOffsetX: 18,
+          shadowOffsetY: 24,
+          shadowBlur: 36,
+          shadowOpacity: 0.28,
+          shadowColor: "#180f08",
+          brightness: 1.12,
+          contrast: 0.94,
+          saturate: 1.18,
+          hueRotate: 24,
+          grayscale: 0.08,
+          invert: 0.04,
         },
         export: {
           format: "image/png",
@@ -292,6 +316,10 @@ describe("createImportCopy", () => {
     expect(copy.versionDocs[0]?.snapshot.sourceMapping.sourceWeights).toEqual({
       [copy.assetDocs[0]!.id]: 2.25,
     });
+    expect(copy.projectDoc.finish).toEqual(bundle.projectDoc.finish);
+    expect(copy.versionDocs[0]?.snapshot.finish).toEqual(
+      bundle.versionDocs[0]?.snapshot.finish,
+    );
     expect(copy.projectDoc.currentVersionId).toBe(copy.versionDocs[0]?.id);
     expect(Object.keys(copy.assetBlobs)).toEqual([
       copy.assetDocs[0]?.originalPath,

@@ -2578,6 +2578,195 @@ function App() {
                         }))
                       }
                     />
+                    <div className="space-y-4 border-t border-border-subtle pt-4">
+                      <div className="border-b border-border-subtle pb-1 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-text-muted">
+                        Layer Finish
+                      </div>
+                      <SliderField
+                        label="Shadow X"
+                        min={-200}
+                        max={200}
+                        step={1}
+                        value={activeProject.finish.shadowOffsetX}
+                        formatter={(value) => `${Math.round(value)} px`}
+                        onChange={(value) =>
+                          patchProject((project) => ({
+                            ...project,
+                            finish: {
+                              ...project.finish,
+                              shadowOffsetX: value,
+                            },
+                          }))
+                        }
+                      />
+                      <SliderField
+                        label="Shadow Y"
+                        min={-200}
+                        max={200}
+                        step={1}
+                        value={activeProject.finish.shadowOffsetY}
+                        formatter={(value) => `${Math.round(value)} px`}
+                        onChange={(value) =>
+                          patchProject((project) => ({
+                            ...project,
+                            finish: {
+                              ...project.finish,
+                              shadowOffsetY: value,
+                            },
+                          }))
+                        }
+                      />
+                      <SliderField
+                        label="Shadow Blur"
+                        min={0}
+                        max={200}
+                        step={1}
+                        value={activeProject.finish.shadowBlur}
+                        formatter={(value) => `${Math.round(value)} px`}
+                        onChange={(value) =>
+                          patchProject((project) => ({
+                            ...project,
+                            finish: {
+                              ...project.finish,
+                              shadowBlur: value,
+                            },
+                          }))
+                        }
+                      />
+                      <SliderField
+                        label="Shadow Opacity"
+                        min={0}
+                        max={1}
+                        step={0.01}
+                        value={activeProject.finish.shadowOpacity}
+                        formatter={formatPercentValue}
+                        onChange={(value) =>
+                          patchProject((project) => ({
+                            ...project,
+                            finish: {
+                              ...project.finish,
+                              shadowOpacity: value,
+                            },
+                          }))
+                        }
+                      />
+                      <SourceColorField
+                        id="finish-shadow-color"
+                        label="Shadow Color"
+                        value={activeProject.finish.shadowColor}
+                        onChange={(value) =>
+                          patchProject((project) => ({
+                            ...project,
+                            finish: {
+                              ...project.finish,
+                              shadowColor: value,
+                            },
+                          }))
+                        }
+                      />
+                      <SliderField
+                        label="Brightness"
+                        min={0}
+                        max={2}
+                        step={0.01}
+                        value={activeProject.finish.brightness}
+                        formatter={formatPercentValue}
+                        onChange={(value) =>
+                          patchProject((project) => ({
+                            ...project,
+                            finish: {
+                              ...project.finish,
+                              brightness: value,
+                            },
+                          }))
+                        }
+                      />
+                      <SliderField
+                        label="Contrast"
+                        min={0}
+                        max={2}
+                        step={0.01}
+                        value={activeProject.finish.contrast}
+                        formatter={formatPercentValue}
+                        onChange={(value) =>
+                          patchProject((project) => ({
+                            ...project,
+                            finish: {
+                              ...project.finish,
+                              contrast: value,
+                            },
+                          }))
+                        }
+                      />
+                      <SliderField
+                        label="Saturate"
+                        min={0}
+                        max={2}
+                        step={0.01}
+                        value={activeProject.finish.saturate}
+                        formatter={formatPercentValue}
+                        onChange={(value) =>
+                          patchProject((project) => ({
+                            ...project,
+                            finish: {
+                              ...project.finish,
+                              saturate: value,
+                            },
+                          }))
+                        }
+                      />
+                      <SliderField
+                        label="Hue Rotate"
+                        min={-180}
+                        max={180}
+                        step={1}
+                        value={activeProject.finish.hueRotate}
+                        formatter={formatDegreeValue}
+                        onChange={(value) =>
+                          patchProject((project) => ({
+                            ...project,
+                            finish: {
+                              ...project.finish,
+                              hueRotate: value,
+                            },
+                          }))
+                        }
+                      />
+                      <SliderField
+                        label="Grayscale"
+                        min={0}
+                        max={1}
+                        step={0.01}
+                        value={activeProject.finish.grayscale}
+                        formatter={formatPercentValue}
+                        onChange={(value) =>
+                          patchProject((project) => ({
+                            ...project,
+                            finish: {
+                              ...project.finish,
+                              grayscale: value,
+                            },
+                          }))
+                        }
+                      />
+                      <SliderField
+                        label="Invert"
+                        min={0}
+                        max={1}
+                        step={0.01}
+                        value={activeProject.finish.invert}
+                        formatter={formatPercentValue}
+                        onChange={(value) =>
+                          patchProject((project) => ({
+                            ...project,
+                            finish: {
+                              ...project.finish,
+                              invert: value,
+                            },
+                          }))
+                        }
+                      />
+                    </div>
                   </div>
 
                   <div className="min-w-0 space-y-4">

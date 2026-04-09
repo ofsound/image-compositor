@@ -55,6 +55,17 @@ describe("createProjectDocument", () => {
     expect(project.effects.kaleidoscopeRotationDrift).toBe(0);
     expect(project.effects.kaleidoscopeScaleFalloff).toBe(0);
     expect(project.effects.kaleidoscopeOpacity).toBe(0.2);
+    expect(project.finish.shadowOffsetX).toBe(0);
+    expect(project.finish.shadowOffsetY).toBe(0);
+    expect(project.finish.shadowBlur).toBe(0);
+    expect(project.finish.shadowOpacity).toBe(0);
+    expect(project.finish.shadowColor).toBe("#180f08");
+    expect(project.finish.brightness).toBe(1);
+    expect(project.finish.contrast).toBe(1);
+    expect(project.finish.saturate).toBe(1);
+    expect(project.finish.hueRotate).toBe(0);
+    expect(project.finish.grayscale).toBe(0);
+    expect(project.finish.invert).toBe(0);
     expect(project.passes.map((pass) => pass.type)).toEqual([
       "layout",
       "assignment",
@@ -79,6 +90,29 @@ describe("createProjectDocument", () => {
     } as unknown as ProjectDocument;
 
     expect(normalizeProjectDocument(legacyProject).sourceMapping.cropDistribution).toBe("center");
+  });
+
+  it("migrates legacy compositing shadow values into the new finish shadow settings", () => {
+    const project = createProjectDocument("Legacy Shadow");
+    const legacyProject = {
+      ...project,
+      finish: undefined,
+      compositing: {
+        blendMode: project.compositing.blendMode,
+        opacity: project.compositing.opacity,
+        overlap: project.compositing.overlap,
+        feather: project.compositing.feather,
+        shadow: 0.12,
+      },
+    } as unknown as ProjectDocument;
+
+    const normalized = normalizeProjectDocument(legacyProject);
+
+    expect(normalized.finish.shadowOffsetX).toBe(0);
+    expect(normalized.finish.shadowOffsetY).toBe(24);
+    expect(normalized.finish.shadowBlur).toBe(36);
+    expect(normalized.finish.shadowOpacity).toBeCloseTo(0.27);
+    expect(normalized.finish.shadowColor).toBe("#180f08");
   });
 
   it("normalizes legacy projects without background alpha to transparent", () => {

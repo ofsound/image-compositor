@@ -210,8 +210,21 @@ export interface CompositingSettings {
   blendMode: BlendMode;
   opacity: number;
   overlap: number;
-  shadow: number;
   feather: number;
+}
+
+export interface FinishSettings {
+  shadowOffsetX: number;
+  shadowOffsetY: number;
+  shadowBlur: number;
+  shadowOpacity: number;
+  shadowColor: string;
+  brightness: number;
+  contrast: number;
+  saturate: number;
+  hueRotate: number;
+  grayscale: number;
+  invert: number;
 }
 
 export interface CompositorLayer {
@@ -224,6 +237,7 @@ export interface CompositorLayer {
   sourceMapping: SourceMappingSettings;
   effects: EffectSettings;
   compositing: CompositingSettings;
+  finish: FinishSettings;
   activeSeed: number;
   presets: GeneratorPreset[];
   passes: RenderPass[];
@@ -262,6 +276,7 @@ export interface ProjectSnapshot {
   sourceMapping: SourceMappingSettings;
   effects: EffectSettings;
   compositing: CompositingSettings;
+  finish: FinishSettings;
   activeSeed: number;
   presets: GeneratorPreset[];
   passes: RenderPass[];
@@ -327,6 +342,7 @@ export interface LayerRenderProject {
   sourceMapping: SourceMappingSettings;
   effects: EffectSettings;
   compositing: CompositingSettings;
+  finish: FinishSettings;
   activeSeed: number;
   presets: GeneratorPreset[];
   passes: RenderPass[];

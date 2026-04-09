@@ -13,7 +13,19 @@ import type { SourceAsset } from "@/types/project";
 function createMockContext() {
   const drawImageCompositeOperations: string[] = [];
   const globalCompositeOperationAssignments: string[] = [];
+  const globalAlphaAssignments: number[] = [];
+  const filterAssignments: string[] = [];
+  const shadowColorAssignments: string[] = [];
+  const shadowBlurAssignments: number[] = [];
+  const shadowOffsetXAssignments: number[] = [];
+  const shadowOffsetYAssignments: number[] = [];
   let globalCompositeOperation = "source-over";
+  let filter = "";
+  let shadowColor = "";
+  let shadowBlur = 0;
+  let shadowOffsetX = 0;
+  let shadowOffsetY = 0;
+  let globalAlpha = 1;
   const context = {
     arc: vi.fn(),
     beginPath: vi.fn(),
@@ -44,8 +56,13 @@ function createMockContext() {
     fillStyle: "",
     strokeStyle: "",
     globalAlpha: 1,
+    globalAlphaAssignments,
     lineWidth: 1,
-    filter: "",
+    filterAssignments,
+    shadowColorAssignments,
+    shadowBlurAssignments,
+    shadowOffsetXAssignments,
+    shadowOffsetYAssignments,
     drawImageCompositeOperations,
     globalCompositeOperationAssignments,
   };
@@ -57,6 +74,78 @@ function createMockContext() {
     set(value: string) {
       globalCompositeOperation = value;
       globalCompositeOperationAssignments.push(value);
+    },
+    enumerable: true,
+    configurable: true,
+  });
+
+  Object.defineProperty(context, "filter", {
+    get() {
+      return filter;
+    },
+    set(value: string) {
+      filter = value;
+      filterAssignments.push(value);
+    },
+    enumerable: true,
+    configurable: true,
+  });
+
+  Object.defineProperty(context, "globalAlpha", {
+    get() {
+      return globalAlpha;
+    },
+    set(value: number) {
+      globalAlpha = value;
+      globalAlphaAssignments.push(value);
+    },
+    enumerable: true,
+    configurable: true,
+  });
+
+  Object.defineProperty(context, "shadowColor", {
+    get() {
+      return shadowColor;
+    },
+    set(value: string) {
+      shadowColor = value;
+      shadowColorAssignments.push(value);
+    },
+    enumerable: true,
+    configurable: true,
+  });
+
+  Object.defineProperty(context, "shadowBlur", {
+    get() {
+      return shadowBlur;
+    },
+    set(value: number) {
+      shadowBlur = value;
+      shadowBlurAssignments.push(value);
+    },
+    enumerable: true,
+    configurable: true,
+  });
+
+  Object.defineProperty(context, "shadowOffsetX", {
+    get() {
+      return shadowOffsetX;
+    },
+    set(value: number) {
+      shadowOffsetX = value;
+      shadowOffsetXAssignments.push(value);
+    },
+    enumerable: true,
+    configurable: true,
+  });
+
+  Object.defineProperty(context, "shadowOffsetY", {
+    get() {
+      return shadowOffsetY;
+    },
+    set(value: number) {
+      shadowOffsetY = value;
+      shadowOffsetYAssignments.push(value);
     },
     enumerable: true,
     configurable: true,
@@ -197,7 +286,6 @@ describe("renderProjectToCanvas", () => {
     project.layout.density = 0.05;
     project.layout.symmetryMode = "none";
     project.compositing.overlap = 0;
-    project.compositing.shadow = 0;
     project.effects.rotationJitter = 0;
     project.effects.scaleJitter = 0;
     project.effects.displacement = 0;
@@ -232,7 +320,6 @@ describe("renderProjectToCanvas", () => {
     project.layout.symmetryMode = "none";
     project.canvas.backgroundAlpha = 1;
     project.compositing.overlap = 0;
-    project.compositing.shadow = 0;
     project.effects.rotationJitter = 0;
     project.effects.scaleJitter = 0;
     project.effects.displacement = 0;
@@ -281,7 +368,6 @@ describe("renderProjectToCanvas", () => {
     project.layout.gutter = 0;
     project.layout.symmetryMode = "none";
     project.compositing.overlap = 0;
-    project.compositing.shadow = 0;
     project.effects.rotationJitter = 0;
     project.effects.scaleJitter = 0;
     project.effects.displacement = 0;
@@ -382,7 +468,7 @@ describe("renderProjectToCanvas", () => {
       canvas,
     );
 
-    expect(context.arc).toHaveBeenCalledTimes(4);
+    expect(context.arc).toHaveBeenCalledTimes(2);
     const [outerCall, innerCall] = context.arc.mock.calls;
     expect(innerCall?.[2]).toBeCloseTo((outerCall?.[2] as number) * 0.8, 6);
   });
@@ -419,7 +505,7 @@ describe("renderProjectToCanvas", () => {
       canvas,
     );
 
-    expect(context.arc).toHaveBeenCalledTimes(4);
+    expect(context.arc).toHaveBeenCalledTimes(2);
     expect(context.lineTo).toHaveBeenCalled();
     const [outerCall, innerCall] = context.arc.mock.calls;
     expect((outerCall?.[4] as number) - (outerCall?.[3] as number)).toBeCloseTo(
@@ -645,7 +731,7 @@ describe("renderProjectToCanvas", () => {
     expect(context.scale).toHaveBeenNthCalledWith(2, -0.6, 0.6);
   });
 
-  it("applies the configured blend mode during kaleidoscope overlay draws", async () => {
+  it("applies the configured blend mode when compositing kaleidoscope layers", async () => {
     const project = createProjectDocument("Kaleidoscope Blend Mode");
     project.effects.sharpen = 0;
     project.effects.kaleidoscopeSegments = 3;
@@ -657,18 +743,23 @@ describe("renderProjectToCanvas", () => {
     project.layout.symmetryMode = "none";
     project.compositing.blendMode = "multiply";
     project.compositing.overlap = 0;
-    project.compositing.shadow = 0;
     project.effects.rotationJitter = 0;
     project.effects.scaleJitter = 0;
     project.effects.displacement = 0;
     project.effects.distortion = 0;
 
     const context = createMockContext();
+    const layerContext = createMockContext();
     const sourceContext = createMockContext();
     const canvas = {
       width: 0,
       height: 0,
       getContext: vi.fn(() => context),
+    } as unknown as HTMLCanvasElement;
+    const layerCanvas = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn(() => layerContext),
     } as unknown as HTMLCanvasElement;
     const sourceCanvas = {
       width: 0,
@@ -677,7 +768,8 @@ describe("renderProjectToCanvas", () => {
     } as unknown as HTMLCanvasElement;
     const createElementSpy = vi
       .spyOn(document, "createElement")
-      .mockReturnValue(sourceCanvas as never);
+      .mockReturnValueOnce(layerCanvas as never)
+      .mockReturnValueOnce(sourceCanvas as never);
 
     try {
       await renderProjectToCanvas(
@@ -692,11 +784,10 @@ describe("renderProjectToCanvas", () => {
 
     expect(context.globalCompositeOperationAssignments).toContain("multiply");
     expect(context.drawImageCompositeOperations.at(-1)).toBe("multiply");
-    expect(context.drawImageCompositeOperations.at(-2)).toBe("multiply");
-    expect(sourceContext.drawImageCompositeOperations).toEqual(["multiply"]);
+    expect(sourceContext.drawImageCompositeOperations).toEqual(["source-over"]);
   });
 
-  it("keeps non-kaleidoscope rendering on the slice blend mode path", async () => {
+  it("composites non-kaleidoscope multiply layers through the offscreen layer path", async () => {
     const project = createProjectDocument("Slice Blend Mode");
     project.effects.sharpen = 0;
     project.effects.kaleidoscopeSegments = 1;
@@ -707,7 +798,52 @@ describe("renderProjectToCanvas", () => {
     project.layout.symmetryMode = "none";
     project.compositing.blendMode = "multiply";
     project.compositing.overlap = 0;
-    project.compositing.shadow = 0;
+    project.effects.rotationJitter = 0;
+    project.effects.scaleJitter = 0;
+    project.effects.displacement = 0;
+    project.effects.distortion = 0;
+
+    const context = createMockContext();
+    const layerContext = createMockContext();
+    const canvas = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn(() => context),
+    } as unknown as HTMLCanvasElement;
+    const layerCanvas = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn(() => layerContext),
+    } as unknown as HTMLCanvasElement;
+    const createElementSpy = vi
+      .spyOn(document, "createElement")
+      .mockReturnValueOnce(layerCanvas as never);
+
+    try {
+      await renderProjectToCanvas(
+        project,
+        [asset],
+        new Map([[asset.id, { asset, bitmap: {} as ImageBitmap }]]),
+        canvas,
+      );
+    } finally {
+      createElementSpy.mockRestore();
+    }
+
+    expect(context.drawImageCompositeOperations).toEqual(["multiply"]);
+    expect(layerContext.drawImageCompositeOperations).toEqual(["source-over"]);
+  });
+
+  it("keeps default finish layers on the direct render path", async () => {
+    const project = createProjectDocument("Direct Finish Path");
+    project.effects.sharpen = 0;
+    project.effects.kaleidoscopeSegments = 1;
+    project.layout.family = "grid";
+    project.layout.columns = 1;
+    project.layout.rows = 1;
+    project.layout.shapeMode = "rect";
+    project.layout.symmetryMode = "none";
+    project.compositing.overlap = 0;
     project.effects.rotationJitter = 0;
     project.effects.scaleJitter = 0;
     project.effects.displacement = 0;
@@ -719,15 +855,146 @@ describe("renderProjectToCanvas", () => {
       height: 0,
       getContext: vi.fn(() => context),
     } as unknown as HTMLCanvasElement;
+    const createElementSpy = vi.spyOn(document, "createElement");
 
-    await renderProjectToCanvas(
-      project,
-      [asset],
-      new Map([[asset.id, { asset, bitmap: {} as ImageBitmap }]]),
-      canvas,
+    try {
+      await renderProjectToCanvas(
+        project,
+        [asset],
+        new Map([[asset.id, { asset, bitmap: {} as ImageBitmap }]]),
+        canvas,
+      );
+    } finally {
+      createElementSpy.mockRestore();
+    }
+
+    expect(createElementSpy).not.toHaveBeenCalled();
+  });
+
+  it("applies finish color adjustments and drop shadow during layer compositing", async () => {
+    const project = createProjectDocument("Layer Finish");
+    project.effects.sharpen = 0;
+    project.effects.kaleidoscopeSegments = 1;
+    project.layout.family = "grid";
+    project.layout.columns = 1;
+    project.layout.rows = 1;
+    project.layout.shapeMode = "rect";
+    project.layout.symmetryMode = "none";
+    project.compositing.overlap = 0;
+    project.effects.rotationJitter = 0;
+    project.effects.scaleJitter = 0;
+    project.effects.displacement = 0;
+    project.effects.distortion = 0;
+    project.finish.brightness = 1.3;
+    project.finish.contrast = 0.85;
+    project.finish.saturate = 1.2;
+    project.finish.hueRotate = 45;
+    project.finish.grayscale = 0.25;
+    project.finish.invert = 0.1;
+    project.finish.shadowOffsetX = 14;
+    project.finish.shadowOffsetY = 20;
+    project.finish.shadowBlur = 28;
+    project.finish.shadowOpacity = 0.5;
+
+    const context = createMockContext();
+    const layerContext = createMockContext();
+    const finishContext = createMockContext();
+    const canvas = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn(() => context),
+    } as unknown as HTMLCanvasElement;
+    const layerCanvas = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn(() => layerContext),
+    } as unknown as HTMLCanvasElement;
+    const finishCanvas = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn(() => finishContext),
+    } as unknown as HTMLCanvasElement;
+    const createElementSpy = vi
+      .spyOn(document, "createElement")
+      .mockReturnValueOnce(layerCanvas as never)
+      .mockReturnValueOnce(finishCanvas as never);
+
+    try {
+      await renderProjectToCanvas(
+        project,
+        [asset],
+        new Map([[asset.id, { asset, bitmap: {} as ImageBitmap }]]),
+        canvas,
+      );
+    } finally {
+      createElementSpy.mockRestore();
+    }
+
+    expect(finishContext.filterAssignments).toContain(
+      "brightness(130%) contrast(85%) saturate(120%) hue-rotate(45deg) grayscale(25%) invert(10%)",
     );
+    expect(context.shadowColorAssignments).toContain("#180f0880");
+    expect(context.shadowBlurAssignments).toContain(28);
+    expect(context.shadowOffsetXAssignments).toContain(14);
+    expect(context.shadowOffsetYAssignments).toContain(20);
+    expect(context.drawImage).toHaveBeenCalledWith(finishCanvas, 0, 0);
+  });
 
-    expect(context.drawImageCompositeOperations).toEqual(["multiply"]);
+  it("preserves blend mode and opacity when finish effects force offscreen compositing", async () => {
+    const project = createProjectDocument("Finish Blend");
+    project.effects.sharpen = 0;
+    project.effects.kaleidoscopeSegments = 1;
+    project.layout.family = "grid";
+    project.layout.columns = 1;
+    project.layout.rows = 1;
+    project.layout.shapeMode = "rect";
+    project.layout.symmetryMode = "none";
+    project.compositing.blendMode = "multiply";
+    project.compositing.opacity = 0.42;
+    project.compositing.overlap = 0;
+    project.effects.rotationJitter = 0;
+    project.effects.scaleJitter = 0;
+    project.effects.displacement = 0;
+    project.effects.distortion = 0;
+    project.finish.brightness = 1.1;
+
+    const context = createMockContext();
+    const layerContext = createMockContext();
+    const finishContext = createMockContext();
+    const canvas = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn(() => context),
+    } as unknown as HTMLCanvasElement;
+    const layerCanvas = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn(() => layerContext),
+    } as unknown as HTMLCanvasElement;
+    const finishCanvas = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn(() => finishContext),
+    } as unknown as HTMLCanvasElement;
+    const createElementSpy = vi
+      .spyOn(document, "createElement")
+      .mockReturnValueOnce(layerCanvas as never)
+      .mockReturnValueOnce(finishCanvas as never);
+
+    try {
+      await renderProjectToCanvas(
+        project,
+        [asset],
+        new Map([[asset.id, { asset, bitmap: {} as ImageBitmap }]]),
+        canvas,
+      );
+    } finally {
+      createElementSpy.mockRestore();
+    }
+
+    expect(context.globalCompositeOperationAssignments).toContain("multiply");
+    expect(context.drawImageCompositeOperations.at(-1)).toBe("multiply");
+    expect(context.globalAlphaAssignments).toContain(0.42);
   });
 
   it("uses the configured kaleidoscope mirror mode when scaling clones", async () => {
@@ -772,7 +1039,6 @@ describe("renderProjectToCanvas", () => {
     project.layout.rows = 1;
     project.layout.shapeMode = "rect";
     project.compositing.overlap = 0;
-    project.compositing.shadow = 0;
     project.effects.rotationJitter = 0;
     project.effects.scaleJitter = 0;
     project.effects.displacement = 0;

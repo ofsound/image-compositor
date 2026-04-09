@@ -5,6 +5,7 @@ import type {
   CropDistribution,
   EffectSettings,
   ExportSettings,
+  FinishSettings,
   GeneratorPreset,
   LayoutSettings,
   LayerRenderProject,
@@ -21,13 +22,18 @@ type LegacyEffectSettings = Partial<EffectSettings> & {
   mirror?: boolean;
 };
 
+type LegacyCompositingSettings = Partial<CompositingSettings> & {
+  shadow?: number;
+};
+
 type LegacyProjectLike = {
   canvas?: Partial<CanvasSettings> & { inset?: number };
   sourceIds?: string[];
   layout?: Partial<LayoutSettings>;
   sourceMapping?: Partial<SourceMappingSettings>;
   effects?: Partial<EffectSettings>;
-  compositing?: Partial<CompositingSettings>;
+  compositing?: LegacyCompositingSettings;
+  finish?: Partial<FinishSettings>;
   activeSeed?: number;
   presets?: GeneratorPreset[];
   passes?: RenderPass[];
@@ -74,6 +80,7 @@ export function createLayerRenderProject(
     sourceMapping: structuredClone(layer.sourceMapping),
     effects: structuredClone(layer.effects),
     compositing: structuredClone(layer.compositing),
+    finish: structuredClone(layer.finish),
     activeSeed: layer.activeSeed,
     presets: structuredClone(layer.presets),
     passes: structuredClone(layer.passes),
@@ -237,8 +244,21 @@ export const DEFAULT_COMPOSITING: CompositingSettings = {
   blendMode: "source-over",
   opacity: 1,
   overlap: 0.0,
-  shadow: 0.08,
   feather: 0.04,
+};
+
+export const DEFAULT_FINISH: FinishSettings = {
+  shadowOffsetX: 0,
+  shadowOffsetY: 0,
+  shadowBlur: 0,
+  shadowOpacity: 0,
+  shadowColor: "#180f08",
+  brightness: 1,
+  contrast: 1,
+  saturate: 1,
+  hueRotate: 0,
+  grayscale: 0,
+  invert: 0,
 };
 
 export const DEFAULT_EXPORT: ExportSettings = {
@@ -372,14 +392,44 @@ export function normalizeSourceMapping(
 }
 
 function normalizeCompositingSettings(
-  compositing: Partial<CompositingSettings> | undefined,
+  compositing: LegacyCompositingSettings | undefined,
 ): CompositingSettings {
   return {
     blendMode: compositing?.blendMode ?? DEFAULT_COMPOSITING.blendMode,
     opacity: compositing?.opacity ?? DEFAULT_COMPOSITING.opacity,
     overlap: compositing?.overlap ?? DEFAULT_COMPOSITING.overlap,
-    shadow: compositing?.shadow ?? DEFAULT_COMPOSITING.shadow,
     feather: compositing?.feather ?? DEFAULT_COMPOSITING.feather,
+  };
+}
+
+function normalizeFinishSettings(
+  finish: Partial<FinishSettings> | undefined,
+  compositing: LegacyCompositingSettings | undefined,
+): FinishSettings {
+  const legacyShadow = compositing?.shadow ?? 0;
+  const shouldMigrateShadow =
+    (!finish || "shadowOffsetX" in finish === false) && legacyShadow > 0;
+
+  return {
+    shadowOffsetX: finish?.shadowOffsetX ?? 0,
+    shadowOffsetY:
+      finish?.shadowOffsetY ??
+      (shouldMigrateShadow ? 24 : DEFAULT_FINISH.shadowOffsetY),
+    shadowBlur:
+      finish?.shadowBlur ??
+      (shouldMigrateShadow ? 36 : DEFAULT_FINISH.shadowBlur),
+    shadowOpacity:
+      finish?.shadowOpacity ??
+      (shouldMigrateShadow
+        ? Math.min(0.35, legacyShadow * 2.25)
+        : DEFAULT_FINISH.shadowOpacity),
+    shadowColor: finish?.shadowColor ?? DEFAULT_FINISH.shadowColor,
+    brightness: finish?.brightness ?? DEFAULT_FINISH.brightness,
+    contrast: finish?.contrast ?? DEFAULT_FINISH.contrast,
+    saturate: finish?.saturate ?? DEFAULT_FINISH.saturate,
+    hueRotate: finish?.hueRotate ?? DEFAULT_FINISH.hueRotate,
+    grayscale: finish?.grayscale ?? DEFAULT_FINISH.grayscale,
+    invert: finish?.invert ?? DEFAULT_FINISH.invert,
   };
 }
 
@@ -413,6 +463,7 @@ export function normalizeCompositorLayer(
     ),
     effects: normalizeEffectSettings(layer?.effects),
     compositing: normalizeCompositingSettings(layer?.compositing),
+    finish: normalizeFinishSettings(layer?.finish, layer?.compositing),
     activeSeed: layer?.activeSeed ?? 187310,
     presets: normalizeLayerPresets(layer?.presets),
     passes: normalizeLayerPasses(layer?.passes),
@@ -439,6 +490,7 @@ function createLegacyLayer(
       sourceMapping: value.sourceMapping,
       effects: value.effects,
       compositing: value.compositing,
+      finish: value.finish,
       activeSeed: value.activeSeed,
       presets: value.presets,
       passes: value.passes,
@@ -491,6 +543,7 @@ export function syncLegacyProjectFieldsToSelectedLayer<T extends ProjectSnapshot
     compositing: structuredClone(
       snapshot.compositing ?? selectedLayer.compositing,
     ),
+    finish: structuredClone(snapshot.finish ?? selectedLayer.finish),
     activeSeed: snapshot.activeSeed ?? selectedLayer.activeSeed,
     presets: structuredClone(snapshot.presets ?? selectedLayer.presets),
     passes: structuredClone(snapshot.passes ?? selectedLayer.passes),
@@ -525,6 +578,7 @@ function attachLegacySelectedLayerFields<T extends ProjectSnapshot>(
     compositing: structuredClone(
       selectedLayer?.compositing ?? DEFAULT_COMPOSITING,
     ),
+    finish: structuredClone(selectedLayer?.finish ?? DEFAULT_FINISH),
     activeSeed: selectedLayer?.activeSeed ?? 187310,
     presets: structuredClone(selectedLayer?.presets ?? DEFAULT_PRESETS),
     passes: structuredClone(selectedLayer?.passes ?? DEFAULT_PASSES),
@@ -555,11 +609,18 @@ function hasPartialEffectOverrides(effects: Partial<EffectSettings> | undefined)
 }
 
 function hasPartialCompositingOverrides(
-  compositing: Partial<CompositingSettings> | undefined,
+  compositing: LegacyCompositingSettings | undefined,
 ) {
   return (
     !!compositing &&
     ("blendMode" in compositing === false || "opacity" in compositing === false)
+  );
+}
+
+function hasPartialFinishOverrides(finish: Partial<FinishSettings> | undefined) {
+  return (
+    !!finish &&
+    ("shadowOffsetX" in finish === false || "brightness" in finish === false)
   );
 }
 
@@ -569,7 +630,9 @@ function hasLegacyRootOverrides(snapshot: LegacySnapshotLike) {
     (hasPartialLayoutOverrides(snapshot.layout) ||
       hasPartialSourceMappingOverrides(snapshot.sourceMapping) ||
       hasPartialEffectOverrides(snapshot.effects) ||
-      hasPartialCompositingOverrides(snapshot.compositing))
+      hasPartialCompositingOverrides(snapshot.compositing) ||
+      (snapshot.compositing?.shadow ?? 0) > 0 ||
+      hasPartialFinishOverrides(snapshot.finish))
   );
 }
 
@@ -601,6 +664,7 @@ export function normalizeProjectSnapshot(
     ),
     effects: normalizeEffectSettings(snapshot.effects),
     compositing: normalizeCompositingSettings(snapshot.compositing),
+    finish: normalizeFinishSettings(snapshot.finish, snapshot.compositing),
     activeSeed: snapshot.activeSeed ?? 187310,
     presets: snapshot.presets ?? DEFAULT_PRESETS,
     passes: snapshot.passes ?? DEFAULT_PASSES,

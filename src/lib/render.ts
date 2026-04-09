@@ -10,6 +10,7 @@ import { buildRenderSlices } from "@/lib/generator-registry";
 import { lockExportDimensionsToCanvas } from "@/lib/export-sizing";
 import {
   createLayerRenderProject,
+  DEFAULT_FINISH,
   normalizeProjectDocument,
   syncLegacyProjectFieldsToSelectedLayer,
 } from "@/lib/project-defaults";
@@ -421,6 +422,90 @@ function applySharpen(
   context.putImageData(output, 0, 0);
 }
 
+function hasActiveFinish(project: LayerRenderProject) {
+  const { finish } = project;
+  return (
+    finish.shadowOpacity > 0 ||
+    finish.shadowBlur > 0 ||
+    finish.shadowOffsetX !== 0 ||
+    finish.shadowOffsetY !== 0 ||
+    finish.brightness !== DEFAULT_FINISH.brightness ||
+    finish.contrast !== DEFAULT_FINISH.contrast ||
+    finish.saturate !== DEFAULT_FINISH.saturate ||
+    finish.hueRotate !== DEFAULT_FINISH.hueRotate ||
+    finish.grayscale !== DEFAULT_FINISH.grayscale ||
+    finish.invert !== DEFAULT_FINISH.invert
+  );
+}
+
+function hasColorAdjustments(project: LayerRenderProject) {
+  const { finish } = project;
+  return (
+    finish.brightness !== DEFAULT_FINISH.brightness ||
+    finish.contrast !== DEFAULT_FINISH.contrast ||
+    finish.saturate !== DEFAULT_FINISH.saturate ||
+    finish.hueRotate !== DEFAULT_FINISH.hueRotate ||
+    finish.grayscale !== DEFAULT_FINISH.grayscale ||
+    finish.invert !== DEFAULT_FINISH.invert
+  );
+}
+
+function buildFinishFilter(project: LayerRenderProject) {
+  const { finish } = project;
+  return [
+    `brightness(${Math.max(0, finish.brightness) * 100}%)`,
+    `contrast(${Math.max(0, finish.contrast) * 100}%)`,
+    `saturate(${Math.max(0, finish.saturate) * 100}%)`,
+    `hue-rotate(${finish.hueRotate}deg)`,
+    `grayscale(${clamp(finish.grayscale, 0, 1) * 100}%)`,
+    `invert(${clamp(finish.invert, 0, 1) * 100}%)`,
+  ].join(" ");
+}
+
+function applyLayerColorAdjustments(
+  sourceCanvas: RenderCanvas,
+  project: LayerRenderProject,
+) {
+  if (!hasColorAdjustments(project)) {
+    return sourceCanvas;
+  }
+
+  const finishedCanvas = createRenderCanvas(sourceCanvas.width, sourceCanvas.height);
+  const finishedContext = getRenderContext(finishedCanvas);
+  finishedContext.filter = buildFinishFilter(project);
+  finishedContext.drawImage(sourceCanvas, 0, 0);
+  finishedContext.filter = "none";
+  return finishedCanvas;
+}
+
+function compositeFinishedLayer(
+  context: RenderContext,
+  layerCanvas: RenderCanvas,
+  project: LayerRenderProject,
+) {
+  context.save();
+  context.globalCompositeOperation = project.compositing.blendMode;
+  context.globalAlpha = clamp(project.compositing.opacity, 0, 1);
+
+  if (project.finish.shadowOpacity > 0) {
+    context.shadowColor = withAlpha(
+      project.finish.shadowColor,
+      clamp(project.finish.shadowOpacity, 0, 1),
+    );
+    context.shadowBlur = Math.max(0, project.finish.shadowBlur);
+    context.shadowOffsetX = project.finish.shadowOffsetX;
+    context.shadowOffsetY = project.finish.shadowOffsetY;
+  } else {
+    context.shadowColor = "rgba(0, 0, 0, 0)";
+    context.shadowBlur = 0;
+    context.shadowOffsetX = 0;
+    context.shadowOffsetY = 0;
+  }
+
+  context.drawImage(layerCanvas, 0, 0);
+  context.restore();
+}
+
 async function drawSlice(
   context: RenderContext,
   slice: RenderSlice,
@@ -447,25 +532,6 @@ async function drawSlice(
   context.filter = `blur(${project.effects.blur}px)`;
 
   if (drawWarpedSlice(context, slice, bitmap, asset, project)) {
-    if (project.compositing.shadow > 0 && slice.quadPoints) {
-      context.globalAlpha = project.compositing.shadow * 0.4;
-      context.strokeStyle = "rgba(24, 15, 8, 0.2)";
-      context.lineWidth = 2;
-      context.beginPath();
-      context.moveTo(
-        slice.quadPoints[0]!.x + slice.displacementOffset.x,
-        slice.quadPoints[0]!.y + slice.displacementOffset.y,
-      );
-      for (const point of slice.quadPoints.slice(1)) {
-        context.lineTo(
-          point!.x + slice.displacementOffset.x,
-          point!.y + slice.displacementOffset.y,
-        );
-      }
-      context.closePath();
-      context.stroke();
-    }
-
     context.restore();
     return;
   }
@@ -505,21 +571,6 @@ async function drawSlice(
     );
   }
   context.restore();
-
-  if (project.compositing.shadow > 0) {
-    context.globalAlpha = project.compositing.shadow * 0.4;
-    context.strokeStyle = "rgba(24, 15, 8, 0.2)";
-    context.lineWidth = 2;
-    context.save();
-    clipSliceToInsetArea(context, slice, project);
-    context.translate(centerX, centerY);
-    context.rotate(slice.rotation + slice.clipRotation);
-    context.scale(scaleX, scaleY);
-    context.translate(-centerX, -centerY);
-    drawShapePath(context, slice, project);
-    context.stroke();
-    context.restore();
-  }
 
   context.restore();
 }
@@ -669,8 +720,7 @@ export async function renderProjectToCanvas(
   const visibleLayers = normalizedProject.layers.filter((layer) => layer.visible);
 
   for (const layer of visibleLayers) {
-    if (!layer.visible) continue;
-
+    const layerProject = createLayerRenderProject(normalizedProject, layer);
     const layerAssets =
       layer.sourceIds.length > 0
         ? layer.sourceIds
@@ -678,15 +728,17 @@ export async function renderProjectToCanvas(
             .filter((asset): asset is SourceAsset => Boolean(asset))
         : assets;
 
-    const usesDirectComposite = visibleLayers.length === 1;
+    const usesDirectComposite =
+      layer.compositing.blendMode === "source-over" &&
+      clamp(layer.compositing.opacity, 0, 1) === 1 &&
+      !hasActiveFinish(layerProject);
 
     if (usesDirectComposite) {
-      const layerProject = createLayerRenderProject(normalizedProject, layer);
       await renderLayer(layerProject, layerAssets, bitmaps, context, canvas);
       continue;
     }
 
-    const layerProject = createLayerRenderProject(normalizedProject, {
+    const neutralLayerProject = createLayerRenderProject(normalizedProject, {
       ...layer,
       compositing: {
         ...layer.compositing,
@@ -698,13 +750,9 @@ export async function renderProjectToCanvas(
       normalizedProject.canvas.width,
       normalizedProject.canvas.height,
     );
-    await renderLayerToCanvas(layerProject, layerAssets, bitmaps, layerCanvas);
-
-    context.save();
-    context.globalCompositeOperation = layer.compositing.blendMode;
-    context.globalAlpha = clamp(layer.compositing.opacity, 0, 1);
-    context.drawImage(layerCanvas, 0, 0);
-    context.restore();
+    await renderLayerToCanvas(neutralLayerProject, layerAssets, bitmaps, layerCanvas);
+    const finishedLayerCanvas = applyLayerColorAdjustments(layerCanvas, layerProject);
+    compositeFinishedLayer(context, finishedLayerCanvas, layerProject);
   }
 }
 

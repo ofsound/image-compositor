@@ -36,5 +36,8 @@ jobs:
       - name: Web smoke tests
         run: xvfb-run -a npm run test:e2e
 
+      - name: Bundle performance budget
+        run: npm run perf:budget
+
       - name: Electron smoke tests
         run: xvfb-run -a npm run test:electron

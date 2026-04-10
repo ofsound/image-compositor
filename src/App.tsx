@@ -1,6 +1,4 @@
 import {
-  closestCenter,
-  DndContext,
   type DragEndEvent,
   KeyboardSensor,
   PointerSensor,
@@ -71,7 +69,7 @@ import {
 import { coerceShapeModeForFamily, getGeometryOptions } from "@/lib/layout-utils";
 import { readBlob } from "@/lib/opfs";
 import { toggleSourceId } from "@/lib/source-selection";
-import { getSourceWeight, setSourceWeight } from "@/lib/source-weights";
+import { setSourceWeight } from "@/lib/source-weights";
 import { cn } from "@/lib/utils";
 import {
   useWorkspaceActions,
@@ -318,8 +316,9 @@ function App() {
     updater: (project: ProjectEditorView) => ProjectEditorView,
   ) => {
     startTransition(() => {
-      void updateProject((project) =>
-        updateProjectFromEditorView(project, updater),
+      void updateProject(
+        (project) => updateProjectFromEditorView(project, updater),
+        { queueKey: "ui-editor-update" },
       );
     });
   };

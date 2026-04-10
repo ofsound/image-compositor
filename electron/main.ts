@@ -9,6 +9,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rendererDistPath = path.resolve(__dirname, "../dist/client");
 const preloadPath = path.resolve(__dirname, "preload.js");
 const devServerUrl = process.env.ELECTRON_RENDERER_URL?.trim() || null;
+const ALLOWED_EXTERNAL_PROTOCOLS = new Set(["https:", "http:", "mailto:"]);
 
 function getAppIconPath() {
   const devIconPath = path.resolve(__dirname, "../public/electron-icon.png");
@@ -47,11 +48,23 @@ async function createMainWindow() {
       preload: preloadPath,
       contextIsolation: true,
       nodeIntegration: false,
+      sandbox: true,
     },
   });
 
+  window.webContents.on("will-navigate", (event) => {
+    event.preventDefault();
+  });
+
   window.webContents.setWindowOpenHandler(({ url }) => {
-    void shell.openExternal(url);
+    try {
+      const parsedUrl = new URL(url);
+      if (ALLOWED_EXTERNAL_PROTOCOLS.has(parsedUrl.protocol)) {
+        void shell.openExternal(url);
+      }
+    } catch {
+      // Ignore malformed URLs.
+    }
     return { action: "deny" };
   });
 

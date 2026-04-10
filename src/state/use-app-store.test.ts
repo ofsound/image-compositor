@@ -5,6 +5,13 @@ const {
   captureAssetSnapshot,
   createGeneratedSourceAsset,
   deleteAssetsAtomically,
+  buildBitmapMap,
+  renderProjectLayerToCanvas,
+  renderProjectToCanvas,
+  exportProjectImage,
+  exportProjectBundle,
+  loadProjectBundle,
+  persistImportedProjectBundle,
   persistAssetCreationsAtomically,
   persistAssetUpdatesAtomically,
   loadWorkspaceSnapshotData,
@@ -52,6 +59,13 @@ const {
   captureAssetSnapshot: vi.fn(),
   createGeneratedSourceAsset: vi.fn(),
   deleteAssetsAtomically: vi.fn(async () => undefined),
+  buildBitmapMap: vi.fn(async () => new Map()),
+  renderProjectLayerToCanvas: vi.fn(async () => undefined),
+  renderProjectToCanvas: vi.fn(async () => undefined),
+  exportProjectImage: vi.fn(),
+  exportProjectBundle: vi.fn(),
+  loadProjectBundle: vi.fn(),
+  persistImportedProjectBundle: vi.fn(async () => undefined),
   loadWorkspaceSnapshotData: vi.fn(async () => ({
     projects: [],
     assets: [],
@@ -71,6 +85,7 @@ const {
 vi.mock("@/lib/assets", () => ({
   createGeneratedSourceAsset,
   duplicateSourceAsset: vi.fn(),
+  getSourceContentSignature: vi.fn((asset: { id?: string }) => asset.id ?? "asset"),
   normalizeSourceAsset: vi.fn((asset) => asset),
   persistProcessedAsset,
   updateGeneratedSourceAsset,
@@ -79,12 +94,17 @@ vi.mock("@/lib/assets", () => ({
 vi.mock("@/lib/db", () => ({ db }));
 vi.mock("@/lib/download", () => ({ downloadBlob: vi.fn() }));
 vi.mock("@/lib/image-worker-client", () => ({ processImageFile }));
-vi.mock("@/lib/render", () => ({ exportProjectImage: vi.fn() }));
+vi.mock("@/lib/render", () => ({
+  buildBitmapMap,
+  exportProjectImage,
+  renderProjectLayerToCanvas,
+  renderProjectToCanvas,
+}));
 vi.mock("@/lib/serializer", () => ({
   createImportCopy: vi.fn(),
-  exportProjectBundle: vi.fn(),
-  loadProjectBundle: vi.fn(),
-  persistImportedProjectBundle: vi.fn(),
+  exportProjectBundle,
+  loadProjectBundle,
+  persistImportedProjectBundle,
 }));
 vi.mock("@/lib/workspace-storage", () => ({
   captureAssetSnapshot,
@@ -430,6 +450,33 @@ describe("useAppStore history", () => {
     );
     expect(useAppStore.getState().canUndo).toBe(true);
     expect(useAppStore.getState().canRedo).toBe(false);
+  });
+
+  it("serializes concurrent selected-layer edits", async () => {
+    const before = getActiveProjectView()!;
+    const initialRows = before.layout.rows;
+    const initialColumns = before.layout.columns;
+
+    await Promise.all([
+      useAppStore.getState().updateSelectedLayer((layer) => ({
+        ...layer,
+        layout: {
+          ...layer.layout,
+          rows: initialRows + 2,
+        },
+      })),
+      useAppStore.getState().updateSelectedLayer((layer) => ({
+        ...layer,
+        layout: {
+          ...layer.layout,
+          columns: initialColumns + 3,
+        },
+      })),
+    ]);
+
+    const after = getActiveProjectView()!;
+    expect(after.layout.rows).toBe(initialRows + 2);
+    expect(after.layout.columns).toBe(initialColumns + 3);
   });
 
   it("clears redo history after a divergent project edit", async () => {
@@ -1077,5 +1124,56 @@ describe("useAppStore import progress", () => {
 
     expect(useAppStore.getState().assets[0]).toEqual(asset);
     expect(useAppStore.getState().status).toBe("Could not update source: persist failed");
+  });
+
+  it("clears busy state when export rendering fails", async () => {
+    const project = useAppStore.getState().projects[0]!;
+    vi.mocked(exportProjectImage).mockRejectedValueOnce(new Error("render failed"));
+
+    await useAppStore.getState().exportCurrentImage(project, [], async () => null);
+
+    expect(useAppStore.getState().busy).toBe(false);
+    expect(useAppStore.getState().status).toBe(
+      "Could not export image: render failed",
+    );
+  });
+
+  it("keeps workspace stable when bundle import persistence fails", async () => {
+    const project = useAppStore.getState().projects[0]!;
+    const beforeState = useAppStore.getState();
+
+    vi.mocked(persistImportedProjectBundle).mockRejectedValueOnce(
+      new Error("disk full"),
+    );
+
+    await useAppStore.getState().resolveBundleImport(
+      {
+        fileName: "sample.image-compositor.zip",
+        projectId: project.id,
+        projectTitle: project.title,
+        conflictProject: project,
+        bundle: {
+          manifest: {
+            version: 3,
+            projectId: project.id,
+            exportedAt: new Date().toISOString(),
+            assetIds: [],
+            versionIds: [],
+          },
+          projectDoc: project,
+          versionDocs: [],
+          assetDocs: [],
+          assetBlobs: {},
+          versionBlobs: {},
+        },
+      },
+      "replace",
+    );
+
+    expect(useAppStore.getState().busy).toBe(false);
+    expect(useAppStore.getState().status).toBe(
+      "Could not import project bundle: disk full",
+    );
+    expect(useAppStore.getState().activeProjectId).toBe(beforeState.activeProjectId);
   });
 });

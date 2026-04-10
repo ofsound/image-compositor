@@ -60,8 +60,8 @@ test("supports multi-layer export and bundle import workflows across reload", as
   await expect(page.getByText("spec", { exact: true })).toBeVisible();
   await page.keyboard.press("Escape");
 
-  await page.getByText("Add Layer", { exact: true }).click();
-  await expect(page.getByRole("button", { name: /Layer 2/ }).first()).toBeVisible();
+  await page.getByRole("button", { name: "Add Layer", exact: true }).first().click();
+  await page.getByRole("button", { name: /Layer 2/ }).first().waitFor({ state: "attached" });
   await expect(page.getByRole("button", { name: "Export", exact: true })).toBeEnabled({
     timeout: 15_000,
   });
@@ -83,7 +83,7 @@ test("supports multi-layer export and bundle import workflows across reload", as
     timeout: 15_000,
   });
   await expect(page.getByText("spec", { exact: true })).toBeVisible();
-  await expect(page.getByRole("button", { name: /Layer 2/ }).first()).toBeVisible();
+  await page.getByRole("button", { name: /Layer 2/ }).first().waitFor({ state: "attached" });
 
   await page.locator('input[accept=".zip"]').setInputFiles(bundlePath);
   await expect(page.getByRole("dialog")).toContainText("Import conflict");

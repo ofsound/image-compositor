@@ -2,8 +2,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { SourceColorField } from "@/components/app/source-color-field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SliderField, ControlBlock } from "@/components/app/procedural-texture-tab";
-import { InspectorGroup, InspectorFieldGrid } from "@/components/app/inspector-group"; 
-import type { LayoutFamily, GeometryShape, RadialChildRotationMode, ThreeDStructureMode, SourceAssignmentStrategy, CropDistribution, BlendMode, KaleidoscopeMirrorMode } from "@/types/project";
+import { InspectorGroup, InspectorFieldGrid } from "@/components/app/inspector-group";
+import type { GeometryShape } from "@/types/project";
 
 import { coerceShapeModeForFamily } from "@/lib/layout-utils";
 import {
@@ -15,65 +15,17 @@ import {
 } from "@/lib/format-utils";
 import type { ProjectEditorView } from "@/lib/project-editor-view";
 import { Switch } from "@/components/ui/switch";
-
-const LAYOUT_FAMILY_OPTIONS: LayoutFamily[] = [
-  "blocks",
-  "grid",
-  "strips",
-  "radial",
-  "organic",
-  "flow",
-  "3d",
-];
-const RADIAL_CHILD_ROTATION_OPTIONS: RadialChildRotationMode[] = [
-  "none",
-  "tangent",
-  "outward",
-];
-const THREE_D_STRUCTURE_OPTIONS: ThreeDStructureMode[] = [
-  "sphere",
-  "torus",
-  "attractor",
-];
-const SYMMETRY_MODE_OPTIONS: ProjectEditorView["layout"]["symmetryMode"][] = [
-  "none",
-  "mirror-x",
-  "mirror-y",
-  "quad",
-  "radial",
-];
-const SOURCE_ASSIGNMENT_OPTIONS: SourceAssignmentStrategy[] = [
-  "random",
-  "weighted",
-  "sequential",
-  "luminance",
-  "palette",
-  "symmetry",
-];
-const CROP_DISTRIBUTION_OPTIONS: CropDistribution[] = [
-  "center",
-  "distributed",
-];
-const BLEND_MODE_OPTIONS: BlendMode[] = [
-  "source-over",
-  "multiply",
-  "screen",
-  "overlay",
-  "soft-light",
-  "hard-light",
-  "difference",
-  "color-dodge",
-  "luminosity",
-];
-const KALEIDOSCOPE_MIRROR_MODE_OPTIONS: KaleidoscopeMirrorMode[] = [
-  "rotate-only",
-  "alternate",
-  "mirror-all",
-];
-
-function isOption<T extends string>(options: readonly T[], value: string): value is T {
-  return options.some((option) => option === value);
-}
+import {
+  BLEND_MODE_OPTIONS,
+  CROP_DISTRIBUTION_OPTIONS,
+  isOption,
+  KALEIDOSCOPE_MIRROR_MODE_OPTIONS,
+  LAYOUT_FAMILY_OPTIONS,
+  RADIAL_CHILD_ROTATION_OPTIONS,
+  SOURCE_ASSIGNMENT_OPTIONS,
+  SYMMETRY_MODE_OPTIONS,
+  THREE_D_STRUCTURE_OPTIONS,
+} from "@/features/editor/right-sidebar-options";
 
 interface RightSidebarProps {
   previewExpanded: boolean;

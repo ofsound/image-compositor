@@ -50,17 +50,11 @@ import {
   formatSourceModeLabel,
 } from "@/lib/format-utils";
 import type {
-  CellularSourceAsset,
   GradientDirection,
   GradientMode,
-  GradientSourceAsset,
-  PerlinSourceAsset,
   ProjectDocument,
-  ReactionSourceAsset,
-  SolidSourceAsset,
   SourceAsset,
   SourceKind,
-  WaveSourceAsset,
 } from "@/types/project";
 
 const SOURCE_DIALOG_MODES: SourceKind[] = [

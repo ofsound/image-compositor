@@ -27,7 +27,8 @@
     "pretest:electron:packaged": "npm run build:electron",
     "test:electron:packaged": "playwright test -c playwright.electron-packaged.config.ts",
     "check": "tsc -b && vitest run",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "perf:budget": "node scripts/check-perf-budget.mjs"
   },
   "build": {
     "appId": "com.imagecompositor.app",

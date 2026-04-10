@@ -4,6 +4,7 @@ import {
   type CellularSourceInput,
   createGeneratedSourceAsset,
   duplicateSourceAsset,
+  type GeneratedSourceInput,
   type PreparedAssetRecord,
   persistProcessedAsset,
   updateGeneratedSourceAsset,
@@ -46,6 +47,7 @@ import {
   putProjectDocument,
   putProjectVersion,
 } from "@/lib/workspace-storage";
+import { createWorkspaceCommandRunner } from "@/state/workspace-command-runner";
 import type {
   BundleImportInspection,
   CellularSourceAsset,
@@ -63,6 +65,14 @@ import type {
 
 type BundleImportResolution = "replace" | "copy";
 type SourceImportProgress = { processed: number; total: number };
+
+type GeneratedSourceAction =
+  | { kind: "solid"; input: SolidSourceInput; startStatus: string }
+  | { kind: "gradient"; input: GradientSourceInput; startStatus: string }
+  | { kind: "perlin"; input: PerlinSourceInput; startStatus: string }
+  | { kind: "cellular"; input: CellularSourceInput; startStatus: string }
+  | { kind: "reaction"; input: ReactionSourceInput; startStatus: string }
+  | { kind: "waves"; input: WaveSourceInput; startStatus: string };
 
 interface ProjectChangeHistoryEntry {
   kind: "project-change";
@@ -132,7 +142,7 @@ interface AppState {
   ) => Promise<void>;
   updateProject: (
     updater: (project: ProjectDocument) => ProjectDocument,
-    options?: { recordHistory?: boolean },
+    options?: { recordHistory?: boolean; queueKey?: string },
   ) => Promise<void>;
   importFiles: (files: FileList | File[]) => Promise<void>;
   addSolidSource: (input: SolidSourceInput) => Promise<void>;
@@ -443,7 +453,98 @@ async function syncWorkspace(
   );
 }
 
-export const useAppStore = create<AppState>((set, get) => ({
+export const useAppStore = create<AppState>((set, get) => {
+  const commandRunner = createWorkspaceCommandRunner<AppState>(set, get);
+
+  async function runWorkspaceAction(
+    task: () => Promise<void>,
+    options?: {
+      busy?: boolean;
+      startStatus?: string;
+      queue?: boolean;
+      key?: string;
+      getErrorStatus?: (error: unknown) => string;
+    },
+  ) {
+    try {
+      await commandRunner.run(task, options);
+    } catch {
+      // Status updates are handled by per-action getErrorStatus handlers.
+    }
+  }
+
+  async function addGeneratedSourceAction(action: GeneratedSourceAction) {
+    await runWorkspaceAction(
+      async () => {
+        const activeProject = getActiveProject(get());
+        if (!activeProject) return;
+
+        const generatedInput: GeneratedSourceInput = (() => {
+          switch (action.kind) {
+            case "solid":
+              return { kind: "solid", recipe: action.input, name: action.input.name };
+            case "gradient":
+              return { kind: "gradient", recipe: action.input, name: action.input.name };
+            case "perlin":
+              return { kind: "perlin", recipe: action.input, name: action.input.name };
+            case "cellular":
+              return { kind: "cellular", recipe: action.input, name: action.input.name };
+            case "reaction":
+              return { kind: "reaction", recipe: action.input, name: action.input.name };
+            case "waves":
+              return { kind: "waves", recipe: action.input, name: action.input.name };
+          }
+        })();
+
+        const preparedAsset = await createGeneratedSourceAsset(
+          generatedInput,
+          activeProject.id,
+          activeProject.canvas,
+        );
+        const { nextProject, before, after, assets, historyAssets } =
+          await persistAddedAssetsForProject(activeProject, [preparedAsset]);
+        const asset = assets[0]!;
+
+        set((state) => {
+          const historyByProject = patchHistory(
+            state.historyByProject,
+            nextProject.id,
+            (history) => ({
+              past: [
+                ...history.past,
+                {
+                  kind: "add-assets",
+                  projectId: nextProject.id,
+                  assets: historyAssets,
+                  before,
+                  after,
+                } satisfies AddAssetsHistoryEntry,
+              ],
+              future: [],
+            }),
+          );
+
+          return {
+            assets: sortAssetsByCreated([...state.assets, asset]),
+            projects: upsertProject(state.projects, nextProject),
+            historyByProject,
+            status: `${formatGeneratedSourceKind(action.kind)} source added.`,
+            ...getHistoryFlags(historyByProject, state.activeProjectId),
+          };
+        });
+      },
+      {
+        busy: true,
+        startStatus: action.startStatus,
+        getErrorStatus: (error) =>
+          error instanceof Error
+            ? `Could not add source: ${error.message}`
+            : "Could not add source.",
+      },
+    );
+  }
+
+  return {
   ready: false,
   busy: false,
   status: "Booting workspace…",
@@ -457,13 +558,24 @@ export const useAppStore = create<AppState>((set, get) => ({
   canRedo: false,
 
   async bootstrap() {
-    set({ busy: true, status: "Loading local workspace…" });
-    await syncWorkspace(set, {
-      busy: false,
-      historyByProject: get().historyByProject,
-      ready: true,
-      status: "Ready.",
-    });
+    await runWorkspaceAction(
+      async () => {
+        await syncWorkspace(set, {
+          busy: false,
+          historyByProject: get().historyByProject,
+          ready: true,
+          status: "Ready.",
+        });
+      },
+      {
+        busy: true,
+        startStatus: "Loading local workspace…",
+        getErrorStatus: (error) =>
+          error instanceof Error
+            ? `Could not load workspace: ${error.message}`
+            : "Could not load workspace.",
+      },
+    );
   },
 
   setStatus(status) {
@@ -471,1114 +583,1160 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   async createProject() {
-    const project = createProjectDocument(getNextProjectTitle(get().projects));
-    await Promise.all([putProjectDocument(project), persistActiveProjectId(project.id)]);
-    await syncWorkspace(set, {
-      activeProjectId: project.id,
-      historyByProject: get().historyByProject,
-      status: "Created a new project.",
-    });
+    await runWorkspaceAction(
+      async () => {
+        const project = createProjectDocument(getNextProjectTitle(get().projects));
+        await Promise.all([
+          putProjectDocument(project),
+          persistActiveProjectId(project.id),
+        ]);
+        await syncWorkspace(set, {
+          activeProjectId: project.id,
+          historyByProject: get().historyByProject,
+          status: "Created a new project.",
+        });
+      },
+      {
+        getErrorStatus: (error) =>
+          error instanceof Error
+            ? `Could not create project: ${error.message}`
+            : "Could not create project.",
+      },
+    );
   },
 
   async renameProject(projectId, title) {
-    const nextTitle = title.trim() || "Untitled Composition";
-    const project = get().projects.find((entry) => entry.id === projectId);
-    if (!project) return;
+    await runWorkspaceAction(
+      async () => {
+        const nextTitle = title.trim() || "Untitled Composition";
+        const project = get().projects.find((entry) => entry.id === projectId);
+        if (!project) return;
 
-    await putProjectDocument({
-      ...project,
-      title: nextTitle,
-      updatedAt: new Date().toISOString(),
-    });
+        await putProjectDocument({
+          ...project,
+          title: nextTitle,
+          updatedAt: new Date().toISOString(),
+        });
 
-    await syncWorkspace(set, {
-      activeProjectId: get().activeProjectId,
-      historyByProject: get().historyByProject,
-      status: "Project renamed.",
-    });
+        await syncWorkspace(set, {
+          activeProjectId: get().activeProjectId,
+          historyByProject: get().historyByProject,
+          status: "Project renamed.",
+        });
+      },
+      {
+        getErrorStatus: (error) =>
+          error instanceof Error
+            ? `Could not rename project: ${error.message}`
+            : "Could not rename project.",
+      },
+    );
   },
 
   async duplicateProject(projectId, title) {
-    const sourceProject = get().projects.find(
-      (entry) => entry.id === projectId && entry.deletedAt === null,
-    );
-    if (!sourceProject) return;
+    await runWorkspaceAction(
+      async () => {
+        const sourceProject = get().projects.find(
+          (entry) => entry.id === projectId && entry.deletedAt === null,
+        );
+        if (!sourceProject) return;
 
-    set({ busy: true, status: "Duplicating project…" });
-    const sourceProjectDocument = createProjectMutationBase(sourceProject);
-    const nextProjectId = makeId("project");
-    const nextTitle = title.trim() || `${sourceProject.title} Copy`;
-    const projectAssets = get().assets.filter((asset) => asset.projectId === sourceProject.id);
-    const duplicatedAssets = await Promise.all(
-      projectAssets.map((asset) => duplicateSourceAsset(asset, nextProjectId)),
-    );
-    const sourceIdMap = new Map(
-      projectAssets.map((asset, index) => [
-        asset.id,
-        duplicatedAssets[index]?.asset.id ?? asset.id,
-      ]),
-    );
-    const now = new Date().toISOString();
-    const duplicateProject: ProjectDocument = normalizeProjectDocument({
-      ...sourceProjectDocument,
-      id: nextProjectId,
-      title: nextTitle,
-      layers: sourceProjectDocument.layers.map((layer) => ({
-        ...structuredClone(layer),
-        sourceIds: layer.sourceIds.map(
-          (sourceId) => sourceIdMap.get(sourceId) ?? sourceId,
-        ),
-        sourceMapping: {
-          ...structuredClone(layer.sourceMapping),
-          sourceWeights: Object.fromEntries(
-            Object.entries(layer.sourceMapping.sourceWeights).map(([sourceId, weight]) => [
-              sourceIdMap.get(sourceId) ?? sourceId,
-              weight,
-            ]),
-          ),
-        },
-      })),
-      currentVersionId: null,
-      deletedAt: null,
-      createdAt: now,
-      updatedAt: now,
-    });
+        const sourceProjectDocument = createProjectMutationBase(sourceProject);
+        const nextProjectId = makeId("project");
+        const nextTitle = title.trim() || `${sourceProject.title} Copy`;
+        const projectAssets = get().assets.filter(
+          (asset) => asset.projectId === sourceProject.id,
+        );
+        const duplicatedAssets = await Promise.all(
+          projectAssets.map((asset) => duplicateSourceAsset(asset, nextProjectId)),
+        );
+        const sourceIdMap = new Map(
+          projectAssets.map((asset, index) => [
+            asset.id,
+            duplicatedAssets[index]?.asset.id ?? asset.id,
+          ]),
+        );
+        const now = new Date().toISOString();
+        const duplicateProject: ProjectDocument = normalizeProjectDocument({
+          ...sourceProjectDocument,
+          id: nextProjectId,
+          title: nextTitle,
+          layers: sourceProjectDocument.layers.map((layer) => ({
+            ...structuredClone(layer),
+            sourceIds: layer.sourceIds.map(
+              (sourceId) => sourceIdMap.get(sourceId) ?? sourceId,
+            ),
+            sourceMapping: {
+              ...structuredClone(layer.sourceMapping),
+              sourceWeights: Object.fromEntries(
+                Object.entries(layer.sourceMapping.sourceWeights).map(
+                  ([sourceId, weight]) => [sourceIdMap.get(sourceId) ?? sourceId, weight],
+                ),
+              ),
+            },
+          })),
+          currentVersionId: null,
+          deletedAt: null,
+          createdAt: now,
+          updatedAt: now,
+        });
 
-    await persistAssetCreationsAtomically({
-      projectDoc: duplicateProject,
-      assets: duplicatedAssets,
-      activeProjectId: duplicateProject.id,
-    });
+        await persistAssetCreationsAtomically({
+          projectDoc: duplicateProject,
+          assets: duplicatedAssets,
+          activeProjectId: duplicateProject.id,
+        });
 
-    await syncWorkspace(set, {
-      activeProjectId: duplicateProject.id,
-      busy: false,
-      historyByProject: get().historyByProject,
-      status: "Project duplicated.",
-    });
+        await syncWorkspace(set, {
+          activeProjectId: duplicateProject.id,
+          busy: false,
+          historyByProject: get().historyByProject,
+          status: "Project duplicated.",
+        });
+      },
+      {
+        busy: true,
+        startStatus: "Duplicating project…",
+        getErrorStatus: (error) =>
+          error instanceof Error
+            ? `Could not duplicate project: ${error.message}`
+            : "Could not duplicate project.",
+      },
+    );
   },
 
   async trashProject(projectId) {
-    const project = get().projects.find(
-      (entry) => entry.id === projectId && entry.deletedAt === null,
+    await runWorkspaceAction(
+      async () => {
+        const project = get().projects.find(
+          (entry) => entry.id === projectId && entry.deletedAt === null,
+        );
+        if (!project) return;
+
+        await putProjectDocument({
+          ...project,
+          deletedAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        });
+
+        await syncWorkspace(set, {
+          activeProjectId:
+            get().activeProjectId === projectId ? null : get().activeProjectId,
+          historyByProject: get().historyByProject,
+          status: "Project moved to trash.",
+        });
+      },
+      {
+        getErrorStatus: (error) =>
+          error instanceof Error
+            ? `Could not trash project: ${error.message}`
+            : "Could not trash project.",
+      },
     );
-    if (!project) return;
-
-    await putProjectDocument({
-      ...project,
-      deletedAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    });
-
-    await syncWorkspace(set, {
-      activeProjectId: get().activeProjectId === projectId ? null : get().activeProjectId,
-      historyByProject: get().historyByProject,
-      status: "Project moved to trash.",
-    });
   },
 
   async restoreProject(projectId) {
-    const project = get().projects.find((entry) => entry.id === projectId);
-    if (!project) return;
+    await runWorkspaceAction(
+      async () => {
+        const project = get().projects.find((entry) => entry.id === projectId);
+        if (!project) return;
 
-    await putProjectDocument({
-      ...project,
-      deletedAt: null,
-      updatedAt: new Date().toISOString(),
-    });
+        await putProjectDocument({
+          ...project,
+          deletedAt: null,
+          updatedAt: new Date().toISOString(),
+        });
 
-    await syncWorkspace(set, {
-      activeProjectId: get().activeProjectId,
-      historyByProject: get().historyByProject,
-      status: "Project restored.",
-    });
+        await syncWorkspace(set, {
+          activeProjectId: get().activeProjectId,
+          historyByProject: get().historyByProject,
+          status: "Project restored.",
+        });
+      },
+      {
+        getErrorStatus: (error) =>
+          error instanceof Error
+            ? `Could not restore project: ${error.message}`
+            : "Could not restore project.",
+      },
+    );
   },
 
   async purgeProject(projectId) {
-    set({ busy: true, status: "Deleting project permanently…" });
-    await deleteProjectDataAtomically(projectId);
-    const historyByProject = clearProjectHistory(get().historyByProject, projectId);
-    set(
-      withHistoryFlags(
-        { historyByProject },
-        historyByProject,
-        get().activeProjectId === projectId ? null : get().activeProjectId,
-      ),
+    await runWorkspaceAction(
+      async () => {
+        await deleteProjectDataAtomically(projectId);
+        const historyByProject = clearProjectHistory(
+          get().historyByProject,
+          projectId,
+        );
+        set(
+          withHistoryFlags(
+            { historyByProject },
+            historyByProject,
+            get().activeProjectId === projectId ? null : get().activeProjectId,
+          ),
+        );
+        await syncWorkspace(set, {
+          activeProjectId:
+            get().activeProjectId === projectId ? null : get().activeProjectId,
+          busy: false,
+          historyByProject,
+          status: "Project deleted permanently.",
+        });
+      },
+      {
+        busy: true,
+        startStatus: "Deleting project permanently…",
+        getErrorStatus: (error) =>
+          error instanceof Error
+            ? `Could not delete project: ${error.message}`
+            : "Could not delete project.",
+      },
     );
-    await syncWorkspace(set, {
-      activeProjectId: get().activeProjectId === projectId ? null : get().activeProjectId,
-      busy: false,
-      historyByProject,
-      status: "Project deleted permanently.",
-    });
   },
 
   async setActiveProject(projectId) {
-    const project = get().projects.find(
-      (entry) => entry.id === projectId && entry.deletedAt === null,
-    );
-    if (!project) return;
-    await persistActiveProjectId(projectId);
-    set(
-      withHistoryFlags(
-        { activeProjectId: projectId, status: "Project loaded." },
-        get().historyByProject,
-        projectId,
-      ),
+    await runWorkspaceAction(
+      async () => {
+        const project = get().projects.find(
+          (entry) => entry.id === projectId && entry.deletedAt === null,
+        );
+        if (!project) return;
+        await persistActiveProjectId(projectId);
+        set(
+          withHistoryFlags(
+            { activeProjectId: projectId, status: "Project loaded." },
+            get().historyByProject,
+            projectId,
+          ),
+        );
+      },
+      {
+        getErrorStatus: (error) =>
+          error instanceof Error
+            ? `Could not load project: ${error.message}`
+            : "Could not load project.",
+      },
     );
   },
 
   async selectLayer(layerId) {
-    const project = getActiveProject(get());
-    if (!project || !project.layers.some((layer) => layer.id === layerId)) return;
+    await runWorkspaceAction(
+      async () => {
+        const project = getActiveProject(get());
+        if (!project || !project.layers.some((layer) => layer.id === layerId)) return;
 
-    const baseProject = createProjectMutationBase(project);
-    const updatedProject = normalizeProjectDocument({
-      ...baseProject,
-      selectedLayerId: layerId,
-      updatedAt: new Date().toISOString(),
-    });
-    await putProjectDocument(updatedProject);
+        const baseProject = createProjectMutationBase(project);
+        const updatedProject = normalizeProjectDocument({
+          ...baseProject,
+          selectedLayerId: layerId,
+          updatedAt: new Date().toISOString(),
+        });
+        await putProjectDocument(updatedProject);
 
-    set((state) => ({
-      projects: upsertProject(state.projects, updatedProject),
-      status: "Layer selected.",
-      ...getHistoryFlags(state.historyByProject, state.activeProjectId),
-    }));
+        set((state) => ({
+          projects: upsertProject(state.projects, updatedProject),
+          status: "Layer selected.",
+          ...getHistoryFlags(state.historyByProject, state.activeProjectId),
+        }));
+      },
+      {
+        getErrorStatus: (error) =>
+          error instanceof Error
+            ? `Could not select layer: ${error.message}`
+            : "Could not select layer.",
+      },
+    );
   },
 
   async addLayer() {
-    await get().updateProject((project) => {
-      const baseProject = createProjectMutationBase(project);
-      const selectedLayer = getSelectedLayer(baseProject);
-      const insertIndex = selectedLayer
-        ? baseProject.layers.findIndex((layer) => layer.id === selectedLayer.id) + 1
-        : baseProject.layers.length;
-      const nextLayer = createCompositorLayer({
-        name: getNextLayerName(baseProject),
-        visible: true,
-      });
-      const layers = [...baseProject.layers];
-      layers.splice(insertIndex, 0, nextLayer);
+    await runWorkspaceAction(
+      async () => {
+        await get().updateProject((project) => {
+          const baseProject = createProjectMutationBase(project);
+          const selectedLayer = getSelectedLayer(baseProject);
+          const insertIndex = selectedLayer
+            ? baseProject.layers.findIndex((layer) => layer.id === selectedLayer.id) + 1
+            : baseProject.layers.length;
+          const nextLayer = createCompositorLayer({
+            name: getNextLayerName(baseProject),
+            visible: true,
+          });
+          const layers = [...baseProject.layers];
+          layers.splice(insertIndex, 0, nextLayer);
 
-      return {
-        ...baseProject,
-        layers,
-        selectedLayerId: nextLayer.id,
-      };
-    });
+          return {
+            ...baseProject,
+            layers,
+            selectedLayerId: nextLayer.id,
+          };
+        });
+      },
+      {
+        queue: false,
+        getErrorStatus: (error) =>
+          error instanceof Error
+            ? `Could not add layer: ${error.message}`
+            : "Could not add layer.",
+      },
+    );
   },
 
   async deleteLayer(layerId) {
-    const project = getActiveProject(get());
-    if (!project || project.layers.length <= 1) return;
-    if (!project.layers.some((layer) => layer.id === layerId)) return;
+    await runWorkspaceAction(
+      async () => {
+        const project = getActiveProject(get());
+        if (!project || project.layers.length <= 1) return;
+        if (!project.layers.some((layer) => layer.id === layerId)) return;
 
-    await get().updateProject((currentProject) => {
-      const baseProject = createProjectMutationBase(currentProject);
-      const layers = baseProject.layers.filter((layer) => layer.id !== layerId);
-      const selectedLayerId =
-        baseProject.selectedLayerId === layerId
-          ? layers.at(-1)?.id ?? null
-          : baseProject.selectedLayerId;
+        await get().updateProject((currentProject) => {
+          const baseProject = createProjectMutationBase(currentProject);
+          const layers = baseProject.layers.filter((layer) => layer.id !== layerId);
+          const selectedLayerId =
+            baseProject.selectedLayerId === layerId
+              ? layers.at(-1)?.id ?? null
+              : baseProject.selectedLayerId;
 
-      return {
-        ...baseProject,
-        layers,
-        selectedLayerId,
-      };
-    });
+          return {
+            ...baseProject,
+            layers,
+            selectedLayerId,
+          };
+        });
+      },
+      {
+        queue: false,
+        getErrorStatus: (error) =>
+          error instanceof Error
+            ? `Could not delete layer: ${error.message}`
+            : "Could not delete layer.",
+      },
+    );
   },
 
   async toggleLayerVisibility(layerId) {
-    await get().updateProject((project) =>
-      replaceLayer(project, layerId, (layer) => ({
-        ...layer,
-        visible: !layer.visible,
-      })),
-    );
+    await runWorkspaceAction(async () => {
+      await get().updateProject((project) =>
+        replaceLayer(project, layerId, (layer) => ({
+          ...layer,
+          visible: !layer.visible,
+        })),
+      );
+    }, { queue: false });
   },
 
   async reorderLayers(layerIds) {
-    await get().updateProject((project) => {
-      if (layerIds.length !== project.layers.length) {
-        return project;
-      }
+    await runWorkspaceAction(async () => {
+      await get().updateProject((project) => {
+        if (layerIds.length !== project.layers.length) {
+          return project;
+        }
 
-      const layerLookup = new Map(project.layers.map((layer) => [layer.id, layer]));
-      const layers = layerIds
-        .map((layerId) => layerLookup.get(layerId))
-        .filter((layer): layer is CompositorLayer => Boolean(layer));
+        const layerLookup = new Map(project.layers.map((layer) => [layer.id, layer]));
+        const layers = layerIds
+          .map((layerId) => layerLookup.get(layerId))
+          .filter((layer): layer is CompositorLayer => Boolean(layer));
 
-      if (layers.length !== project.layers.length) {
-        return project;
-      }
+        if (layers.length !== project.layers.length) {
+          return project;
+        }
 
-      return { ...project, layers };
-    });
+        return { ...project, layers };
+      });
+    }, { queue: false });
   },
 
   async moveLayerUp(layerId) {
-    await get().updateProject((project) => {
-      const index = project.layers.findIndex((layer) => layer.id === layerId);
-      if (index < 0 || index >= project.layers.length - 1) {
-        return project;
-      }
+    await runWorkspaceAction(async () => {
+      await get().updateProject((project) => {
+        const index = project.layers.findIndex((layer) => layer.id === layerId);
+        if (index < 0 || index >= project.layers.length - 1) {
+          return project;
+        }
 
-      const layers = [...project.layers];
-      const [layer] = layers.splice(index, 1);
-      layers.splice(index + 1, 0, layer!);
-      return { ...project, layers };
-    });
+        const layers = [...project.layers];
+        const [layer] = layers.splice(index, 1);
+        layers.splice(index + 1, 0, layer!);
+        return { ...project, layers };
+      });
+    }, { queue: false });
   },
 
   async moveLayerDown(layerId) {
-    await get().updateProject((project) => {
-      const index = project.layers.findIndex((layer) => layer.id === layerId);
-      if (index <= 0) {
-        return project;
-      }
+    await runWorkspaceAction(async () => {
+      await get().updateProject((project) => {
+        const index = project.layers.findIndex((layer) => layer.id === layerId);
+        if (index <= 0) {
+          return project;
+        }
 
-      const layers = [...project.layers];
-      const [layer] = layers.splice(index, 1);
-      layers.splice(index - 1, 0, layer!);
-      return { ...project, layers };
-    });
+        const layers = [...project.layers];
+        const [layer] = layers.splice(index, 1);
+        layers.splice(index - 1, 0, layer!);
+        return { ...project, layers };
+      });
+    }, { queue: false });
   },
 
   async updateSelectedLayer(updater) {
-    await get().updateProject((project) => updateSelectedProjectLayer(project, updater));
+    await runWorkspaceAction(
+      async () => {
+        await get().updateProject((project) =>
+          updateSelectedProjectLayer(project, updater),
+        );
+      },
+      {
+        queue: false,
+        getErrorStatus: (error) =>
+          error instanceof Error
+            ? `Could not update layer: ${error.message}`
+            : "Could not update layer.",
+      },
+    );
   },
 
   async updateProject(updater, options) {
-    const project = getActiveProject(get());
-    if (!project) return;
+    await runWorkspaceAction(
+      async () => {
+        const project = getActiveProject(get());
+        if (!project) return;
 
-    const before = createProjectSnapshot(project);
-    const draftProject = normalizeProjectDocument({
-      ...createProjectMutationBase(project),
-      updatedAt: new Date().toISOString(),
-    });
-    const updatedProject = normalizeProjectDocument(
-      syncLegacyProjectFieldsToSelectedLayer(
-        updater(draftProject),
-      ),
+        const before = createProjectSnapshot(project);
+        const draftProject = normalizeProjectDocument({
+          ...createProjectMutationBase(project),
+          updatedAt: new Date().toISOString(),
+        });
+        const updatedProject = normalizeProjectDocument(
+          syncLegacyProjectFieldsToSelectedLayer(
+            updater(draftProject),
+          ),
+        );
+        const after = createProjectSnapshot(updatedProject);
+
+        if (snapshotsEqual(before, after)) {
+          return;
+        }
+
+        await putProjectDocument(updatedProject);
+        set((state) => {
+          const historyByProject =
+            options?.recordHistory === false
+              ? state.historyByProject
+              : patchHistory(state.historyByProject, updatedProject.id, (history) => ({
+                  past: [
+                    ...history.past,
+                    {
+                      kind: "project-change",
+                      projectId: updatedProject.id,
+                      before,
+                      after,
+                    } satisfies ProjectChangeHistoryEntry,
+                  ],
+                  future: [],
+                }));
+
+          return {
+            projects: upsertProject(state.projects, updatedProject),
+            historyByProject,
+            status: "Draft saved locally.",
+            ...getHistoryFlags(historyByProject, state.activeProjectId),
+          };
+        });
+      },
+      {
+        key: options?.queueKey,
+        getErrorStatus: (error) =>
+          error instanceof Error
+            ? `Could not update project: ${error.message}`
+            : "Could not update project.",
+      },
     );
-    const after = createProjectSnapshot(updatedProject);
-
-    if (snapshotsEqual(before, after)) {
-      return;
-    }
-
-    await putProjectDocument(updatedProject);
-    set((state) => {
-      const historyByProject =
-        options?.recordHistory === false
-          ? state.historyByProject
-          : patchHistory(state.historyByProject, updatedProject.id, (history) => ({
-              past: [
-                ...history.past,
-                {
-                  kind: "project-change",
-                  projectId: updatedProject.id,
-                  before,
-                  after,
-                } satisfies ProjectChangeHistoryEntry,
-              ],
-              future: [],
-            }));
-
-      return {
-        projects: upsertProject(state.projects, updatedProject),
-        historyByProject,
-        status: "Draft saved locally.",
-        ...getHistoryFlags(historyByProject, state.activeProjectId),
-      };
-    });
   },
 
   async importFiles(files) {
-    const activeProject = getActiveProject(get());
-    if (!activeProject) return;
     const fileList = Array.from(files);
     if (fileList.length === 0) return;
 
     set({
-      busy: true,
-      status: `Importing ${fileList.length} source image(s)…`,
       sourceImportProgress: { processed: 0, total: fileList.length },
     });
 
-    try {
-      const importedAssets: PreparedAssetRecord[] = [];
-      for (const file of fileList) {
-        const payload = await processImageFile(file);
-        const asset = await persistProcessedAsset(file, payload, activeProject.id);
-        importedAssets.push(asset);
-        set({
-          sourceImportProgress: {
-            processed: importedAssets.length,
-            total: fileList.length,
-          },
+    await runWorkspaceAction(
+      async () => {
+        const activeProject = getActiveProject(get());
+        if (!activeProject) return;
+
+        const importedAssets: PreparedAssetRecord[] = [];
+        for (const file of fileList) {
+          const payload = await processImageFile(file);
+          const asset = await persistProcessedAsset(file, payload, activeProject.id);
+          importedAssets.push(asset);
+          set({
+            sourceImportProgress: {
+              processed: importedAssets.length,
+              total: fileList.length,
+            },
+          });
+        }
+
+        const { nextProject, before, after, assets, historyAssets } =
+          await persistAddedAssetsForProject(activeProject, importedAssets);
+
+        set((state) => {
+          const historyByProject = patchHistory(state.historyByProject, nextProject.id, (history) => ({
+            past: [
+              ...history.past,
+              {
+                kind: "add-assets",
+                projectId: nextProject.id,
+                assets: historyAssets,
+                before,
+                after,
+              } satisfies AddAssetsHistoryEntry,
+            ],
+            future: [],
+          }));
+
+          return {
+            assets: sortAssetsByCreated([...state.assets, ...assets]),
+            projects: upsertProject(state.projects, nextProject),
+            historyByProject,
+            sourceImportProgress: null,
+            status: `Imported ${assets.length} source image(s).`,
+            ...getHistoryFlags(historyByProject, state.activeProjectId),
+          };
         });
-      }
-
-      const { nextProject, before, after, assets, historyAssets } =
-        await persistAddedAssetsForProject(activeProject, importedAssets);
-
-      set((state) => {
-        const historyByProject = patchHistory(state.historyByProject, nextProject.id, (history) => ({
-          past: [
-            ...history.past,
-            {
-              kind: "add-assets",
-              projectId: nextProject.id,
-              assets: historyAssets,
-              before,
-              after,
-            } satisfies AddAssetsHistoryEntry,
-          ],
-          future: [],
-        }));
-
-        return {
-          assets: sortAssetsByCreated([...state.assets, ...assets]),
-          projects: upsertProject(state.projects, nextProject),
-          historyByProject,
-          busy: false,
-          sourceImportProgress: null,
-          status: `Imported ${assets.length} source image(s).`,
-          ...getHistoryFlags(historyByProject, state.activeProjectId),
-        };
-      });
-    } catch (error) {
-      set({
-        busy: false,
-        sourceImportProgress: null,
-        status:
+      },
+      {
+        busy: true,
+        startStatus: `Importing ${fileList.length} source image(s)…`,
+        getErrorStatus: (error) =>
           error instanceof Error ? `Import failed: ${error.message}` : "Import failed.",
-      });
-    }
+      },
+    );
+    set({ sourceImportProgress: null });
   },
 
   async addSolidSource(input) {
-    const activeProject = getActiveProject(get());
-    if (!activeProject) return;
-
-    set({ busy: true, status: "Creating solid source…" });
-
-    try {
-      const preparedAsset = await createGeneratedSourceAsset(
-        { kind: "solid", recipe: input, name: input.name },
-        activeProject.id,
-        activeProject.canvas,
-      );
-      const { nextProject, before, after, assets, historyAssets } =
-        await persistAddedAssetsForProject(activeProject, [preparedAsset]);
-      const asset = assets[0]!;
-
-      set((state) => {
-        const historyByProject = patchHistory(state.historyByProject, nextProject.id, (history) => ({
-          past: [
-            ...history.past,
-            {
-              kind: "add-assets",
-              projectId: nextProject.id,
-              assets: historyAssets,
-              before,
-              after,
-            } satisfies AddAssetsHistoryEntry,
-          ],
-          future: [],
-        }));
-
-        return {
-          assets: sortAssetsByCreated([...state.assets, asset]),
-          projects: upsertProject(state.projects, nextProject),
-          historyByProject,
-          busy: false,
-          status: "Solid source added.",
-          ...getHistoryFlags(historyByProject, state.activeProjectId),
-        };
-      });
-    } catch (error) {
-      set({
-        busy: false,
-        status:
-          error instanceof Error ? `Could not add source: ${error.message}` : "Could not add source.",
-      });
-    }
+    await addGeneratedSourceAction({
+      kind: "solid",
+      input,
+      startStatus: "Creating solid source…",
+    });
   },
 
   async addGradientSource(input) {
-    const activeProject = getActiveProject(get());
-    if (!activeProject) return;
-
-    set({ busy: true, status: "Creating gradient source…" });
-
-    try {
-      const preparedAsset = await createGeneratedSourceAsset(
-        { kind: "gradient", recipe: input, name: input.name },
-        activeProject.id,
-        activeProject.canvas,
-      );
-      const { nextProject, before, after, assets, historyAssets } =
-        await persistAddedAssetsForProject(activeProject, [preparedAsset]);
-      const asset = assets[0]!;
-
-      set((state) => {
-        const historyByProject = patchHistory(state.historyByProject, nextProject.id, (history) => ({
-          past: [
-            ...history.past,
-            {
-              kind: "add-assets",
-              projectId: nextProject.id,
-              assets: historyAssets,
-              before,
-              after,
-            } satisfies AddAssetsHistoryEntry,
-          ],
-          future: [],
-        }));
-
-        return {
-          assets: sortAssetsByCreated([...state.assets, asset]),
-          projects: upsertProject(state.projects, nextProject),
-          historyByProject,
-          busy: false,
-          status: "Gradient source added.",
-          ...getHistoryFlags(historyByProject, state.activeProjectId),
-        };
-      });
-    } catch (error) {
-      set({
-        busy: false,
-        status:
-          error instanceof Error ? `Could not add source: ${error.message}` : "Could not add source.",
-      });
-    }
+    await addGeneratedSourceAction({
+      kind: "gradient",
+      input,
+      startStatus: "Creating gradient source…",
+    });
   },
 
   async addPerlinSource(input) {
-    const activeProject = getActiveProject(get());
-    if (!activeProject) return;
-
-    set({ busy: true, status: "Creating perlin source…" });
-
-    try {
-      const preparedAsset = await createGeneratedSourceAsset(
-        { kind: "perlin", recipe: input, name: input.name },
-        activeProject.id,
-        activeProject.canvas,
-      );
-      const { nextProject, before, after, assets, historyAssets } =
-        await persistAddedAssetsForProject(activeProject, [preparedAsset]);
-      const asset = assets[0]!;
-
-      set((state) => {
-        const historyByProject = patchHistory(state.historyByProject, nextProject.id, (history) => ({
-          past: [
-            ...history.past,
-            {
-              kind: "add-assets",
-              projectId: nextProject.id,
-              assets: historyAssets,
-              before,
-              after,
-            } satisfies AddAssetsHistoryEntry,
-          ],
-          future: [],
-        }));
-
-        return {
-          assets: sortAssetsByCreated([...state.assets, asset]),
-          projects: upsertProject(state.projects, nextProject),
-          historyByProject,
-          busy: false,
-          status: "Perlin source added.",
-          ...getHistoryFlags(historyByProject, state.activeProjectId),
-        };
-      });
-    } catch (error) {
-      set({
-        busy: false,
-        status:
-          error instanceof Error ? `Could not add source: ${error.message}` : "Could not add source.",
-      });
-    }
+    await addGeneratedSourceAction({
+      kind: "perlin",
+      input,
+      startStatus: "Creating perlin source…",
+    });
   },
 
   async addCellularSource(input) {
-    const activeProject = getActiveProject(get());
-    if (!activeProject) return;
-
-    set({ busy: true, status: "Creating cellular source…" });
-
-    try {
-      const preparedAsset = await createGeneratedSourceAsset(
-        { kind: "cellular", recipe: input, name: input.name },
-        activeProject.id,
-        activeProject.canvas,
-      );
-      const { nextProject, before, after, assets, historyAssets } =
-        await persistAddedAssetsForProject(activeProject, [preparedAsset]);
-      const asset = assets[0]!;
-
-      set((state) => {
-        const historyByProject = patchHistory(state.historyByProject, nextProject.id, (history) => ({
-          past: [
-            ...history.past,
-            {
-              kind: "add-assets",
-              projectId: nextProject.id,
-              assets: historyAssets,
-              before,
-              after,
-            } satisfies AddAssetsHistoryEntry,
-          ],
-          future: [],
-        }));
-
-        return {
-          assets: sortAssetsByCreated([...state.assets, asset]),
-          projects: upsertProject(state.projects, nextProject),
-          historyByProject,
-          busy: false,
-          status: "Cellular source added.",
-          ...getHistoryFlags(historyByProject, state.activeProjectId),
-        };
-      });
-    } catch (error) {
-      set({
-        busy: false,
-        status:
-          error instanceof Error ? `Could not add source: ${error.message}` : "Could not add source.",
-      });
-    }
+    await addGeneratedSourceAction({
+      kind: "cellular",
+      input,
+      startStatus: "Creating cellular source…",
+    });
   },
 
   async addReactionSource(input) {
-    const activeProject = getActiveProject(get());
-    if (!activeProject) return;
-
-    set({ busy: true, status: "Creating reaction source…" });
-
-    try {
-      const preparedAsset = await createGeneratedSourceAsset(
-        { kind: "reaction", recipe: input, name: input.name },
-        activeProject.id,
-        activeProject.canvas,
-      );
-      const { nextProject, before, after, assets, historyAssets } =
-        await persistAddedAssetsForProject(activeProject, [preparedAsset]);
-      const asset = assets[0]!;
-
-      set((state) => {
-        const historyByProject = patchHistory(state.historyByProject, nextProject.id, (history) => ({
-          past: [
-            ...history.past,
-            {
-              kind: "add-assets",
-              projectId: nextProject.id,
-              assets: historyAssets,
-              before,
-              after,
-            } satisfies AddAssetsHistoryEntry,
-          ],
-          future: [],
-        }));
-
-        return {
-          assets: sortAssetsByCreated([...state.assets, asset]),
-          projects: upsertProject(state.projects, nextProject),
-          historyByProject,
-          busy: false,
-          status: "Reaction source added.",
-          ...getHistoryFlags(historyByProject, state.activeProjectId),
-        };
-      });
-    } catch (error) {
-      set({
-        busy: false,
-        status:
-          error instanceof Error ? `Could not add source: ${error.message}` : "Could not add source.",
-      });
-    }
+    await addGeneratedSourceAction({
+      kind: "reaction",
+      input,
+      startStatus: "Creating reaction source…",
+    });
   },
 
   async addWaveSource(input) {
-    const activeProject = getActiveProject(get());
-    if (!activeProject) return;
-
-    set({ busy: true, status: "Creating waves source…" });
-
-    try {
-      const preparedAsset = await createGeneratedSourceAsset(
-        { kind: "waves", recipe: input, name: input.name },
-        activeProject.id,
-        activeProject.canvas,
-      );
-      const { nextProject, before, after, assets, historyAssets } =
-        await persistAddedAssetsForProject(activeProject, [preparedAsset]);
-      const asset = assets[0]!;
-
-      set((state) => {
-        const historyByProject = patchHistory(state.historyByProject, nextProject.id, (history) => ({
-          past: [
-            ...history.past,
-            {
-              kind: "add-assets",
-              projectId: nextProject.id,
-              assets: historyAssets,
-              before,
-              after,
-            } satisfies AddAssetsHistoryEntry,
-          ],
-          future: [],
-        }));
-
-        return {
-          assets: sortAssetsByCreated([...state.assets, asset]),
-          projects: upsertProject(state.projects, nextProject),
-          historyByProject,
-          busy: false,
-          status: "Waves source added.",
-          ...getHistoryFlags(historyByProject, state.activeProjectId),
-        };
-      });
-    } catch (error) {
-      set({
-        busy: false,
-        status:
-          error instanceof Error ? `Could not add source: ${error.message}` : "Could not add source.",
-      });
-    }
+    await addGeneratedSourceAction({
+      kind: "waves",
+      input,
+      startStatus: "Creating waves source…",
+    });
   },
 
   async removeSource(assetId) {
-    const activeProject = getActiveProject(get());
-    if (!activeProject) return;
+    await runWorkspaceAction(
+      async () => {
+        const activeProject = getActiveProject(get());
+        if (!activeProject) return;
 
-    const asset = get().assets.find(
-      (entry) => entry.id === assetId && entry.projectId === activeProject.id,
+        const asset = get().assets.find(
+          (entry) => entry.id === assetId && entry.projectId === activeProject.id,
+        );
+        if (!asset) return;
+
+        const removedAsset = clonePreparedAssetRecord(
+          await captureAssetSnapshot(asset),
+        );
+
+        const nextProject = removeSourceFromAllLayers(activeProject, asset.id);
+        const before = createProjectSnapshot(activeProject);
+        const after = createProjectSnapshot(nextProject);
+
+        await deleteAssetsAtomically({
+          projectDoc: nextProject,
+          assets: [asset],
+        });
+
+        set((state) => {
+          const historyByProject = patchHistory(
+            state.historyByProject,
+            nextProject.id,
+            (history) => ({
+              past: [
+                ...history.past,
+                {
+                  kind: "remove-assets",
+                  projectId: nextProject.id,
+                  assets: [removedAsset],
+                  before,
+                  after,
+                } satisfies RemoveAssetsHistoryEntry,
+              ],
+              future: [],
+            }),
+          );
+
+          return {
+            assets: removeAssetsById(state.assets, [asset.id]),
+            projects: upsertProject(state.projects, nextProject),
+            historyByProject,
+            status: "Source removed.",
+            ...getHistoryFlags(historyByProject, state.activeProjectId),
+          };
+        });
+      },
+      {
+        busy: true,
+        startStatus: "Removing source…",
+        getErrorStatus: (error) =>
+          error instanceof Error
+            ? `Could not remove source: ${error.message}`
+            : "Could not remove source.",
+      },
     );
-    if (!asset) return;
-
-    set({ busy: true, status: `Removing ${asset.name}…` });
-
-    try {
-      const removedAsset = clonePreparedAssetRecord(await captureAssetSnapshot(asset));
-
-      const nextProject = removeSourceFromAllLayers(activeProject, asset.id);
-      const before = createProjectSnapshot(activeProject);
-      const after = createProjectSnapshot(nextProject);
-
-      await deleteAssetsAtomically({
-        projectDoc: nextProject,
-        assets: [asset],
-      });
-
-      set((state) => {
-        const historyByProject = patchHistory(state.historyByProject, nextProject.id, (history) => ({
-          past: [
-            ...history.past,
-            {
-              kind: "remove-assets",
-              projectId: nextProject.id,
-              assets: [removedAsset],
-              before,
-              after,
-            } satisfies RemoveAssetsHistoryEntry,
-          ],
-          future: [],
-        }));
-
-        return {
-          assets: removeAssetsById(state.assets, [asset.id]),
-          projects: upsertProject(state.projects, nextProject),
-          historyByProject,
-          busy: false,
-          status: "Source removed.",
-          ...getHistoryFlags(historyByProject, state.activeProjectId),
-        };
-      });
-    } catch (error) {
-      set({
-        busy: false,
-        status:
-          error instanceof Error ? `Could not remove source: ${error.message}` : "Could not remove source.",
-      });
-    }
   },
 
   async updateGeneratedSource(assetId, input) {
-    const activeProject = getActiveProject(get());
-    if (!activeProject) return;
+    await runWorkspaceAction(
+      async () => {
+        const activeProject = getActiveProject(get());
+        if (!activeProject) return;
 
-    const asset = get().assets.find(
-      (
-        entry,
-      ): entry is
-        | SolidSourceAsset
-        | GradientSourceAsset
-        | PerlinSourceAsset
-        | CellularSourceAsset
-        | ReactionSourceAsset
-        | WaveSourceAsset =>
-        entry.id === assetId &&
-        entry.projectId === activeProject.id &&
-        entry.kind !== "image",
-    );
-    if (!asset) return;
+        const asset = get().assets.find(
+          (
+            entry,
+          ): entry is
+            | SolidSourceAsset
+            | GradientSourceAsset
+            | PerlinSourceAsset
+            | CellularSourceAsset
+            | ReactionSourceAsset
+            | WaveSourceAsset =>
+            entry.id === assetId &&
+            entry.projectId === activeProject.id &&
+            entry.kind !== "image",
+        );
+        if (!asset) return;
 
-    set({ busy: true, status: `Updating ${asset.kind} source…` });
+        const updatedAsset = await updateGeneratedSourceAsset(asset, input);
 
-    try {
-      const updatedAsset = await updateGeneratedSourceAsset(asset, input);
+        const updatedProject = normalizeProjectDocument({
+          ...createProjectMutationBase(activeProject),
+          updatedAt: new Date().toISOString(),
+        });
+        await persistAssetUpdatesAtomically({
+          projectDoc: updatedProject,
+          assets: [updatedAsset],
+        });
 
-      const updatedProject = normalizeProjectDocument({
-        ...createProjectMutationBase(activeProject),
-        updatedAt: new Date().toISOString(),
-      });
-      await persistAssetUpdatesAtomically({
-        projectDoc: updatedProject,
-        assets: [updatedAsset],
-      });
-
-      set((state) => {
-        const historyByProject = clearProjectHistory(state.historyByProject, updatedProject.id);
-        return {
-          assets: sortAssetsByCreated(
-            state.assets.map((entry) =>
-              entry.id === updatedAsset.asset.id ? updatedAsset.asset : entry,
+        set((state) => {
+          const historyByProject = clearProjectHistory(
+            state.historyByProject,
+            updatedProject.id,
+          );
+          return {
+            assets: sortAssetsByCreated(
+              state.assets.map((entry) =>
+                entry.id === updatedAsset.asset.id ? updatedAsset.asset : entry,
+              ),
             ),
-          ),
-          projects: sortByUpdated(
-            state.projects.map((entry) => (entry.id === updatedProject.id ? updatedProject : entry)),
-          ),
-          historyByProject,
-          busy: false,
-          status: `${formatGeneratedSourceKind(asset.kind)} source updated.`,
-          ...getHistoryFlags(historyByProject, state.activeProjectId),
-        };
-      });
-    } catch (error) {
-      set({
-        busy: false,
-        status:
+            projects: sortByUpdated(
+              state.projects.map((entry) =>
+                entry.id === updatedProject.id ? updatedProject : entry,
+              ),
+            ),
+            historyByProject,
+            status: `${formatGeneratedSourceKind(asset.kind)} source updated.`,
+            ...getHistoryFlags(historyByProject, state.activeProjectId),
+          };
+        });
+      },
+      {
+        busy: true,
+        startStatus: "Updating source…",
+        getErrorStatus: (error) =>
           error instanceof Error
             ? `Could not update source: ${error.message}`
             : "Could not update source.",
-      });
-    }
+      },
+    );
   },
 
   async randomizeSeed() {
-    await get().updateSelectedLayer((layer) => ({
-      ...layer,
-      activeSeed: Math.floor(Math.random() * 1_000_000_000),
-    }));
+    await runWorkspaceAction(async () => {
+      await get().updateSelectedLayer((layer) => ({
+        ...layer,
+        activeSeed: Math.floor(Math.random() * 1_000_000_000),
+      }));
+    }, { queue: false });
   },
 
   async saveVersion(label, thumbnailBlob) {
-    const project = getActiveProject(get());
-    if (!project) return;
+    await runWorkspaceAction(
+      async () => {
+        const project = getActiveProject(get());
+        if (!project) return;
 
-    const versionId = makeId("version");
-    const thumbnailPath = thumbnailBlob ? `versions/${versionId}.webp` : null;
-    if (thumbnailBlob && thumbnailPath) {
-      const { writeBlob } = await import("@/lib/opfs");
-      await writeBlob(thumbnailPath, thumbnailBlob);
-    }
+        const versionId = makeId("version");
+        const thumbnailPath = thumbnailBlob ? `versions/${versionId}.webp` : null;
+        if (thumbnailBlob && thumbnailPath) {
+          const { writeBlob } = await import("@/lib/opfs");
+          await writeBlob(thumbnailPath, thumbnailBlob);
+        }
 
-    const version: ProjectVersion = {
-      id: versionId,
-      projectId: project.id,
-      label: label || `Snapshot ${new Date().toLocaleString()}`,
-      createdAt: new Date().toISOString(),
-      thumbnailPath,
-      snapshot: createProjectSnapshot(project),
-    };
+        const version: ProjectVersion = {
+          id: versionId,
+          projectId: project.id,
+          label: label || `Snapshot ${new Date().toLocaleString()}`,
+          createdAt: new Date().toISOString(),
+          thumbnailPath,
+          snapshot: createProjectSnapshot(project),
+        };
 
-    const updatedProject = normalizeProjectDocument({
-      ...createProjectMutationBase(project),
-      currentVersionId: version.id,
-      updatedAt: new Date().toISOString(),
-    });
+        const updatedProject = normalizeProjectDocument({
+          ...createProjectMutationBase(project),
+          currentVersionId: version.id,
+          updatedAt: new Date().toISOString(),
+        });
 
-    await Promise.all([putProjectVersion(version), putProjectDocument(updatedProject)]);
+        await Promise.all([
+          putProjectVersion(version),
+          putProjectDocument(updatedProject),
+        ]);
 
-    set((state) => ({
-      versions: sortVersionsByCreated([version, ...state.versions]),
-      projects: sortByUpdated(
-        state.projects.map((entry) => (entry.id === updatedProject.id ? updatedProject : entry)),
-      ),
-      status: "Saved a named version.",
-    }));
+        set((state) => ({
+          versions: sortVersionsByCreated([version, ...state.versions]),
+          projects: sortByUpdated(
+            state.projects.map((entry) =>
+              entry.id === updatedProject.id ? updatedProject : entry,
+            ),
+          ),
+          status: "Saved a named version.",
+        }));
+      },
+      {
+        getErrorStatus: (error) =>
+          error instanceof Error
+            ? `Could not save version: ${error.message}`
+            : "Could not save version.",
+      },
+    );
   },
 
   async restoreVersion(versionId) {
-    const version = get().versions.find((entry) => entry.id === versionId);
-    const project = getActiveProject(get());
-    if (!version || !project) return;
-    const normalizedVersion = normalizeProjectVersion(version);
+    await runWorkspaceAction(
+      async () => {
+        const version = get().versions.find((entry) => entry.id === versionId);
+        const project = getActiveProject(get());
+        if (!version || !project) return;
+        const normalizedVersion = normalizeProjectVersion(version);
 
-    const updatedProject = normalizeProjectDocument({
-      ...createProjectMutationBase(project),
-      ...structuredClone(normalizedVersion.snapshot),
-      currentVersionId: normalizedVersion.id,
-      updatedAt: new Date().toISOString(),
-    });
+        const updatedProject = normalizeProjectDocument({
+          ...createProjectMutationBase(project),
+          ...structuredClone(normalizedVersion.snapshot),
+          currentVersionId: normalizedVersion.id,
+          updatedAt: new Date().toISOString(),
+        });
 
-    await putProjectDocument(updatedProject);
-    set((state) => {
-      const historyByProject = clearProjectHistory(state.historyByProject, updatedProject.id);
-      return withHistoryFlags(
-        {
-          projects: upsertProject(state.projects, updatedProject),
-          historyByProject,
-          status: `Restored "${normalizedVersion.label}".`,
-        },
-        historyByProject,
-        state.activeProjectId,
-      );
-    });
+        await putProjectDocument(updatedProject);
+        set((state) => {
+          const historyByProject = clearProjectHistory(
+            state.historyByProject,
+            updatedProject.id,
+          );
+          return withHistoryFlags(
+            {
+              projects: upsertProject(state.projects, updatedProject),
+              historyByProject,
+              status: `Restored "${normalizedVersion.label}".`,
+            },
+            historyByProject,
+            state.activeProjectId,
+          );
+        });
+      },
+      {
+        getErrorStatus: (error) =>
+          error instanceof Error
+            ? `Could not restore version: ${error.message}`
+            : "Could not restore version.",
+      },
+    );
   },
 
   async exportCurrentImage(project, assets, _bitmapLookup) {
-    set({ busy: true, status: "Rendering export…" });
-    const bitmaps = await loadNormalizedAssetBitmapMap(assets);
-    const blob = await exportProjectImage(project, assets, bitmaps);
-    const extension = project.export.format === "image/jpeg" ? "jpg" : "png";
-    downloadBlob(blob, `${project.title.toLowerCase().replace(/\s+/g, "-")}.${extension}`);
-    set({ busy: false, status: "Export saved." });
+    await runWorkspaceAction(
+      async () => {
+        const bitmaps = await loadNormalizedAssetBitmapMap(assets);
+        const blob = await exportProjectImage(project, assets, bitmaps);
+        const extension = project.export.format === "image/jpeg" ? "jpg" : "png";
+        downloadBlob(
+          blob,
+          `${project.title.toLowerCase().replace(/\s+/g, "-")}.${extension}`,
+        );
+        set({ status: "Export saved." });
+      },
+      {
+        busy: true,
+        startStatus: "Rendering export…",
+        getErrorStatus: (error) =>
+          error instanceof Error
+            ? `Could not export image: ${error.message}`
+            : "Could not export image.",
+      },
+    );
   },
 
   async exportCurrentBundle() {
-    const project = getActiveProject(get());
-    if (!project) return;
-    const versions = get().versions.filter((version) => version.projectId === project.id);
-    const assets = get().assets.filter((asset) => asset.projectId === project.id);
-    set({ busy: true, status: "Packaging project bundle…" });
-    const blob = await exportProjectBundle(project, versions, assets);
-    downloadBlob(blob, `${project.title.toLowerCase().replace(/\s+/g, "-")}.image-compositor.zip`);
-    set({ busy: false, status: "Project bundle exported." });
+    await runWorkspaceAction(
+      async () => {
+        const project = getActiveProject(get());
+        if (!project) return;
+        const versions = get().versions.filter(
+          (version) => version.projectId === project.id,
+        );
+        const assets = get().assets.filter((asset) => asset.projectId === project.id);
+        const blob = await exportProjectBundle(project, versions, assets);
+        downloadBlob(
+          blob,
+          `${project.title.toLowerCase().replace(/\s+/g, "-")}.image-compositor.zip`,
+        );
+        set({ status: "Project bundle exported." });
+      },
+      {
+        busy: true,
+        startStatus: "Packaging project bundle…",
+        getErrorStatus: (error) =>
+          error instanceof Error
+            ? `Could not export project bundle: ${error.message}`
+            : "Could not export project bundle.",
+      },
+    );
   },
 
   async inspectBundleImport(file) {
-    set({ busy: true, status: "Inspecting project bundle…" });
-    const bundle = await loadProjectBundle(file);
-    const conflictProject = normalizeProjectDocument(
-      (await db.projects.get(bundle.projectDoc.id)) ?? bundle.projectDoc,
+    let inspection: BundleImportInspection | null = null;
+
+    await runWorkspaceAction(
+      async () => {
+        const bundle = await loadProjectBundle(file);
+        const conflictProject = normalizeProjectDocument(
+          (await db.projects.get(bundle.projectDoc.id)) ?? bundle.projectDoc,
+        );
+
+        inspection = {
+          fileName: file.name,
+          projectId: bundle.projectDoc.id,
+          projectTitle: bundle.projectDoc.title,
+          bundle,
+          conflictProject:
+            conflictProject.id === bundle.projectDoc.id &&
+            (await db.projects.get(bundle.projectDoc.id))
+              ? conflictProject
+              : null,
+        };
+
+        set({
+          status: inspection.conflictProject
+            ? "Import needs confirmation."
+            : "Bundle ready to import.",
+        });
+      },
+      {
+        busy: true,
+        startStatus: "Inspecting project bundle…",
+        getErrorStatus: (error) =>
+          error instanceof Error
+            ? `Could not inspect bundle: ${error.message}`
+            : "Could not inspect bundle.",
+      },
     );
 
-    const inspection: BundleImportInspection = {
-      fileName: file.name,
-      projectId: bundle.projectDoc.id,
-      projectTitle: bundle.projectDoc.title,
-      bundle,
-      conflictProject:
-        conflictProject.id === bundle.projectDoc.id && (await db.projects.get(bundle.projectDoc.id))
-          ? conflictProject
-          : null,
-    };
-
-    set({
-      busy: false,
-      status: inspection.conflictProject
-        ? "Import needs confirmation."
-        : "Bundle ready to import.",
-    });
+    if (!inspection) {
+      throw new Error("Bundle inspection did not complete.");
+    }
 
     return inspection;
   },
 
   async resolveBundleImport(inspection, resolution) {
-    set({ busy: true, status: "Importing project bundle…" });
+    await runWorkspaceAction(
+      async () => {
+        if (resolution === "replace" && inspection.conflictProject) {
+          await deleteProjectDataAtomically(inspection.conflictProject.id);
+        }
 
-    if (resolution === "replace" && inspection.conflictProject) {
-      await deleteProjectDataAtomically(inspection.conflictProject.id);
-    }
+        const bundle =
+          resolution === "copy" ? createImportCopy(inspection.bundle) : inspection.bundle;
+        await persistImportedProjectBundle(bundle);
+        const historyByProject = clearProjectHistory(
+          get().historyByProject,
+          bundle.projectDoc.id,
+        );
+        set(
+          withHistoryFlags(
+            { historyByProject },
+            historyByProject,
+            bundle.projectDoc.id,
+          ),
+        );
 
-    const bundle = resolution === "copy" ? createImportCopy(inspection.bundle) : inspection.bundle;
-    await persistImportedProjectBundle(bundle);
-    const historyByProject = clearProjectHistory(get().historyByProject, bundle.projectDoc.id);
-    set(
-      withHistoryFlags(
-        { historyByProject },
-        historyByProject,
-        bundle.projectDoc.id,
-      ),
+        await syncWorkspace(set, {
+          activeProjectId: bundle.projectDoc.id,
+          busy: false,
+          historyByProject,
+          status:
+            resolution === "copy"
+              ? `Imported ${bundle.projectDoc.title} as a copy.`
+              : `Imported ${bundle.projectDoc.title}.`,
+        });
+      },
+      {
+        busy: true,
+        startStatus: "Importing project bundle…",
+        getErrorStatus: (error) =>
+          error instanceof Error
+            ? `Could not import project bundle: ${error.message}`
+            : "Could not import project bundle.",
+      },
     );
-
-    await syncWorkspace(set, {
-      activeProjectId: bundle.projectDoc.id,
-      busy: false,
-      historyByProject,
-      status:
-        resolution === "copy"
-          ? `Imported ${bundle.projectDoc.title} as a copy.`
-          : `Imported ${bundle.projectDoc.title}.`,
-    });
   },
 
   async undo() {
-    const project = getActiveProject(get());
-    if (!project) return;
+    await runWorkspaceAction(
+      async () => {
+        const project = getActiveProject(get());
+        if (!project) return;
 
-    const history = getProjectHistory(get().historyByProject, project.id);
-    const entry = history.past.at(-1);
-    if (!entry) return;
+        const history = getProjectHistory(get().historyByProject, project.id);
+        const entry = history.past.at(-1);
+        if (!entry) return;
 
-    if (entry.kind === "project-change") {
-      const updatedProject = applySnapshotToProject(project, entry.before);
-      await putProjectDocument(updatedProject);
+        if (entry.kind === "project-change") {
+          const updatedProject = applySnapshotToProject(project, entry.before);
+          await putProjectDocument(updatedProject);
 
-      set((state) => {
-        const historyByProject = patchHistory(state.historyByProject, project.id, (currentHistory) => ({
-          past: currentHistory.past.slice(0, -1),
-          future: [...currentHistory.future, entry],
-        }));
+          set((state) => {
+            const historyByProject = patchHistory(
+              state.historyByProject,
+              project.id,
+              (currentHistory) => ({
+                past: currentHistory.past.slice(0, -1),
+                future: [...currentHistory.future, entry],
+              }),
+            );
 
-        return {
-          projects: upsertProject(state.projects, updatedProject),
-          historyByProject,
-          status: "Undo applied.",
-          ...getHistoryFlags(historyByProject, state.activeProjectId),
-        };
-      });
-      return;
-    }
+            return {
+              projects: upsertProject(state.projects, updatedProject),
+              historyByProject,
+              status: "Undo applied.",
+              ...getHistoryFlags(historyByProject, state.activeProjectId),
+            };
+          });
+          return;
+        }
 
-    if (entry.kind === "remove-assets") {
-      const restoredAssets = entry.assets.map(({ asset }) => asset);
-      const updatedProject = applySnapshotToProject(project, entry.before);
+        if (entry.kind === "remove-assets") {
+          const restoredAssets = entry.assets.map(({ asset }) => asset);
+          const updatedProject = applySnapshotToProject(project, entry.before);
 
-      await persistAssetCreationsAtomically({
-        projectDoc: updatedProject,
-        assets: entry.assets,
-      });
+          await persistAssetCreationsAtomically({
+            projectDoc: updatedProject,
+            assets: entry.assets,
+          });
 
-      set((state) => {
-        const historyByProject = patchHistory(state.historyByProject, project.id, (currentHistory) => ({
-          past: currentHistory.past.slice(0, -1),
-          future: [...currentHistory.future, entry],
-        }));
+          set((state) => {
+            const historyByProject = patchHistory(
+              state.historyByProject,
+              project.id,
+              (currentHistory) => ({
+                past: currentHistory.past.slice(0, -1),
+                future: [...currentHistory.future, entry],
+              }),
+            );
 
-        return {
-          assets: sortAssetsByCreated([...state.assets, ...restoredAssets]),
-          projects: upsertProject(state.projects, updatedProject),
-          historyByProject,
-          status: "Undo applied.",
-          ...getHistoryFlags(historyByProject, state.activeProjectId),
-        };
-      });
-      return;
-    }
+            return {
+              assets: sortAssetsByCreated([...state.assets, ...restoredAssets]),
+              projects: upsertProject(state.projects, updatedProject),
+              historyByProject,
+              status: "Undo applied.",
+              ...getHistoryFlags(historyByProject, state.activeProjectId),
+            };
+          });
+          return;
+        }
 
-    const updatedProject = applySnapshotToProject(project, entry.before);
-    const removedAssets = entry.assets.map(({ asset }) => asset);
-    const assetIds = removedAssets.map((asset) => asset.id);
+        const updatedProject = applySnapshotToProject(project, entry.before);
+        const removedAssets = entry.assets.map(({ asset }) => asset);
+        const assetIds = removedAssets.map((asset) => asset.id);
 
-    await deleteAssetsAtomically({
-      projectDoc: updatedProject,
-      assets: removedAssets,
-    });
+        await deleteAssetsAtomically({
+          projectDoc: updatedProject,
+          assets: removedAssets,
+        });
 
-    set((state) => {
-      const historyByProject = patchHistory(state.historyByProject, project.id, (currentHistory) => ({
-        past: currentHistory.past.slice(0, -1),
-        future: [...currentHistory.future, entry],
-      }));
+        set((state) => {
+          const historyByProject = patchHistory(
+            state.historyByProject,
+            project.id,
+            (currentHistory) => ({
+              past: currentHistory.past.slice(0, -1),
+              future: [...currentHistory.future, entry],
+            }),
+          );
 
-      return {
-        assets: removeAssetsById(state.assets, assetIds),
-        projects: upsertProject(state.projects, updatedProject),
-        historyByProject,
-        status: "Undo applied.",
-        ...getHistoryFlags(historyByProject, state.activeProjectId),
-      };
-    });
+          return {
+            assets: removeAssetsById(state.assets, assetIds),
+            projects: upsertProject(state.projects, updatedProject),
+            historyByProject,
+            status: "Undo applied.",
+            ...getHistoryFlags(historyByProject, state.activeProjectId),
+          };
+        });
+      },
+      {
+        getErrorStatus: (error) =>
+          error instanceof Error
+            ? `Could not undo: ${error.message}`
+            : "Could not undo.",
+      },
+    );
   },
 
   async redo() {
-    const project = getActiveProject(get());
-    if (!project) return;
+    await runWorkspaceAction(
+      async () => {
+        const project = getActiveProject(get());
+        if (!project) return;
 
-    const history = getProjectHistory(get().historyByProject, project.id);
-    const entry = history.future.at(-1);
-    if (!entry) return;
+        const history = getProjectHistory(get().historyByProject, project.id);
+        const entry = history.future.at(-1);
+        if (!entry) return;
 
-    if (entry.kind === "project-change") {
-      const updatedProject = applySnapshotToProject(project, entry.after);
-      await putProjectDocument(updatedProject);
+        if (entry.kind === "project-change") {
+          const updatedProject = applySnapshotToProject(project, entry.after);
+          await putProjectDocument(updatedProject);
 
-      set((state) => {
-        const historyByProject = patchHistory(state.historyByProject, project.id, (currentHistory) => ({
-          past: [...currentHistory.past, entry],
-          future: currentHistory.future.slice(0, -1),
-        }));
+          set((state) => {
+            const historyByProject = patchHistory(
+              state.historyByProject,
+              project.id,
+              (currentHistory) => ({
+                past: [...currentHistory.past, entry],
+                future: currentHistory.future.slice(0, -1),
+              }),
+            );
 
-        return {
-          projects: upsertProject(state.projects, updatedProject),
-          historyByProject,
-          status: "Redo applied.",
-          ...getHistoryFlags(historyByProject, state.activeProjectId),
-        };
-      });
-      return;
-    }
+            return {
+              projects: upsertProject(state.projects, updatedProject),
+              historyByProject,
+              status: "Redo applied.",
+              ...getHistoryFlags(historyByProject, state.activeProjectId),
+            };
+          });
+          return;
+        }
 
-    if (entry.kind === "remove-assets") {
-      const removedAssets = entry.assets.map(({ asset }) => asset);
-      const removedAssetIds = removedAssets.map((asset) => asset.id);
-      const updatedProject = applySnapshotToProject(project, entry.after);
+        if (entry.kind === "remove-assets") {
+          const removedAssets = entry.assets.map(({ asset }) => asset);
+          const removedAssetIds = removedAssets.map((asset) => asset.id);
+          const updatedProject = applySnapshotToProject(project, entry.after);
 
-      await deleteAssetsAtomically({
-        projectDoc: updatedProject,
-        assets: removedAssets,
-      });
+          await deleteAssetsAtomically({
+            projectDoc: updatedProject,
+            assets: removedAssets,
+          });
 
-      set((state) => {
-        const historyByProject = patchHistory(state.historyByProject, project.id, (currentHistory) => ({
-          past: [...currentHistory.past, entry],
-          future: currentHistory.future.slice(0, -1),
-        }));
+          set((state) => {
+            const historyByProject = patchHistory(
+              state.historyByProject,
+              project.id,
+              (currentHistory) => ({
+                past: [...currentHistory.past, entry],
+                future: currentHistory.future.slice(0, -1),
+              }),
+            );
 
-        return {
-          assets: removeAssetsById(state.assets, removedAssetIds),
-          projects: upsertProject(state.projects, updatedProject),
-          historyByProject,
-          status: "Redo applied.",
-          ...getHistoryFlags(historyByProject, state.activeProjectId),
-        };
-      });
-      return;
-    }
+            return {
+              assets: removeAssetsById(state.assets, removedAssetIds),
+              projects: upsertProject(state.projects, updatedProject),
+              historyByProject,
+              status: "Redo applied.",
+              ...getHistoryFlags(historyByProject, state.activeProjectId),
+            };
+          });
+          return;
+        }
 
-    const updatedProject = applySnapshotToProject(project, entry.after);
+        const updatedProject = applySnapshotToProject(project, entry.after);
 
-    await persistAssetCreationsAtomically({
-      projectDoc: updatedProject,
-      assets: entry.assets,
-    });
+        await persistAssetCreationsAtomically({
+          projectDoc: updatedProject,
+          assets: entry.assets,
+        });
 
-    set((state) => {
-      const historyByProject = patchHistory(state.historyByProject, project.id, (currentHistory) => ({
-        past: [...currentHistory.past, entry],
-        future: currentHistory.future.slice(0, -1),
-      }));
+        set((state) => {
+          const historyByProject = patchHistory(
+            state.historyByProject,
+            project.id,
+            (currentHistory) => ({
+              past: [...currentHistory.past, entry],
+              future: currentHistory.future.slice(0, -1),
+            }),
+          );
 
-      return {
-        assets: sortAssetsByCreated([
-          ...state.assets,
-          ...entry.assets.map(({ asset }) => asset),
-        ]),
-        projects: upsertProject(state.projects, updatedProject),
-        historyByProject,
-        status: "Redo applied.",
-        ...getHistoryFlags(historyByProject, state.activeProjectId),
-      };
-    });
+          return {
+            assets: sortAssetsByCreated([
+              ...state.assets,
+              ...entry.assets.map(({ asset }) => asset),
+            ]),
+            projects: upsertProject(state.projects, updatedProject),
+            historyByProject,
+            status: "Redo applied.",
+            ...getHistoryFlags(historyByProject, state.activeProjectId),
+          };
+        });
+      },
+      {
+        getErrorStatus: (error) =>
+          error instanceof Error
+            ? `Could not redo: ${error.message}`
+            : "Could not redo.",
+      },
+    );
   },
-}));
+  };
+});

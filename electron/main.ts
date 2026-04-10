@@ -11,6 +11,12 @@ const preloadPath = path.resolve(__dirname, "preload.js");
 const devServerUrl = process.env.ELECTRON_RENDERER_URL?.trim() || null;
 const ALLOWED_EXTERNAL_PROTOCOLS = new Set(["https:", "http:", "mailto:"]);
 const disableRendererSandbox = process.env.ELECTRON_DISABLE_RENDERER_SANDBOX === "1";
+const disableChromiumSandbox = process.env.ELECTRON_DISABLE_CHROMIUM_SANDBOX === "1";
+
+if (disableChromiumSandbox && process.platform === "linux") {
+  app.commandLine.appendSwitch("no-sandbox");
+  app.commandLine.appendSwitch("disable-setuid-sandbox");
+}
 
 function shouldEnableRendererSandbox() {
   if (disableRendererSandbox) {

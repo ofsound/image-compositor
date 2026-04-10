@@ -1,34 +1,18 @@
 import { expect, test, type Page } from "@playwright/test";
+import fs from "node:fs";
+import path from "node:path";
+
+const PNG_FIXTURE = fs.readFileSync(
+  path.join(process.cwd(), "import", "shape5.png"),
+);
 
 async function importGeneratedImage(page: Page) {
   await page.getByRole("button", { name: "Add Source" }).first().click();
   await expect(page.getByRole("button", { name: "Choose images" })).toBeVisible();
-  await page.locator('input[type="file"]').nth(0).evaluate(async (node) => {
-    const input = node as HTMLInputElement;
-    const canvas = document.createElement("canvas");
-    canvas.width = 48;
-    canvas.height = 48;
-    const context = canvas.getContext("2d");
-    if (!context) throw new Error("No canvas context.");
-    context.fillStyle = "#ea580c";
-    context.fillRect(0, 0, 48, 48);
-    context.fillStyle = "#111827";
-    context.fillRect(8, 8, 32, 32);
-
-    const blob = await new Promise<Blob>((resolve, reject) => {
-      canvas.toBlob((fileBlob) => {
-        if (!fileBlob) {
-          reject(new Error("No blob generated."));
-          return;
-        }
-        resolve(fileBlob);
-      }, "image/png");
-    });
-
-    const transfer = new DataTransfer();
-    transfer.items.add(new File([blob], "spec.png", { type: "image/png" }));
-    input.files = transfer.files;
-    input.dispatchEvent(new Event("change", { bubbles: true }));
+  await page.locator('input[type="file"]').first().setInputFiles({
+    name: "spec.png",
+    mimeType: "image/png",
+    buffer: PNG_FIXTURE,
   });
 }
 

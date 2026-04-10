@@ -14,9 +14,25 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { lockExportDimensionsToCanvas } from "@/lib/export-sizing";
+import type { ProjectEditorView } from "@/lib/project-editor-view";
 import type { ProjectDocument, SourceAsset } from "@/types/project";
 import { SliderField } from "@/components/app/procedural-texture-tab";
 import { ControlBlock } from "@/components/app/procedural-texture-tab";
+
+const EXPORT_FORMAT_OPTIONS: {
+  value: ProjectEditorView["export"]["format"];
+  label: string;
+}[] = [
+  { value: "image/png", label: "PNG" },
+  { value: "image/jpeg", label: "JPEG" },
+  { value: "image/png-transparent", label: "Transparent PNG" },
+];
+
+function isExportFormat(
+  value: string,
+): value is ProjectEditorView["export"]["format"] {
+  return EXPORT_FORMAT_OPTIONS.some((option) => option.value === value);
+}
 
 interface CenterCanvasProps {
   previewExpanded: boolean;
@@ -26,7 +42,9 @@ interface CenterCanvasProps {
   activeProject: ProjectDocument;
   previewAssets: SourceAsset[];
   setRenderState: React.Dispatch<React.SetStateAction<PreviewRenderState>>;
-  patchProject: (updater: (project: any) => any) => void;
+  patchProject: (
+    updater: (project: ProjectEditorView) => ProjectEditorView,
+  ) => void;
 }
 
 export function CenterCanvas({
@@ -187,25 +205,26 @@ export function CenterCanvas({
           <ControlBlock label="Export Format">
             <Select
               value={activeProject.export.format}
-              onValueChange={(value) =>
+              onValueChange={(value) => {
+                if (!isExportFormat(value)) return;
                 patchProject((project) => ({
                   ...project,
                   export: {
                     ...project.export,
-                    format: value as typeof project.export.format,
+                    format: value,
                   },
-                }))
-              }
+                }));
+              }}
             >
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="image/png">PNG</SelectItem>
-                <SelectItem value="image/jpeg">JPEG</SelectItem>
-                <SelectItem value="image/png-transparent">
-                  Transparent PNG
-                </SelectItem>
+                {EXPORT_FORMAT_OPTIONS.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </ControlBlock>

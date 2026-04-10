@@ -9,26 +9,20 @@ import { SourceThumbnail } from "@/components/app/source-thumbnail";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { getSourceContentSignature } from "@/lib/assets";
+import { formatSourceWeightValue } from "@/lib/format-utils";
+import type { ProjectEditorView } from "@/lib/project-editor-view";
 import { getSourceWeight } from "@/lib/source-weights";
 import type { ProjectDocument, SourceAsset, SourceKind } from "@/types/project";
-
-function formatSourceWeightValue(value: number) {
-  const rounded = Math.round(value * 100) / 100;
-  const displayValue = Number.isInteger(rounded)
-    ? rounded.toFixed(0)
-    : rounded.toFixed(2).replace(/0+$/, "").replace(/\.$/, "");
-  return `${displayValue}x`;
-}
 
 interface LeftSidebarProps {
   previewExpanded: boolean;
   projectAssets: SourceAsset[];
   activeProject: ProjectDocument;
-  activeProjectView: any; // We'll type this properly if possible
+  activeProjectView: ProjectEditorView;
   displayLayers: ProjectDocument["layers"];
   selectedLayer: ProjectDocument["layers"][number] | null;
   layerThumbnailUrls: Record<string, string>;
-  layerSensors: any;
+  layerSensors: React.ComponentProps<typeof DndContext>["sensors"];
   handleLayerDragEnd: (event: DragEndEvent) => void;
   openAddSourceDialog: (mode: SourceKind) => void;
   openEditSourceDialog: (assetId: string) => void;

@@ -2,15 +2,16 @@ import { fireEvent, render, screen, waitFor, within } from "@testing-library/rea
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as assetLib from "@/lib/assets";
-import { createProjectDocument } from "@/lib/project-defaults";
+import { createProjectDocument, getSelectedLayer } from "@/lib/project-defaults";
 import { createProjectEditorView } from "@/lib/project-editor-view";
 import { renderLayerThumbnailUrls } from "@/lib/render-service";
-import App, {
+import App from "@/App";
+import {
   coerceShapeModeForFamily,
   getGeometryOptions,
-} from "@/App";
+} from "@/lib/layout-utils";
 import type { SourceAsset } from "@/types/project";
-import { useAppStore } from "@/state/use-app-store";
+import { useWorkspaceState, useWorkspaceActions } from "@/state/app-store-hooks";
 
 vi.mock("sonner", () => ({
   Toaster: () => null,
@@ -53,16 +54,18 @@ vi.mock("@/components/app/theme-toggle", () => ({
   ThemeToggle: () => <button type="button">Theme</button>,
 }));
 
-vi.mock("@/state/use-app-store", () => ({
-  useAppStore: vi.fn(),
+vi.mock("@/state/app-store-hooks", () => ({
+  useWorkspaceState: vi.fn(),
+  useWorkspaceActions: vi.fn(),
 }));
 
-const mockedUseAppStore = vi.mocked(useAppStore);
+const mockedUseWorkspaceState = vi.mocked(useWorkspaceState);
+const mockedUseWorkspaceActions = vi.mocked(useWorkspaceActions);
 const mockedRenderLayerThumbnailUrls = vi.mocked(renderLayerThumbnailUrls);
 const renderGeneratedSourceToCanvasSpy = vi.mocked(
   assetLib.renderGeneratedSourceToCanvas,
 );
-type AppStoreState = ReturnType<typeof useAppStore.getState>;
+type AppStoreState = ReturnType<typeof useWorkspaceState> & ReturnType<typeof useWorkspaceActions>;
 type UpdateProject = AppStoreState["updateProject"];
 
 function createStoreState(overrides?: {
@@ -92,46 +95,50 @@ function createStoreState(overrides?: {
   enabledSourceIds?: string[];
   sourceWeights?: Record<string, number>;
 }) {
-  const project = createProjectEditorView(createProjectDocument("Slider Spec"));
+  const project = createProjectDocument("Slider Spec");
+  const selectedLayer = getSelectedLayer(project);
+  if (!selectedLayer) {
+    throw new Error("Project is missing a selected layer.");
+  }
 
   if (overrides?.family) {
-    project.layout.family = overrides.family;
+    selectedLayer.layout.family = overrides.family;
   }
 
   if (overrides?.shapeMode) {
-    project.layout.shapeMode = overrides.shapeMode;
+    selectedLayer.layout.shapeMode = overrides.shapeMode;
   }
 
   if (overrides?.symmetryMode) {
-    project.layout.symmetryMode = overrides.symmetryMode;
+    selectedLayer.layout.symmetryMode = overrides.symmetryMode;
   }
 
   if (overrides?.density !== undefined) {
-    project.layout.density = overrides.density;
+    selectedLayer.layout.density = overrides.density;
   }
 
   if (overrides?.organicVariation !== undefined) {
-    project.layout.organicVariation = overrides.organicVariation;
+    selectedLayer.layout.organicVariation = overrides.organicVariation;
   }
 
   if (overrides?.kaleidoscopeSegments !== undefined) {
-    project.effects.kaleidoscopeSegments = overrides.kaleidoscopeSegments;
+    selectedLayer.effects.kaleidoscopeSegments = overrides.kaleidoscopeSegments;
   }
 
   if (overrides?.strategy) {
-    project.sourceMapping.strategy = overrides.strategy;
+    selectedLayer.sourceMapping.strategy = overrides.strategy;
   }
 
   const assets =
     overrides?.assets?.map((asset) => ({ ...asset, projectId: project.id })) ??
     [];
   if (assets.length > 0) {
-    project.sourceIds =
+    selectedLayer.sourceIds =
       overrides?.enabledSourceIds ?? assets.map((asset) => asset.id);
   }
 
   if (overrides?.sourceWeights) {
-    project.sourceMapping.sourceWeights = overrides.sourceWeights;
+    selectedLayer.sourceMapping.sourceWeights = overrides.sourceWeights;
   }
 
   const updateProject = vi.fn<UpdateProject>(async () => undefined);
@@ -185,8 +192,23 @@ function createStoreState(overrides?: {
   };
 }
 
+function mockStoreState(state: ReturnType<typeof createStoreState>) {
+  const {
+    ready, busy, status, sourceImportProgress,
+    projects, assets, versions, activeProjectId,
+    canUndo, canRedo,
+    ...actions
+  } = state;
+  mockedUseWorkspaceState.mockReturnValue({
+    ready, busy, status, sourceImportProgress,
+    projects, assets, versions, activeProjectId,
+    canUndo, canRedo,
+  });
+  mockedUseWorkspaceActions.mockReturnValue(actions as ReturnType<typeof useWorkspaceActions>);
+}
+
 function renderApp(overrides?: Parameters<typeof createStoreState>[0]) {
-  mockedUseAppStore.mockReturnValue(createStoreState(overrides));
+  mockStoreState(createStoreState(overrides));
   render(<App />);
 }
 
@@ -347,7 +369,6 @@ describe("App layer thumbnails", () => {
   const revokeObjectUrlSpy = vi.fn();
 
   beforeEach(() => {
-    mockedUseAppStore.mockReset();
     mockedRenderLayerThumbnailUrls.mockReset();
     mockedRenderLayerThumbnailUrls.mockImplementation(
       async (project) =>
@@ -371,7 +392,7 @@ describe("App layer thumbnails", () => {
     });
     state.projects[0]!.layers[0]!.sourceIds = [state.assets[0]!.id];
 
-    mockedUseAppStore.mockReturnValue(state);
+    mockStoreState(state);
     render(<App />);
 
     expect(
@@ -391,7 +412,7 @@ describe("App layer thumbnails", () => {
       name: "Layer 2",
     });
 
-    mockedUseAppStore.mockReturnValue(state);
+    mockStoreState(state);
     render(<App />);
 
     await waitFor(() => {
@@ -408,7 +429,7 @@ describe("App layer thumbnails", () => {
     });
     initialState.projects[0]!.layers[0]!.sourceIds = [initialState.assets[0]!.id];
 
-    mockedUseAppStore.mockReturnValue(initialState);
+    mockStoreState(initialState);
     const { rerender } = render(<App />);
 
     await waitFor(() =>
@@ -434,7 +455,7 @@ describe("App layer thumbnails", () => {
       .mockResolvedValueOnce({
         [refreshedState.projects[0]!.layers[0]!.id]: "blob:layer-thumb-2",
       });
-    mockedUseAppStore.mockReturnValue(refreshedState);
+    mockStoreState(refreshedState);
     rerender(<App />);
 
     await waitFor(() =>
@@ -448,7 +469,7 @@ describe("App layer thumbnails", () => {
     });
     state.projects[0]!.layers[0]!.sourceIds = [state.assets[0]!.id];
 
-    mockedUseAppStore.mockReturnValue(state);
+    mockStoreState(state);
     const { unmount } = render(<App />);
 
     await waitFor(() =>
@@ -463,7 +484,6 @@ describe("App layer thumbnails", () => {
 
 describe("App conditional sliders", () => {
   beforeEach(() => {
-    mockedUseAppStore.mockReset();
     renderGeneratedSourceToCanvasSpy.mockImplementation(() => undefined);
     renderGeneratedSourceToCanvasSpy.mockClear();
   });
@@ -561,7 +581,7 @@ describe("App conditional sliders", () => {
       strategy: "random",
       density: 2,
     });
-    mockedUseAppStore.mockReturnValue(state);
+    mockStoreState(state);
 
     render(<App />);
 
@@ -588,7 +608,7 @@ describe("App conditional sliders", () => {
       strategy: "random",
       organicVariation: 0,
     });
-    mockedUseAppStore.mockReturnValue(state);
+    mockStoreState(state);
 
     render(<App />);
 
@@ -681,24 +701,24 @@ describe("App conditional sliders", () => {
   });
 
   it("shows the corner radius slider only for rect shape mode", () => {
-    mockedUseAppStore.mockReturnValue(createStoreState({ shapeMode: "rect" }));
+    mockStoreState(createStoreState({ shapeMode: "rect" }));
     const { rerender } = render(<App />);
     expectSliderEnabled("Corner Radius");
     expectSliderHidden("Wedge Angle");
 
-    mockedUseAppStore.mockReturnValue(createStoreState({ shapeMode: "triangle" }));
+    mockStoreState(createStoreState({ shapeMode: "triangle" }));
     rerender(<App />);
 
     expectSliderHidden("Corner Radius");
   });
 
   it("shows wedge sliders for wedge and mixed geometry only", () => {
-    mockedUseAppStore.mockReturnValue(createStoreState({ shapeMode: "wedge" }));
+    mockStoreState(createStoreState({ shapeMode: "wedge" }));
     const { rerender } = render(<App />);
     expectSliderEnabled("Wedge Angle");
     expectSliderEnabled("Wedge Jitter");
 
-    mockedUseAppStore.mockReturnValue(createStoreState({ shapeMode: "mixed" }));
+    mockStoreState(createStoreState({ shapeMode: "mixed" }));
     rerender(<App />);
 
     expectSliderEnabled("Wedge Angle");
@@ -729,7 +749,7 @@ describe("App conditional sliders", () => {
   });
 
   it("shows the flow controls only for the flow family", () => {
-    mockedUseAppStore.mockReturnValue(createStoreState({ family: "flow" }));
+    mockStoreState(createStoreState({ family: "flow" }));
     const { rerender } = render(<App />);
 
     expectSliderEnabled("Density");
@@ -738,7 +758,7 @@ describe("App conditional sliders", () => {
     expectSliderEnabled("Flow Branch Rate");
     expectSliderEnabled("Flow Taper");
 
-    mockedUseAppStore.mockReturnValue(createStoreState({ family: "grid" }));
+    mockStoreState(createStoreState({ family: "grid" }));
     rerender(<App />);
 
     expectSliderHidden("Flow Curvature");
@@ -748,16 +768,16 @@ describe("App conditional sliders", () => {
   });
 
   it("shows the hollow ratio control for ring, arc, and mixed geometry", () => {
-    mockedUseAppStore.mockReturnValue(createStoreState({ shapeMode: "ring" }));
+    mockStoreState(createStoreState({ shapeMode: "ring" }));
     const { rerender } = render(<App />);
     expectSliderEnabled("Hollow Ratio");
 
-    mockedUseAppStore.mockReturnValue(createStoreState({ shapeMode: "arc" }));
+    mockStoreState(createStoreState({ shapeMode: "arc" }));
     rerender(<App />);
     expectSliderEnabled("Hollow Ratio");
     expectSliderEnabled("Wedge Angle");
 
-    mockedUseAppStore.mockReturnValue(createStoreState({ shapeMode: "triangle" }));
+    mockStoreState(createStoreState({ shapeMode: "triangle" }));
     rerender(<App />);
     expectSliderHidden("Hollow Ratio");
   });
@@ -845,7 +865,7 @@ describe("App conditional sliders", () => {
       strategy: "random",
       organicVariation: 0,
     });
-    mockedUseAppStore.mockReturnValue(state);
+    mockStoreState(state);
 
     render(<App />);
 
@@ -885,7 +905,7 @@ describe("App conditional sliders", () => {
         createImageAsset("project_unused", { id: "asset_b", name: "Asset B" }),
       ],
     });
-    mockedUseAppStore.mockReturnValue(state);
+    mockStoreState(state);
 
     render(<App />);
 
@@ -905,7 +925,6 @@ describe("App conditional sliders", () => {
 
 describe("App inspector grouping", () => {
   beforeEach(() => {
-    mockedUseAppStore.mockReset();
     renderGeneratedSourceToCanvasSpy.mockImplementation(() => undefined);
     renderGeneratedSourceToCanvasSpy.mockClear();
   });
@@ -1033,7 +1052,7 @@ describe("App inspector grouping", () => {
 
   it("keeps moved canvas controls wired to project updates", () => {
     const state = createStoreState();
-    mockedUseAppStore.mockReturnValue(state);
+    mockStoreState(state);
 
     render(<App />);
 
@@ -1055,7 +1074,6 @@ describe("App inspector grouping", () => {
 
 describe("App gradient sources", () => {
   beforeEach(() => {
-    mockedUseAppStore.mockReset();
     renderGeneratedSourceToCanvasSpy.mockImplementation(() => undefined);
     renderGeneratedSourceToCanvasSpy.mockClear();
   });
@@ -1085,7 +1103,7 @@ describe("App gradient sources", () => {
     const state = createStoreState({
       assets: [createGradientAsset("project_unused", { mode: "radial", name: "Radial Burst" })],
     });
-    mockedUseAppStore.mockReturnValue(state);
+    mockStoreState(state);
 
     render(<App />);
 
@@ -1174,7 +1192,7 @@ describe("App gradient sources", () => {
   it("submits normalized conic gradient recipes", async () => {
     const user = userEvent.setup();
     const state = createStoreState();
-    mockedUseAppStore.mockReturnValue(state);
+    mockStoreState(state);
 
     render(<App />);
 
@@ -1221,7 +1239,7 @@ describe("App gradient sources", () => {
   it("shows a perlin tab and submits normalized perlin recipes", async () => {
     const user = userEvent.setup();
     const state = createStoreState();
-    mockedUseAppStore.mockReturnValue(state);
+    mockStoreState(state);
 
     render(<App />);
 
@@ -1257,7 +1275,7 @@ describe("App gradient sources", () => {
   it("submits normalized cellular recipes", async () => {
     const user = userEvent.setup();
     const state = createStoreState();
-    mockedUseAppStore.mockReturnValue(state);
+    mockStoreState(state);
 
     render(<App />);
 
@@ -1290,7 +1308,7 @@ describe("App gradient sources", () => {
   it("submits normalized reaction recipes", async () => {
     const user = userEvent.setup();
     const state = createStoreState();
-    mockedUseAppStore.mockReturnValue(state);
+    mockStoreState(state);
 
     render(<App />);
 
@@ -1323,7 +1341,7 @@ describe("App gradient sources", () => {
   it("submits normalized waves recipes", async () => {
     const user = userEvent.setup();
     const state = createStoreState();
-    mockedUseAppStore.mockReturnValue(state);
+    mockStoreState(state);
 
     render(<App />);
 
@@ -1375,7 +1393,7 @@ describe("App gradient sources", () => {
     const state = createStoreState({
       assets: [createPerlinAsset("project_unused", { name: "Sea Foam" })],
     });
-    mockedUseAppStore.mockReturnValue(state);
+    mockStoreState(state);
 
     render(<App />);
 
@@ -1407,7 +1425,7 @@ describe("App gradient sources", () => {
         createWaveAsset("project_unused", "Wave Sample"),
       ],
     });
-    mockedUseAppStore.mockReturnValue(state);
+    mockStoreState(state);
 
     render(<App />);
 
@@ -1474,7 +1492,6 @@ describe("App gradient sources", () => {
 
 describe("App source import progress badge", () => {
   beforeEach(() => {
-    mockedUseAppStore.mockReset();
     renderGeneratedSourceToCanvasSpy.mockImplementation(() => undefined);
     renderGeneratedSourceToCanvasSpy.mockClear();
   });
@@ -1494,7 +1511,7 @@ describe("App source import progress badge", () => {
   });
 
   it("can show source processing alongside rendering", () => {
-    mockedUseAppStore.mockReturnValue(
+    mockStoreState(
       createStoreState({
         sourceImportProgress: { processed: 1, total: 3 },
       }),
@@ -1507,10 +1524,6 @@ describe("App source import progress badge", () => {
 });
 
 describe("App kaleidoscope controls", () => {
-  beforeEach(() => {
-    mockedUseAppStore.mockReset();
-  });
-
   it("hides advanced kaleidoscope controls when the effect is inactive", () => {
     renderApp({ kaleidoscopeSegments: 1 });
 
@@ -1541,12 +1554,8 @@ describe("App kaleidoscope controls", () => {
 });
 
 describe("App undo and redo controls", () => {
-  beforeEach(() => {
-    mockedUseAppStore.mockReset();
-  });
-
   it("renders undo and redo buttons with store availability", () => {
-    mockedUseAppStore.mockReturnValue({
+    mockStoreState({
       ...createStoreState(),
       canUndo: true,
       canRedo: false,
@@ -1562,7 +1571,7 @@ describe("App undo and redo controls", () => {
     const undo = vi.fn(async () => undefined);
     const redo = vi.fn(async () => undefined);
 
-    mockedUseAppStore.mockReturnValue({
+    mockStoreState({
       ...createStoreState(),
       canUndo: true,
       canRedo: true,
@@ -1585,7 +1594,7 @@ describe("App undo and redo controls", () => {
   it("ignores undo shortcuts while typing in editable inputs", () => {
     const undo = vi.fn(async () => undefined);
 
-    mockedUseAppStore.mockReturnValue({
+    mockStoreState({
       ...createStoreState(),
       canUndo: true,
       undo,
@@ -1607,7 +1616,6 @@ describe("App undo and redo controls", () => {
 
 describe("App source removal", () => {
   beforeEach(() => {
-    mockedUseAppStore.mockReset();
     vi.restoreAllMocks();
   });
 
@@ -1616,7 +1624,7 @@ describe("App source removal", () => {
     const removeSource = vi.fn(async () => undefined);
     vi.spyOn(window, "confirm").mockReturnValue(true);
 
-    mockedUseAppStore.mockReturnValue({
+    mockStoreState({
       ...createStoreState({ assets: [asset] }),
       removeSource,
     });
@@ -1636,7 +1644,7 @@ describe("App source removal", () => {
     const removeSource = vi.fn(async () => undefined);
     vi.spyOn(window, "confirm").mockReturnValue(false);
 
-    mockedUseAppStore.mockReturnValue({
+    mockStoreState({
       ...createStoreState({ assets: [asset] }),
       removeSource,
     });

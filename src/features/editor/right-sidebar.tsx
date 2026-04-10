@@ -3,20 +3,102 @@ import { SourceColorField } from "@/components/app/source-color-field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { SliderField, ControlBlock } from "@/components/app/procedural-texture-tab";
 import { InspectorGroup, InspectorFieldGrid } from "@/components/app/inspector-group"; 
-import type { ProjectDocument, LayoutFamily, GeometryShape, RadialChildRotationMode, ThreeDStructureMode, SourceAssignmentStrategy, CropDistribution, BlendMode, KaleidoscopeMirrorMode } from "@/types/project";
+import type { LayoutFamily, GeometryShape, RadialChildRotationMode, ThreeDStructureMode, SourceAssignmentStrategy, CropDistribution, BlendMode, KaleidoscopeMirrorMode } from "@/types/project";
 
-import { coerceShapeModeForFamily, getGeometryOptions } from "@/App";;
+import { coerceShapeModeForFamily } from "@/lib/layout-utils";
+import {
+  DENSITY_UI_SCALE,
+  ORGANIC_DISTRIBUTION_MAX,
+  THREE_D_DISTRIBUTION_MAX,
+  formatPercentValue,
+  formatDegreeValue,
+} from "@/lib/format-utils";
+import type { ProjectEditorView } from "@/lib/project-editor-view";
 import { Switch } from "@/components/ui/switch";
-import { Undo2, Redo2 } from "lucide-react";
 
-const DENSITY_UI_SCALE = 4;
-const ORGANIC_DISTRIBUTION_MAX = 500;
-const THREE_D_DISTRIBUTION_MAX = 500;
-function formatPercentValue(value: number) {
-  return `${Math.round(value * 100)}%`;
+const LAYOUT_FAMILY_OPTIONS: LayoutFamily[] = [
+  "blocks",
+  "grid",
+  "strips",
+  "radial",
+  "organic",
+  "flow",
+  "3d",
+];
+const RADIAL_CHILD_ROTATION_OPTIONS: RadialChildRotationMode[] = [
+  "none",
+  "tangent",
+  "outward",
+];
+const THREE_D_STRUCTURE_OPTIONS: ThreeDStructureMode[] = [
+  "sphere",
+  "torus",
+  "attractor",
+];
+const SYMMETRY_MODE_OPTIONS: ProjectEditorView["layout"]["symmetryMode"][] = [
+  "none",
+  "mirror-x",
+  "mirror-y",
+  "quad",
+  "radial",
+];
+const SOURCE_ASSIGNMENT_OPTIONS: SourceAssignmentStrategy[] = [
+  "random",
+  "weighted",
+  "sequential",
+  "luminance",
+  "palette",
+  "symmetry",
+];
+const CROP_DISTRIBUTION_OPTIONS: CropDistribution[] = [
+  "center",
+  "distributed",
+];
+const BLEND_MODE_OPTIONS: BlendMode[] = [
+  "source-over",
+  "multiply",
+  "screen",
+  "overlay",
+  "soft-light",
+  "hard-light",
+  "difference",
+  "color-dodge",
+  "luminosity",
+];
+const KALEIDOSCOPE_MIRROR_MODE_OPTIONS: KaleidoscopeMirrorMode[] = [
+  "rotate-only",
+  "alternate",
+  "mirror-all",
+];
+
+function isOption<T extends string>(options: readonly T[], value: string): value is T {
+  return options.some((option) => option === value);
 }
-function formatDegreeValue(value: number) {
-  return `${Math.round(value)}°`;
+
+interface RightSidebarProps {
+  previewExpanded: boolean;
+  activeProjectView: ProjectEditorView;
+  patchProject: (
+    updater: (view: ProjectEditorView) => ProjectEditorView,
+  ) => void;
+  inspectorLayerName: string;
+  isRectShapeMode: boolean;
+  isWedgeShapeMode: boolean;
+  isHollowShapeMode: boolean;
+  isGridFamily: boolean;
+  isStripsFamily: boolean;
+  isBlocksFamily: boolean;
+  isRadialFamily: boolean;
+  isOrganicFamily: boolean;
+  isFlowFamily: boolean;
+  isThreeDFamily: boolean;
+  isSymmetryActive: boolean;
+  isRadialSymmetry: boolean;
+  isWeightedAssignment: boolean;
+  isPaletteAssignment: boolean;
+  isKaleidoscopeActive: boolean;
+  geometryOptions: GeometryShape[];
+  geometryValue: GeometryShape;
 }
 
 export function RightSidebar({
@@ -41,7 +123,7 @@ export function RightSidebar({
   isKaleidoscopeActive,
   geometryOptions,
   geometryValue,
-}: { patchProject: (updater: (view: any) => any) => void; [key: string]: any }) {
+}: RightSidebarProps) {
   if (previewExpanded) return null;
 
   return (
@@ -77,36 +159,26 @@ export function RightSidebar({
                               <ControlBlock label="Family">
                                 <Select
                                   value={activeProjectView.layout.family}
-                                  onValueChange={(value) =>
-                                    patchProject((project) => {
-                                      const nextFamily = value as LayoutFamily;
-                                      return {
-                                        ...project,
-                                        layout: {
-                                          ...project.layout,
-                                          family: nextFamily,
-                                          shapeMode: coerceShapeModeForFamily(
-                                            nextFamily,
-                                            project.layout.shapeMode,
-                                          ),
-                                        },
-                                      };
-                                    })
-                                  }
+                                  onValueChange={(value) => {
+                                    if (!isOption(LAYOUT_FAMILY_OPTIONS, value)) return;
+                                    patchProject((project) => ({
+                                      ...project,
+                                      layout: {
+                                        ...project.layout,
+                                        family: value,
+                                        shapeMode: coerceShapeModeForFamily(
+                                          value,
+                                          project.layout.shapeMode,
+                                        ),
+                                      },
+                                    }));
+                                  }}
                                 >
                                   <SelectTrigger>
                                     <SelectValue />
                                   </SelectTrigger>
                                   <SelectContent>
-                                    {[
-                                      "blocks",
-                                      "grid",
-                                      "strips",
-                                      "radial",
-                                      "organic",
-                                      "flow",
-                                      "3d",
-                                    ].map((option) => (
+                                    {LAYOUT_FAMILY_OPTIONS.map((option) => (
                                       <SelectItem key={option} value={option}>
                                         {option}
                                       </SelectItem>
@@ -117,15 +189,16 @@ export function RightSidebar({
                               <ControlBlock label="Geometry">
                                 <Select
                                   value={geometryValue}
-                                  onValueChange={(value) =>
+                                  onValueChange={(value) => {
+                                    if (!isOption(geometryOptions, value)) return;
                                     patchProject((project) => ({
                                       ...project,
                                       layout: {
                                         ...project.layout,
-                                        shapeMode: value as GeometryShape,
+                                        shapeMode: value,
                                       },
-                                    }))
-                                  }
+                                    }));
+                                  }}
                                 >
                                   <SelectTrigger>
                                     <SelectValue />
@@ -570,31 +643,29 @@ export function RightSidebar({
                                       activeProjectView.layout
                                         .radialChildRotationMode
                                     }
-                                    onValueChange={(value) =>
+                                    onValueChange={(value) => {
+                                      if (!isOption(RADIAL_CHILD_ROTATION_OPTIONS, value)) return;
                                       patchProject((project) => ({
                                         ...project,
                                         layout: {
                                           ...project.layout,
-                                          radialChildRotationMode:
-                                            value as RadialChildRotationMode,
+                                          radialChildRotationMode: value,
                                         },
-                                      }))
-                                    }
+                                      }));
+                                    }}
                                   >
                                     <SelectTrigger aria-label="Child Rotation">
                                       <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
-                                      {["none", "tangent", "outward"].map(
-                                        (option) => (
-                                          <SelectItem
-                                            key={option}
-                                            value={option}
-                                          >
-                                            {option}
-                                          </SelectItem>
-                                        ),
-                                      )}
+                                      {RADIAL_CHILD_ROTATION_OPTIONS.map((option) => (
+                                        <SelectItem
+                                          key={option}
+                                          value={option}
+                                        >
+                                          {option}
+                                        </SelectItem>
+                                      ))}
                                     </SelectContent>
                                   </Select>
                                 </ControlBlock>
@@ -788,31 +859,29 @@ export function RightSidebar({
                                     value={
                                       activeProjectView.layout.threeDStructure
                                     }
-                                    onValueChange={(value) =>
+                                    onValueChange={(value) => {
+                                      if (!isOption(THREE_D_STRUCTURE_OPTIONS, value)) return;
                                       patchProject((project) => ({
                                         ...project,
                                         layout: {
                                           ...project.layout,
-                                          threeDStructure:
-                                            value as ThreeDStructureMode,
+                                          threeDStructure: value,
                                         },
-                                      }))
-                                    }
+                                      }));
+                                    }}
                                   >
                                     <SelectTrigger aria-label="Structure">
                                       <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent>
-                                      {["sphere", "torus", "attractor"].map(
-                                        (option) => (
-                                          <SelectItem
-                                            key={option}
-                                            value={option}
-                                          >
-                                            {option}
-                                          </SelectItem>
-                                        ),
-                                      )}
+                                      {THREE_D_STRUCTURE_OPTIONS.map((option) => (
+                                        <SelectItem
+                                          key={option}
+                                          value={option}
+                                        >
+                                          {option}
+                                        </SelectItem>
+                                      ))}
                                     </SelectContent>
                                   </Select>
                                 </ControlBlock>
@@ -1021,28 +1090,22 @@ export function RightSidebar({
                               >
                                 <Select
                                   value={activeProjectView.layout.symmetryMode}
-                                  onValueChange={(value) =>
+                                  onValueChange={(value) => {
+                                    if (!isOption(SYMMETRY_MODE_OPTIONS, value)) return;
                                     patchProject((project) => ({
                                       ...project,
                                       layout: {
                                         ...project.layout,
-                                        symmetryMode:
-                                          value as typeof project.layout.symmetryMode,
+                                        symmetryMode: value,
                                       },
-                                    }))
-                                  }
+                                    }));
+                                  }}
                                 >
                                   <SelectTrigger>
                                     <SelectValue />
                                   </SelectTrigger>
                                   <SelectContent>
-                                    {[
-                                      "none",
-                                      "mirror-x",
-                                      "mirror-y",
-                                      "quad",
-                                      "radial",
-                                    ].map((option) => (
+                                    {SYMMETRY_MODE_OPTIONS.map((option) => (
                                       <SelectItem key={option} value={option}>
                                         {option}
                                       </SelectItem>
@@ -1115,7 +1178,7 @@ export function RightSidebar({
                               {isRadialSymmetry ? (
                                 <>
                                   <SliderField
-                                    label="Angle Offset"
+                                    label="Symmetry Angle Offset"
                                     min={-180}
                                     max={180}
                                     step={1}
@@ -1213,29 +1276,22 @@ export function RightSidebar({
                                   value={
                                     activeProjectView.sourceMapping.strategy
                                   }
-                                  onValueChange={(value) =>
+                                  onValueChange={(value) => {
+                                    if (!isOption(SOURCE_ASSIGNMENT_OPTIONS, value)) return;
                                     patchProject((project) => ({
                                       ...project,
                                       sourceMapping: {
                                         ...project.sourceMapping,
-                                        strategy:
-                                          value as SourceAssignmentStrategy,
+                                        strategy: value,
                                       },
-                                    }))
-                                  }
+                                    }));
+                                  }}
                                 >
                                   <SelectTrigger>
                                     <SelectValue />
                                   </SelectTrigger>
                                   <SelectContent>
-                                    {[
-                                      "random",
-                                      "weighted",
-                                      "sequential",
-                                      "luminance",
-                                      "palette",
-                                      "symmetry",
-                                    ].map((option) => (
+                                    {SOURCE_ASSIGNMENT_OPTIONS.map((option) => (
                                       <SelectItem key={option} value={option}>
                                         {option}
                                       </SelectItem>
@@ -1297,16 +1353,16 @@ export function RightSidebar({
                                     activeProjectView.sourceMapping
                                       .cropDistribution
                                   }
-                                  onValueChange={(value) =>
+                                  onValueChange={(value) => {
+                                    if (!isOption(CROP_DISTRIBUTION_OPTIONS, value)) return;
                                     patchProject((project) => ({
                                       ...project,
                                       sourceMapping: {
                                         ...project.sourceMapping,
-                                        cropDistribution:
-                                          value as CropDistribution,
+                                        cropDistribution: value,
                                       },
-                                    }))
-                                  }
+                                    }));
+                                  }}
                                 >
                                   <SelectTrigger>
                                     <SelectValue />
@@ -1375,31 +1431,22 @@ export function RightSidebar({
                                   value={
                                     activeProjectView.compositing.blendMode
                                   }
-                                  onValueChange={(value) =>
+                                  onValueChange={(value) => {
+                                    if (!isOption(BLEND_MODE_OPTIONS, value)) return;
                                     patchProject((project) => ({
                                       ...project,
                                       compositing: {
                                         ...project.compositing,
-                                        blendMode: value as BlendMode,
+                                        blendMode: value,
                                       },
-                                    }))
-                                  }
+                                    }));
+                                  }}
                                 >
                                   <SelectTrigger>
                                     <SelectValue />
                                   </SelectTrigger>
                                   <SelectContent>
-                                    {[
-                                      "source-over",
-                                      "multiply",
-                                      "screen",
-                                      "overlay",
-                                      "soft-light",
-                                      "hard-light",
-                                      "difference",
-                                      "color-dodge",
-                                      "luminosity",
-                                    ].map((option) => (
+                                    {BLEND_MODE_OPTIONS.map((option) => (
                                       <SelectItem key={option} value={option}>
                                         {option}
                                       </SelectItem>
@@ -1713,26 +1760,22 @@ export function RightSidebar({
                                         activeProjectView.effects
                                           .kaleidoscopeMirrorMode
                                       }
-                                      onValueChange={(value) =>
+                                      onValueChange={(value) => {
+                                        if (!isOption(KALEIDOSCOPE_MIRROR_MODE_OPTIONS, value)) return;
                                         patchProject((project) => ({
                                           ...project,
                                           effects: {
                                             ...project.effects,
-                                            kaleidoscopeMirrorMode:
-                                              value as KaleidoscopeMirrorMode,
+                                            kaleidoscopeMirrorMode: value,
                                           },
-                                        }))
-                                      }
+                                        }));
+                                      }}
                                     >
                                       <SelectTrigger aria-label="Mirror Mode">
                                         <SelectValue />
                                       </SelectTrigger>
                                       <SelectContent>
-                                        {[
-                                          "rotate-only",
-                                          "alternate",
-                                          "mirror-all",
-                                        ].map((option) => (
+                                        {KALEIDOSCOPE_MIRROR_MODE_OPTIONS.map((option) => (
                                           <SelectItem
                                             key={option}
                                             value={option}

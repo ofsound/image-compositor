@@ -189,6 +189,71 @@ const asset: SourceAsset = {
   createdAt: "2026-03-30T00:00:00.000Z",
 };
 
+async function renderNoiseOutput(options: {
+  width: number;
+  height: number;
+  pixels: number[];
+  noise: number;
+  noiseMonochrome: number;
+  activeSeed?: number;
+  layerId?: string;
+}) {
+  const {
+    width,
+    height,
+    pixels,
+    noise,
+    noiseMonochrome,
+    activeSeed = 187310,
+    layerId = "layer_noise",
+  } = options;
+  const project = createProjectView("Noise Render");
+  project.canvas.width = width;
+  project.canvas.height = height;
+  project.effects.sharpen = 0;
+  project.effects.kaleidoscopeSegments = 1;
+  project.finish.noise = noise;
+  project.finish.noiseMonochrome = noiseMonochrome;
+  project.layers[0]!.finish.noise = noise;
+  project.layers[0]!.finish.noiseMonochrome = noiseMonochrome;
+  project.activeSeed = activeSeed;
+  project.layers[0]!.activeSeed = activeSeed;
+  project.layers[0]!.id = layerId;
+
+  const context = createMockContext();
+  const layerContext = createMockContext();
+  layerContext.getImageData.mockImplementation(() => ({
+    data: new Uint8ClampedArray(pixels),
+    width,
+    height,
+  }) as ImageData);
+  const canvas = {
+    width: 0,
+    height: 0,
+    getContext: vi.fn(() => context),
+  } as unknown as HTMLCanvasElement;
+  const layerCanvas = {
+    width: 0,
+    height: 0,
+    getContext: vi.fn(() => layerContext),
+  } as unknown as HTMLCanvasElement;
+  const createElementSpy = vi
+    .spyOn(document, "createElement")
+    .mockReturnValueOnce(layerCanvas as never);
+
+  try {
+    await renderProjectToCanvas(project, [], new Map(), canvas);
+  } finally {
+    createElementSpy.mockRestore();
+  }
+
+  const putImageDataCall = layerContext.putImageData.mock.calls.at(-1);
+  expect(putImageDataCall).toBeDefined();
+
+  const imageData = putImageDataCall?.[0] as ImageData;
+  return Array.from(imageData.data);
+}
+
 describe("renderProjectToCanvas", () => {
   it("rebuilds image bitmaps for distinct blobs with identical metadata", async () => {
     const createImageBitmapMock = vi.fn(async () => ({}) as ImageBitmap);
@@ -912,17 +977,11 @@ describe("renderProjectToCanvas", () => {
     project.effects.distortion = 0;
 
     const context = createMockContext();
-    const layerContext = createMockContext();
     const sourceContext = createMockContext();
     const canvas = {
       width: 0,
       height: 0,
       getContext: vi.fn(() => context),
-    } as unknown as HTMLCanvasElement;
-    const layerCanvas = {
-      width: 0,
-      height: 0,
-      getContext: vi.fn(() => layerContext),
     } as unknown as HTMLCanvasElement;
     const sourceCanvas = {
       width: 0,
@@ -931,7 +990,6 @@ describe("renderProjectToCanvas", () => {
     } as unknown as HTMLCanvasElement;
     const createElementSpy = vi
       .spyOn(document, "createElement")
-      .mockReturnValueOnce(layerCanvas as never)
       .mockReturnValueOnce(sourceCanvas as never);
 
     try {
@@ -946,11 +1004,12 @@ describe("renderProjectToCanvas", () => {
     }
 
     expect(context.globalCompositeOperationAssignments).toContain("multiply");
-    expect(context.drawImageCompositeOperations.at(-1)).toBe("multiply");
-    expect(sourceContext.drawImageCompositeOperations).toEqual(["source-over"]);
+    expect(context.drawImageCompositeOperations.length).toBeGreaterThan(1);
+    expect(context.drawImageCompositeOperations.every((mode) => mode === "multiply")).toBe(true);
+    expect(sourceContext.drawImageCompositeOperations).toEqual(["multiply"]);
   });
 
-  it("composites non-kaleidoscope multiply layers through the offscreen layer path", async () => {
+  it("renders non-kaleidoscope multiply layers on the direct path below full opacity", async () => {
     const project = createProjectView("Slice Blend Mode");
     project.effects.sharpen = 0;
     project.effects.kaleidoscopeSegments = 1;
@@ -960,6 +1019,7 @@ describe("renderProjectToCanvas", () => {
     project.layout.shapeMode = "rect";
     project.layout.symmetryMode = "none";
     project.compositing.blendMode = "multiply";
+    project.compositing.opacity = 0.42;
     project.compositing.overlap = 0;
     project.effects.rotationJitter = 0;
     project.effects.scaleJitter = 0;
@@ -967,20 +1027,12 @@ describe("renderProjectToCanvas", () => {
     project.effects.distortion = 0;
 
     const context = createMockContext();
-    const layerContext = createMockContext();
     const canvas = {
       width: 0,
       height: 0,
       getContext: vi.fn(() => context),
     } as unknown as HTMLCanvasElement;
-    const layerCanvas = {
-      width: 0,
-      height: 0,
-      getContext: vi.fn(() => layerContext),
-    } as unknown as HTMLCanvasElement;
-    const createElementSpy = vi
-      .spyOn(document, "createElement")
-      .mockReturnValueOnce(layerCanvas as never);
+    const createElementSpy = vi.spyOn(document, "createElement");
 
     try {
       await renderProjectToCanvas(
@@ -993,8 +1045,51 @@ describe("renderProjectToCanvas", () => {
       createElementSpy.mockRestore();
     }
 
+    expect(createElementSpy).not.toHaveBeenCalled();
     expect(context.drawImageCompositeOperations).toEqual(["multiply"]);
-    expect(layerContext.drawImageCompositeOperations).toEqual(["source-over"]);
+    expect(context.globalAlphaAssignments).toContain(0.42);
+  });
+
+  it("keeps per-slice blend mode for overlapping slices below full opacity", async () => {
+    const project = createProjectView("Overlap Blend Mode");
+    project.effects.sharpen = 0;
+    project.effects.kaleidoscopeSegments = 1;
+    project.layout.family = "grid";
+    project.layout.columns = 2;
+    project.layout.rows = 1;
+    project.layout.shapeMode = "rect";
+    project.layout.symmetryMode = "none";
+    project.compositing.blendMode = "multiply";
+    project.compositing.opacity = 0.58;
+    project.compositing.overlap = 1;
+    project.effects.rotationJitter = 0;
+    project.effects.scaleJitter = 0;
+    project.effects.displacement = 0;
+    project.effects.distortion = 0;
+
+    const context = createMockContext();
+    const canvas = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn(() => context),
+    } as unknown as HTMLCanvasElement;
+    const createElementSpy = vi.spyOn(document, "createElement");
+
+    try {
+      await renderProjectToCanvas(
+        project,
+        [asset],
+        new Map([[asset.id, { asset, bitmap: {} as ImageBitmap }]]),
+        canvas,
+      );
+    } finally {
+      createElementSpy.mockRestore();
+    }
+
+    expect(createElementSpy).not.toHaveBeenCalled();
+    expect(context.drawImageCompositeOperations.length).toBeGreaterThan(1);
+    expect(context.drawImageCompositeOperations.every((mode) => mode === "multiply")).toBe(true);
+    expect(context.globalAlphaAssignments).toContain(0.58);
   });
 
   it("keeps default finish layers on the direct render path", async () => {
@@ -1032,6 +1127,254 @@ describe("renderProjectToCanvas", () => {
     }
 
     expect(createElementSpy).not.toHaveBeenCalled();
+  });
+
+  it("routes sharpened layers through the offscreen compositing path", async () => {
+    const project = createProjectView("Sharpen Offscreen");
+    project.canvas.width = 3;
+    project.canvas.height = 3;
+    project.effects.sharpen = 0.35;
+    project.effects.kaleidoscopeSegments = 1;
+    project.layout.family = "grid";
+    project.layout.columns = 1;
+    project.layout.rows = 1;
+    project.layout.shapeMode = "rect";
+    project.layout.symmetryMode = "none";
+    project.compositing.overlap = 0;
+    project.effects.rotationJitter = 0;
+    project.effects.scaleJitter = 0;
+    project.effects.displacement = 0;
+    project.effects.distortion = 0;
+
+    const context = createMockContext();
+    const layerContext = createMockContext();
+    const canvas = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn(() => context),
+    } as unknown as HTMLCanvasElement;
+    const layerCanvas = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn(() => layerContext),
+    } as unknown as HTMLCanvasElement;
+    const sharpenPixels = new Uint8ClampedArray(project.canvas.width * project.canvas.height * 4);
+    layerContext.getImageData.mockImplementation(() => ({
+      data: sharpenPixels,
+      width: project.canvas.width,
+      height: project.canvas.height,
+    }) as ImageData);
+    layerContext.createImageData.mockImplementation((width: number, height: number) => ({
+      data: new Uint8ClampedArray(width * height * 4),
+      width,
+      height,
+    }) as ImageData);
+    const createElementSpy = vi
+      .spyOn(document, "createElement")
+      .mockReturnValueOnce(layerCanvas as never);
+
+    try {
+      await renderProjectToCanvas(
+        project,
+        [asset],
+        new Map([[asset.id, { asset, bitmap: {} as ImageBitmap }]]),
+        canvas,
+      );
+    } finally {
+      createElementSpy.mockRestore();
+    }
+
+    expect(layerContext.drawImage).toHaveBeenCalled();
+    expect(context.drawImage).toHaveBeenCalledWith(layerCanvas, 0, 0);
+  });
+
+  it("routes noise-only finish layers through the offscreen compositing path", async () => {
+    const output = await renderNoiseOutput({
+      width: 2,
+      height: 1,
+      pixels: [100, 120, 140, 255, 100, 120, 140, 255],
+      noise: 0.35,
+      noiseMonochrome: 0,
+      activeSeed: 2026,
+      layerId: "layer_offscreen",
+    });
+
+    expect(output).not.toEqual([100, 120, 140, 255, 100, 120, 140, 255]);
+  });
+
+  it("applies finish noise deterministically for identical layer seed and id", async () => {
+    const first = await renderNoiseOutput({
+      width: 1,
+      height: 1,
+      pixels: [120, 100, 80, 255],
+      noise: 0.5,
+      noiseMonochrome: 0.25,
+      activeSeed: 4242,
+      layerId: "layer_deterministic",
+    });
+    const second = await renderNoiseOutput({
+      width: 1,
+      height: 1,
+      pixels: [120, 100, 80, 255],
+      noise: 0.5,
+      noiseMonochrome: 0.25,
+      activeSeed: 4242,
+      layerId: "layer_deterministic",
+    });
+
+    expect(second).toEqual(first);
+  });
+
+  it("keeps a pixel's noise stable when neighboring alpha coverage changes", async () => {
+    const baseline = await renderNoiseOutput({
+      width: 2,
+      height: 1,
+      pixels: [100, 100, 100, 255, 100, 100, 100, 255],
+      noise: 0.45,
+      noiseMonochrome: 0.2,
+      activeSeed: 1234,
+      layerId: "layer_stable",
+    });
+    const neighborChanged = await renderNoiseOutput({
+      width: 2,
+      height: 1,
+      pixels: [100, 100, 100, 255, 100, 100, 100, 0],
+      noise: 0.45,
+      noiseMonochrome: 0.2,
+      activeSeed: 1234,
+      layerId: "layer_stable",
+    });
+
+    expect(neighborChanged[0]).toBe(baseline[0]);
+    expect(neighborChanged[1]).toBe(baseline[1]);
+    expect(neighborChanged[2]).toBe(baseline[2]);
+  });
+
+  it("scales finish noise intensity with alpha", async () => {
+    const opaque = await renderNoiseOutput({
+      width: 1,
+      height: 1,
+      pixels: [120, 120, 120, 255],
+      noise: 0.5,
+      noiseMonochrome: 0.2,
+      activeSeed: 999,
+      layerId: "layer_alpha",
+    });
+    const translucent = await renderNoiseOutput({
+      width: 1,
+      height: 1,
+      pixels: [120, 120, 120, 64],
+      noise: 0.5,
+      noiseMonochrome: 0.2,
+      activeSeed: 999,
+      layerId: "layer_alpha",
+    });
+
+    const base = 120;
+    const opaqueDeltas = [
+      Math.abs(opaque[0]! - base),
+      Math.abs(opaque[1]! - base),
+      Math.abs(opaque[2]! - base),
+    ];
+    const translucentDeltas = [
+      Math.abs(translucent[0]! - base),
+      Math.abs(translucent[1]! - base),
+      Math.abs(translucent[2]! - base),
+    ];
+    const opaquePeak = Math.max(...opaqueDeltas);
+    const translucentPeak = Math.max(...translucentDeltas);
+
+    expect(opaquePeak).toBeGreaterThan(0);
+    expect(translucentPeak).toBeLessThan(opaquePeak);
+    expect(translucentPeak).toBeLessThanOrEqual(Math.ceil(opaquePeak * 0.35));
+  });
+
+  it("translates layer content by canvas width and height fractions on the direct composite path", async () => {
+    const project = createProjectView("Layer Offset Direct");
+    project.effects.sharpen = 0;
+    project.effects.kaleidoscopeSegments = 1;
+    project.layout.family = "grid";
+    project.layout.columns = 1;
+    project.layout.rows = 1;
+    project.layout.shapeMode = "rect";
+    project.layout.symmetryMode = "none";
+    project.layout.offsetX = 0.5;
+    project.layout.offsetY = -0.25;
+    project.compositing.overlap = 0;
+    project.effects.rotationJitter = 0;
+    project.effects.scaleJitter = 0;
+    project.effects.displacement = 0;
+    project.effects.distortion = 0;
+
+    const context = createMockContext();
+    const canvas = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn(() => context),
+    } as unknown as HTMLCanvasElement;
+
+    await renderProjectToCanvas(
+      project,
+      [asset],
+      new Map([[asset.id, { asset, bitmap: {} as ImageBitmap }]]),
+      canvas,
+    );
+
+    expect(context.translate.mock.calls).toContainEqual([
+      project.canvas.width * 0.5,
+      project.canvas.height * -0.25,
+    ]);
+  });
+
+  it("translates layer content on the offscreen composite path", async () => {
+    const project = createProjectView("Layer Offset Offscreen");
+    project.effects.sharpen = 0;
+    project.effects.kaleidoscopeSegments = 1;
+    project.layout.family = "grid";
+    project.layout.columns = 1;
+    project.layout.rows = 1;
+    project.layout.shapeMode = "rect";
+    project.layout.symmetryMode = "none";
+    project.layout.offsetX = -0.4;
+    project.layout.offsetY = 0.6;
+    project.compositing.blendMode = "multiply";
+    project.compositing.overlap = 0;
+    project.effects.rotationJitter = 0;
+    project.effects.scaleJitter = 0;
+    project.effects.displacement = 0;
+    project.effects.distortion = 0;
+
+    const context = createMockContext();
+    const layerContext = createMockContext();
+    const canvas = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn(() => context),
+    } as unknown as HTMLCanvasElement;
+    const layerCanvas = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn(() => layerContext),
+    } as unknown as HTMLCanvasElement;
+    const createElementSpy = vi
+      .spyOn(document, "createElement")
+      .mockReturnValueOnce(layerCanvas as never);
+
+    try {
+      await renderProjectToCanvas(
+        project,
+        [asset],
+        new Map([[asset.id, { asset, bitmap: {} as ImageBitmap }]]),
+        canvas,
+      );
+    } finally {
+      createElementSpy.mockRestore();
+    }
+
+    expect(context.translate.mock.calls).toContainEqual([
+      project.canvas.width * -0.4,
+      project.canvas.height * 0.6,
+    ]);
   });
 
   it("applies finish color adjustments and drop shadow during layer compositing", async () => {

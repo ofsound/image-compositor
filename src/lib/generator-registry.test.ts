@@ -1596,6 +1596,34 @@ describe("buildRenderSlices", () => {
     expect(first.every((slice) => slice.clipRect)).toBe(true);
   });
 
+  it("expands flow clip bounds as overlap increases", () => {
+    const project = createProjectView("Flow Overlap");
+    project.sourceIds = [assets[0]!.id];
+    project.layout.family = "flow";
+    project.layout.shapeMode = "rect";
+    project.layout.symmetryMode = "none";
+    project.effects.rotationJitter = 0;
+    project.compositing.overlap = 0;
+
+    const baseline = buildRenderSlices(project, [assets[0]!]);
+
+    project.compositing.overlap = 1;
+    const overlapped = buildRenderSlices(project, [assets[0]!]);
+
+    expect(overlapped).toHaveLength(baseline.length);
+    expect(
+      overlapped.reduce(
+        (sum, slice) => sum + (slice.clipRect ? slice.clipRect.width * slice.clipRect.height : 0),
+        0,
+      ),
+    ).toBeGreaterThan(
+      baseline.reduce(
+        (sum, slice) => sum + (slice.clipRect ? slice.clipRect.width * slice.clipRect.height : 0),
+        0,
+      ),
+    );
+  });
+
   it("increases flow heading diversity as curvature rises", () => {
     const project = createProjectView("Flow Curvature");
     project.sourceIds = [assets[0]!.id];

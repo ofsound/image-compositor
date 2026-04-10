@@ -208,6 +208,10 @@ export interface LayoutSettings {
   symmetryJitter: number;
   hidePercentage: number;
   letterbox: number;
+  /** Layer content shift as fraction of canvas width, -1…1 (-100%…+100%). */
+  offsetX: number;
+  /** Layer content shift as fraction of canvas height, -1…1 (-100%…+100%). */
+  offsetY: number;
   wedgeAngle: number;
   wedgeJitter: number;
   hollowRatio: number;
@@ -277,6 +281,8 @@ export interface FinishSettings {
   hueRotate: number;
   grayscale: number;
   invert: number;
+  noise: number;
+  noiseMonochrome: number;
 }
 
 export interface CompositorLayer {

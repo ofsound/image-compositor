@@ -15,6 +15,7 @@ import {
   normalizeProjectDocument,
   syncLegacyProjectFieldsToSelectedLayer,
 } from "@/lib/project-defaults";
+import { hashToSeed } from "@/lib/rng";
 import { clamp } from "@/lib/utils";
 
 interface AssetBitmapEntry {
@@ -33,6 +34,8 @@ interface TrianglePoint {
   y: number;
 }
 const FULL_CIRCLE_RADIANS = Math.PI * 2;
+const MAX_RGB_NOISE_DELTA = 28;
+const MAX_MONO_NOISE_DELTA = 24;
 
 const bitmapCache = new WeakMap<Blob, Promise<ImageBitmap>>();
 const RENDER_CONTEXT_OPTIONS = {
@@ -435,7 +438,9 @@ function hasActiveFinish(project: LayerRenderProject) {
     finish.saturate !== DEFAULT_FINISH.saturate ||
     finish.hueRotate !== DEFAULT_FINISH.hueRotate ||
     finish.grayscale !== DEFAULT_FINISH.grayscale ||
-    finish.invert !== DEFAULT_FINISH.invert
+    finish.invert !== DEFAULT_FINISH.invert ||
+    finish.noise > 0 ||
+    finish.noiseMonochrome > 0
   );
 }
 
@@ -479,11 +484,93 @@ function applyLayerColorAdjustments(
   return finishedCanvas;
 }
 
+function hashNoiseSample(
+  baseSeed: number,
+  x: number,
+  y: number,
+  channelTag: number,
+) {
+  let hash = baseSeed >>> 0;
+  hash ^= Math.imul((x + 1) >>> 0, 0x9e3779b1);
+  hash = Math.imul(hash ^ (hash >>> 16), 0x85ebca6b);
+  hash ^= Math.imul((y + 1) >>> 0, 0xc2b2ae35);
+  hash = Math.imul(hash ^ (hash >>> 13), 0x27d4eb2d);
+  hash ^= Math.imul((channelTag + 1) >>> 0, 0x165667b1);
+  hash ^= hash >>> 15;
+  return (hash >>> 0) / 4294967296;
+}
+
+function applyFinishNoise(
+  sourceCanvas: RenderCanvas,
+  project: LayerRenderProject,
+  layerId: string,
+) {
+  const colorNoiseStrength = clamp(project.finish.noise, 0, 1);
+  const monochromeNoiseStrength = clamp(project.finish.noiseMonochrome, 0, 1);
+
+  if (colorNoiseStrength <= 0 && monochromeNoiseStrength <= 0) {
+    return sourceCanvas;
+  }
+
+  const context = getRenderContext(sourceCanvas);
+  const width = sourceCanvas.width;
+  const height = sourceCanvas.height;
+  const imageData = context.getImageData(0, 0, width, height);
+  const data = imageData.data;
+  const baseSeed = hashToSeed(`${project.activeSeed}:${layerId}:finish-noise`);
+
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const index = (y * width + x) * 4;
+      const alpha = data[index + 3] ?? 0;
+      if (alpha === 0) continue;
+
+      const alphaFactor = alpha / 255;
+      const monochromeDelta =
+        (hashNoiseSample(baseSeed, x, y, 0) * 2 - 1) *
+        monochromeNoiseStrength *
+        MAX_MONO_NOISE_DELTA;
+      const redDelta =
+        ((hashNoiseSample(baseSeed, x, y, 1) * 2 - 1) *
+          colorNoiseStrength *
+          MAX_RGB_NOISE_DELTA +
+          monochromeDelta) *
+        alphaFactor;
+      const greenDelta =
+        ((hashNoiseSample(baseSeed, x, y, 2) * 2 - 1) *
+          colorNoiseStrength *
+          MAX_RGB_NOISE_DELTA +
+          monochromeDelta) *
+        alphaFactor;
+      const blueDelta =
+        ((hashNoiseSample(baseSeed, x, y, 3) * 2 - 1) *
+          colorNoiseStrength *
+          MAX_RGB_NOISE_DELTA +
+          monochromeDelta) *
+        alphaFactor;
+
+      data[index] = clamp((data[index] ?? 0) + redDelta, 0, 255);
+      data[index + 1] = clamp((data[index + 1] ?? 0) + greenDelta, 0, 255);
+      data[index + 2] = clamp((data[index + 2] ?? 0) + blueDelta, 0, 255);
+    }
+  }
+
+  context.putImageData(imageData, 0, 0);
+  return sourceCanvas;
+}
+
+function getLayerContentPixelOffset(project: LayerRenderProject) {
+  const ox = clamp(project.layout.offsetX, -1, 1) * project.canvas.width;
+  const oy = clamp(project.layout.offsetY, -1, 1) * project.canvas.height;
+  return { ox, oy };
+}
+
 function compositeFinishedLayer(
   context: RenderContext,
   layerCanvas: RenderCanvas,
   project: LayerRenderProject,
 ) {
+  const { ox, oy } = getLayerContentPixelOffset(project);
   context.save();
   context.globalCompositeOperation = project.compositing.blendMode;
   context.globalAlpha = clamp(project.compositing.opacity, 0, 1);
@@ -503,6 +590,7 @@ function compositeFinishedLayer(
     context.shadowOffsetY = 0;
   }
 
+  context.translate(ox, oy);
   context.drawImage(layerCanvas, 0, 0);
   context.restore();
 }
@@ -617,13 +705,17 @@ async function renderCompositorLayer(
   const layerProject = createLayerRenderProject(project, layer);
   const layerAssets = resolveLayerAssets(layer, assets);
 
-  const usesDirectComposite =
-    layer.compositing.blendMode === "source-over" &&
-    clamp(layer.compositing.opacity, 0, 1) === 1 &&
-    !hasActiveFinish(layerProject);
+  // Blend mode and opacity alone should not force isolation when per-object blending is preferred.
+  const requiresIsolation =
+    hasActiveFinish(layerProject) ||
+    layerProject.effects.sharpen > 0;
 
-  if (usesDirectComposite) {
+  if (!requiresIsolation) {
+    const { ox, oy } = getLayerContentPixelOffset(layerProject);
+    context.save();
+    context.translate(ox, oy);
     await renderLayer(layerProject, layerAssets, bitmaps, context, canvas);
+    context.restore();
     return;
   }
 
@@ -640,7 +732,12 @@ async function renderCompositorLayer(
     project.canvas.height,
   );
   await renderLayerToCanvas(neutralLayerProject, layerAssets, bitmaps, layerCanvas);
-  const finishedLayerCanvas = applyLayerColorAdjustments(layerCanvas, layerProject);
+  const colorAdjustedLayerCanvas = applyLayerColorAdjustments(layerCanvas, layerProject);
+  const finishedLayerCanvas = applyFinishNoise(
+    colorAdjustedLayerCanvas,
+    layerProject,
+    layer.id,
+  );
   compositeFinishedLayer(context, finishedLayerCanvas, layerProject);
 }
 
@@ -822,12 +919,12 @@ export async function renderProjectLayerToCanvas(
   const targetHeight = Math.max(1, canvas.height || normalizedProject.canvas.height);
   const renderCanvas =
     targetWidth === normalizedProject.canvas.width &&
-    targetHeight === normalizedProject.canvas.height
+      targetHeight === normalizedProject.canvas.height
       ? canvas
       : createRenderCanvas(
-          normalizedProject.canvas.width,
-          normalizedProject.canvas.height,
-        );
+        normalizedProject.canvas.width,
+        normalizedProject.canvas.height,
+      );
   renderCanvas.width = normalizedProject.canvas.width;
   renderCanvas.height = normalizedProject.canvas.height;
   const renderContext = getRenderContext(renderCanvas);

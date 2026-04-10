@@ -2017,6 +2017,20 @@ function expandStripClipRect(clipRect: RenderRect, amount: number) {
   };
 }
 
+function expandClipRect(clipRect: RenderRect, amount: number) {
+  if (amount <= 0) {
+    return clipRect;
+  }
+
+  return {
+    ...clipRect,
+    x: clipRect.x - amount / 2,
+    y: clipRect.y - amount / 2,
+    width: clipRect.width + amount,
+    height: clipRect.height + amount,
+  };
+}
+
 function assignDistributedCrops(
   slices: RenderSlice[],
   project: LayerRenderProject,
@@ -2283,7 +2297,9 @@ export function buildRenderSlices(
     const clipRect =
       project.layout.family === "strips" && baseClipRect
         ? expandStripClipRect(baseClipRect, overlapSize)
-        : baseClipRect;
+        : baseClipRect
+        ? expandClipRect(baseClipRect, overlapSize)
+        : null;
     const rect =
       quadPoints
         ? getBoundsForPoints(quadPoints)

@@ -17,6 +17,7 @@ import type {
 } from "@/types/project";
 import { makeId } from "@/lib/id";
 import { normalizeSourceWeights } from "@/lib/source-weights";
+import { clamp } from "@/lib/utils";
 
 type LegacyEffectSettings = Partial<EffectSettings> & {
   mirror?: boolean;
@@ -139,6 +140,8 @@ export const DEFAULT_LAYOUT: LayoutSettings = {
   symmetryJitter: 0,
   hidePercentage: 0,
   letterbox: 0,
+  offsetX: 0,
+  offsetY: 0,
   wedgeAngle: 120,
   wedgeJitter: 0,
   hollowRatio: 0.48,
@@ -259,6 +262,8 @@ export const DEFAULT_FINISH: FinishSettings = {
   hueRotate: 0,
   grayscale: 0,
   invert: 0,
+  noise: 0,
+  noiseMonochrome: 0,
 };
 
 export const DEFAULT_EXPORT: ExportSettings = {
@@ -342,6 +347,8 @@ export function normalizeLayoutSettings(
     symmetryJitter: layout?.symmetryJitter ?? DEFAULT_LAYOUT.symmetryJitter,
     hidePercentage: layout?.hidePercentage ?? DEFAULT_LAYOUT.hidePercentage,
     letterbox: layout?.letterbox ?? DEFAULT_LAYOUT.letterbox,
+    offsetX: clamp(layout?.offsetX ?? DEFAULT_LAYOUT.offsetX, -1, 1),
+    offsetY: clamp(layout?.offsetY ?? DEFAULT_LAYOUT.offsetY, -1, 1),
     wedgeAngle: layout?.wedgeAngle ?? DEFAULT_LAYOUT.wedgeAngle,
     wedgeJitter: layout?.wedgeJitter ?? DEFAULT_LAYOUT.wedgeJitter,
     hollowRatio: layout?.hollowRatio ?? DEFAULT_LAYOUT.hollowRatio,
@@ -430,6 +437,8 @@ function normalizeFinishSettings(
     hueRotate: finish?.hueRotate ?? DEFAULT_FINISH.hueRotate,
     grayscale: finish?.grayscale ?? DEFAULT_FINISH.grayscale,
     invert: finish?.invert ?? DEFAULT_FINISH.invert,
+    noise: finish?.noise ?? DEFAULT_FINISH.noise,
+    noiseMonochrome: finish?.noiseMonochrome ?? DEFAULT_FINISH.noiseMonochrome,
   };
 }
 
@@ -615,18 +624,18 @@ export function normalizeProjectSnapshot(
       layers: normalizedSnapshot.layers.map((layer, index) =>
         index === selectedLayerIndex
           ? {
-              ...layer,
-              inset: legacyLayer.inset,
-              sourceIds: structuredClone(legacyLayer.sourceIds),
-              layout: structuredClone(legacyLayer.layout),
-              sourceMapping: structuredClone(legacyLayer.sourceMapping),
-              effects: structuredClone(legacyLayer.effects),
-              compositing: structuredClone(legacyLayer.compositing),
-              finish: structuredClone(legacyLayer.finish),
-              activeSeed: legacyLayer.activeSeed,
-              presets: structuredClone(legacyLayer.presets),
-              passes: structuredClone(legacyLayer.passes),
-            }
+            ...layer,
+            inset: legacyLayer.inset,
+            sourceIds: structuredClone(legacyLayer.sourceIds),
+            layout: structuredClone(legacyLayer.layout),
+            sourceMapping: structuredClone(legacyLayer.sourceMapping),
+            effects: structuredClone(legacyLayer.effects),
+            compositing: structuredClone(legacyLayer.compositing),
+            finish: structuredClone(legacyLayer.finish),
+            activeSeed: legacyLayer.activeSeed,
+            presets: structuredClone(legacyLayer.presets),
+            passes: structuredClone(legacyLayer.passes),
+          }
           : layer,
       ),
     };

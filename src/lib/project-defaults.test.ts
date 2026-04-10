@@ -85,6 +85,8 @@ describe("createProjectDocument", () => {
     expect(project.finish.hueRotate).toBe(0);
     expect(project.finish.grayscale).toBe(0);
     expect(project.finish.invert).toBe(0);
+    expect(project.finish.noise).toBe(0);
+    expect(project.finish.noiseMonochrome).toBe(0);
     expect(project.passes.map((pass) => pass.type)).toEqual([
       "layout",
       "assignment",

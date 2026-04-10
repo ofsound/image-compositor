@@ -18,14 +18,17 @@ async function importGeneratedImage(page: Awaited<ReturnType<typeof launchApp>>[
 }
 
 async function launchApp(userDataDir: string) {
+  const appEntry = path.join(process.cwd(), "dist-electron/main.js");
   const { CI: _ci, ...childEnv } = process.env;
   const app = await electron.launch({
-    args: [path.join(process.cwd(), "dist-electron/main.js")],
+    args:
+      process.platform === "linux"
+        ? ["--no-sandbox", "--disable-setuid-sandbox", appEntry]
+        : [appEntry],
     env: {
       ...childEnv,
       IMAGE_GRID_USER_DATA_DIR: userDataDir,
       ELECTRON_DISABLE_RENDERER_SANDBOX: "1",
-      ...(process.platform === "linux" ? { ELECTRON_DISABLE_CHROMIUM_SANDBOX: "1" } : {}),
     },
   });
   const page = await app.firstWindow();

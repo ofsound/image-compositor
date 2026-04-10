@@ -14,7 +14,8 @@ export type LayoutFamily =
   | "radial"
   | "organic"
   | "flow"
-  | "3d";
+  | "3d"
+  | "draw";
 export type RadialChildRotationMode = "none" | "tangent" | "outward";
 export type ThreeDStructureMode = "sphere" | "torus" | "attractor";
 export type KaleidoscopeMirrorMode =
@@ -285,6 +286,21 @@ export interface FinishSettings {
   noiseMonochrome: number;
 }
 
+export interface DrawStrokePoint {
+  x: number;
+  y: number;
+}
+
+export interface DrawStroke {
+  id: string;
+  points: DrawStrokePoint[];
+}
+
+export interface DrawSettings {
+  brushSize: number;
+  strokes: DrawStroke[];
+}
+
 export interface CompositorLayer {
   id: string;
   name: string;
@@ -296,6 +312,7 @@ export interface CompositorLayer {
   effects: EffectSettings;
   compositing: CompositingSettings;
   finish: FinishSettings;
+  draw: DrawSettings;
   activeSeed: number;
   presets: GeneratorPreset[];
   passes: RenderPass[];
@@ -350,7 +367,7 @@ export interface ProjectVersion {
 }
 
 export interface ProjectBundleManifest {
-  version: 1 | 2 | 3;
+  version: 1 | 2 | 3 | 4;
   projectId: string;
   exportedAt: string;
   assetIds: string[];
@@ -392,6 +409,7 @@ export interface LayerRenderProject {
   effects: EffectSettings;
   compositing: CompositingSettings;
   finish: FinishSettings;
+  draw: DrawSettings;
   activeSeed: number;
   presets: GeneratorPreset[];
   passes: RenderPass[];

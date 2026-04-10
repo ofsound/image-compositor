@@ -1,4 +1,5 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
 import { SourceColorField } from "@/components/app/source-color-field";
 import {
   Select,
@@ -45,7 +46,10 @@ interface RightSidebarProps {
   patchProject: (
     updater: (view: ProjectEditorView) => ProjectEditorView,
   ) => void;
+  clearDrawLayer: () => Promise<void>;
+  hasDrawStrokes: boolean;
   inspectorLayerName: string;
+  isDrawFamily: boolean;
   isRectShapeMode: boolean;
   isWedgeShapeMode: boolean;
   isHollowShapeMode: boolean;
@@ -69,7 +73,10 @@ export function RightSidebar({
   previewExpanded,
   activeProjectView,
   patchProject,
+  clearDrawLayer,
+  hasDrawStrokes,
   inspectorLayerName,
+  isDrawFamily,
   isRectShapeMode,
   isWedgeShapeMode,
   isHollowShapeMode,
@@ -250,6 +257,43 @@ export function RightSidebar({
                     ) : null}
                   </InspectorFieldGrid>
                 </InspectorGroup>
+
+                {isDrawFamily ? (
+                  <InspectorGroup title="Brush">
+                    <InspectorFieldGrid>
+                      <SliderField
+                        className="sm:col-span-2"
+                        label="Brush Size"
+                        min={8}
+                        max={640}
+                        step={1}
+                        value={activeProjectView.draw.brushSize}
+                        formatter={(value) => `${Math.round(value)} px`}
+                        onChange={(value) =>
+                          patchProject((project) => ({
+                            ...project,
+                            draw: {
+                              ...project.draw,
+                              brushSize: Math.round(value),
+                            },
+                          }))
+                        }
+                      />
+                      <ControlBlock label="Layer Strokes" className="sm:col-span-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="w-full"
+                          disabled={!hasDrawStrokes}
+                          onClick={() => void clearDrawLayer()}
+                        >
+                          Clear Draw Layer
+                        </Button>
+                      </ControlBlock>
+                    </InspectorFieldGrid>
+                  </InspectorGroup>
+                ) : null}
 
                 {isGridFamily ? (
                   <InspectorGroup title="Grid">
@@ -952,6 +996,7 @@ export function RightSidebar({
                   </InspectorGroup>
                 ) : null}
 
+                {!isDrawFamily ? (
                 <InspectorGroup title="Symmetry">
                   <InspectorFieldGrid>
                     <ControlBlock label="Symmetry" className="sm:col-span-2">
@@ -1076,7 +1121,9 @@ export function RightSidebar({
                     ) : null}
                   </InspectorFieldGrid>
                 </InspectorGroup>
+                ) : null}
 
+                {!isDrawFamily ? (
                 <InspectorGroup title="Visibility">
                   <InspectorFieldGrid>
                     <SliderField
@@ -1113,6 +1160,12 @@ export function RightSidebar({
                         }))
                       }
                     />
+                  </InspectorFieldGrid>
+                </InspectorGroup>
+                ) : null}
+
+                <InspectorGroup title="Position">
+                  <InspectorFieldGrid>
                     <SliderField
                       label="Offset X"
                       min={-1}

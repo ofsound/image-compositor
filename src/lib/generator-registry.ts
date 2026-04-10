@@ -17,6 +17,7 @@ import {
   normalizeProjectDocument,
   syncLegacyProjectFieldsToSelectedLayer,
 } from "@/lib/project-defaults";
+import { DENSITY_UI_SCALE } from "@/lib/format-utils";
 import { hashToSeed, mulberry32 } from "@/lib/rng";
 import { getSourceWeight } from "@/lib/source-weights";
 import { clamp, lerp } from "@/lib/utils";
@@ -1537,7 +1538,7 @@ function generateThreeD(context: GeneratorContext) {
   );
 }
 
-const layoutRegistry: Record<LayoutFamily, (context: GeneratorContext) => LayoutCell[]> = {
+const layoutRegistry: Record<Exclude<LayoutFamily, "draw">, (context: GeneratorContext) => LayoutCell[]> = {
   grid: generateGrid,
   strips: generateStrips,
   blocks: generateBlocks,
@@ -2238,6 +2239,201 @@ function getWedgeSweepRadians(
   return (sweepDegrees * Math.PI) / 180;
 }
 
+function resolveLayerRenderProject(
+  input: ProjectDocument | LayerRenderProject,
+): LayerRenderProject {
+  if ("layers" in input) {
+    const normalizedProject = normalizeProjectDocument(
+      syncLegacyProjectFieldsToSelectedLayer(input),
+    );
+    return createLayerRenderProject(
+      normalizedProject,
+      getSelectedLayer(normalizedProject) ?? normalizedProject.layers.at(-1)!,
+    );
+  }
+
+  return input;
+}
+
+function createRenderSliceFromCell(
+  cell: LayoutCell,
+  index: number,
+  project: LayerRenderProject,
+  asset: SourceAsset,
+  rng: ReturnType<typeof mulberry32>,
+): RenderSlice {
+  const overlapSize =
+    Math.min(project.canvas.width, project.canvas.height) *
+    project.compositing.overlap *
+    0.08;
+  const baseClipRect = cell.clipRect ?? null;
+  const clipPathPoints =
+    cell.clipPathPoints && cell.clipPathPoints.length > 2
+      ? scalePointsFromCenter(
+          cell.clipPathPoints,
+          {
+            x: cell.x + cell.width / 2,
+            y: cell.y + cell.height / 2,
+          },
+          1 + overlapSize / Math.max(cell.width, cell.height, 1),
+        )
+      : null;
+  const quadPoints =
+    cell.quadPoints && cell.quadPoints.length === 4
+      ? scalePointsFromCenter(
+          cell.quadPoints,
+          {
+            x: cell.x + cell.width / 2,
+            y: cell.y + cell.height / 2,
+          },
+          1 + overlapSize / Math.max(cell.width, cell.height, 1),
+        )
+      : null;
+  const clipRect =
+    project.layout.family === "strips" && baseClipRect
+      ? expandStripClipRect(baseClipRect, overlapSize)
+      : baseClipRect
+      ? expandClipRect(baseClipRect, overlapSize)
+      : null;
+  const rect =
+    quadPoints
+      ? getBoundsForPoints(quadPoints)
+      : clipPathPoints
+      ? getBoundsForPoints(clipPathPoints)
+      : clipRect
+      ? getRotatedBounds(clipRect, cell.clipRotation ?? 0)
+      : {
+          x: cell.x - overlapSize * rng.next(),
+          y: cell.y - overlapSize * rng.next(),
+          width: cell.width + overlapSize,
+          height: cell.height + overlapSize,
+        };
+  const rotationNoise = (rng.next() - 0.5) * project.effects.rotationJitter;
+  const scaleNoise = 1 + (rng.next() - 0.5) * project.effects.scaleJitter;
+  const displacement = project.effects.displacement * (rng.next() - 0.5);
+  const fogAmount =
+    project.layout.family === "3d" && cell.depthValue !== undefined
+      ? lerp(0, 0.22, (1 - cell.depthValue) ** 1.35)
+      : 0;
+
+  return {
+    id: `slice_${index}`,
+    shape: cell.shape,
+    assetId: asset.id,
+    rect,
+    clipRect,
+    clipPathPoints,
+    quadPoints,
+    clipRotation: cell.clipRotation ?? 0,
+    imageRect: null,
+    rotation: (cell.rotation ?? 0) + (rotationNoise * Math.PI) / 180,
+    rotationX: cell.rotationX ?? 0,
+    rotationY: cell.rotationY ?? 0,
+    scale: scaleNoise,
+    opacity:
+      project.layout.family === "3d" && cell.depthValue !== undefined
+        ? project.compositing.opacity * lerp(0.72, 1, cell.depthValue)
+        : project.compositing.opacity,
+    blendMode: project.compositing.blendMode,
+    clipInset: project.compositing.feather,
+    displacementOffset: {
+      x: displacement,
+      y: displacement * (rng.next() - 0.5),
+    },
+    distortion: project.effects.distortion * rng.next(),
+    sourceCrop: null,
+    wedgeSweepRadians: getWedgeSweepRadians(cell.shape, project, rng),
+    mirrorAxis: "none",
+    depth: cell.depthValue ?? rng.next(),
+    fogAmount,
+  };
+}
+
+function buildDrawSlices(project: LayerRenderProject, assets: SourceAsset[]) {
+  const densityUi = clamp(project.layout.density / DENSITY_UI_SCALE, 0.05, 1);
+  const spacingPx = project.draw.brushSize * lerp(1.4, 0.18, densityUi);
+  const slices: RenderSlice[] = [];
+  let stampIndex = 0;
+
+  for (const stroke of project.draw.strokes) {
+    const points = stroke.points;
+    if (points.length === 0) continue;
+
+    let previousPoint = points[0]!;
+    const seed = `${project.activeSeed}:${stroke.id}:0`;
+    const startRng = mulberry32(hashToSeed(seed));
+    const startAsset = assetByStrategy(
+      project.sourceMapping.strategy,
+      assets,
+      stampIndex,
+      startRng,
+      project,
+    );
+
+    slices.push(
+      createRenderSliceFromCell(
+        {
+          x: previousPoint.x - project.draw.brushSize / 2,
+          y: previousPoint.y - project.draw.brushSize / 2,
+          width: project.draw.brushSize,
+          height: project.draw.brushSize,
+          shape: assignShape(stampIndex, project.layout.shapeMode, project.layout.family),
+        },
+        stampIndex,
+        project,
+        startAsset,
+        startRng,
+      ),
+    );
+    stampIndex += 1;
+
+    for (let pointIndex = 1; pointIndex < points.length; pointIndex += 1) {
+      const nextPoint = points[pointIndex]!;
+      const distance = Math.hypot(nextPoint.x - previousPoint.x, nextPoint.y - previousPoint.y);
+      const stepCount = Math.max(1, Math.ceil(distance / Math.max(spacingPx, 1)));
+
+      for (let step = 1; step <= stepCount; step += 1) {
+        const t = step / stepCount;
+        const x = lerp(previousPoint.x, nextPoint.x, t);
+        const y = lerp(previousPoint.y, nextPoint.y, t);
+        const rng = mulberry32(hashToSeed(`${project.activeSeed}:${stroke.id}:${stampIndex}`));
+        const asset = assetByStrategy(
+          project.sourceMapping.strategy,
+          assets,
+          stampIndex,
+          rng,
+          project,
+        );
+
+        slices.push(
+          createRenderSliceFromCell(
+            {
+              x: x - project.draw.brushSize / 2,
+              y: y - project.draw.brushSize / 2,
+              width: project.draw.brushSize,
+              height: project.draw.brushSize,
+              shape: assignShape(
+                stampIndex,
+                project.layout.shapeMode,
+                project.layout.family,
+              ),
+            },
+            stampIndex,
+            project,
+            asset,
+            rng,
+          ),
+        );
+        stampIndex += 1;
+      }
+
+      previousPoint = nextPoint;
+    }
+  }
+
+  return assignDistributedCrops(slices.sort((a, b) => a.depth - b.depth), project, assets);
+}
+
 export function buildRenderSlices(
   input: ProjectDocument | LayerRenderProject,
   assets: SourceAsset[],
@@ -2246,111 +2442,23 @@ export function buildRenderSlices(
     return [];
   }
 
-  let project: LayerRenderProject;
-  if ("layers" in input) {
-    const normalizedProject = normalizeProjectDocument(
-      syncLegacyProjectFieldsToSelectedLayer(input),
-    );
-    project = createLayerRenderProject(
-      normalizedProject,
-      getSelectedLayer(normalizedProject) ?? normalizedProject.layers.at(-1)!,
-    );
-  } else {
-    project = input;
+  const project = resolveLayerRenderProject(input);
+
+  if (project.layout.family === "draw") {
+    return buildDrawSlices(project, assets);
   }
 
   const layoutCells = layoutRegistry[project.layout.family]({ project, assets });
   const rng = mulberry32(project.activeSeed);
-  const overlapSize = Math.min(project.canvas.width, project.canvas.height) * project.compositing.overlap * 0.08;
-
-  const slices = layoutCells.map<RenderSlice>((cell, index) => {
-    const asset = assetByStrategy(
-      project.sourceMapping.strategy,
-      assets,
+  const slices = layoutCells.map<RenderSlice>((cell, index) =>
+    createRenderSliceFromCell(
+      cell,
       index,
-      rng,
       project,
-    );
-    const baseClipRect = cell.clipRect ?? null;
-    const clipPathPoints =
-      cell.clipPathPoints && cell.clipPathPoints.length > 2
-        ? scalePointsFromCenter(
-            cell.clipPathPoints,
-            {
-              x: cell.x + cell.width / 2,
-              y: cell.y + cell.height / 2,
-            },
-            1 + overlapSize / Math.max(cell.width, cell.height, 1),
-          )
-        : null;
-    const quadPoints =
-      cell.quadPoints && cell.quadPoints.length === 4
-        ? scalePointsFromCenter(
-            cell.quadPoints,
-            {
-              x: cell.x + cell.width / 2,
-              y: cell.y + cell.height / 2,
-            },
-            1 + overlapSize / Math.max(cell.width, cell.height, 1),
-          )
-        : null;
-    const clipRect =
-      project.layout.family === "strips" && baseClipRect
-        ? expandStripClipRect(baseClipRect, overlapSize)
-        : baseClipRect
-        ? expandClipRect(baseClipRect, overlapSize)
-        : null;
-    const rect =
-      quadPoints
-        ? getBoundsForPoints(quadPoints)
-        : clipPathPoints
-        ? getBoundsForPoints(clipPathPoints)
-        : clipRect
-        ? getRotatedBounds(clipRect, cell.clipRotation ?? 0)
-        : {
-            x: cell.x - overlapSize * rng.next(),
-            y: cell.y - overlapSize * rng.next(),
-            width: cell.width + overlapSize,
-            height: cell.height + overlapSize,
-          };
-    const rotationNoise = (rng.next() - 0.5) * project.effects.rotationJitter;
-    const scaleNoise = 1 + (rng.next() - 0.5) * project.effects.scaleJitter;
-    const displacement = project.effects.displacement * (rng.next() - 0.5);
-    const fogAmount =
-      project.layout.family === "3d" && cell.depthValue !== undefined
-        ? lerp(0, 0.22, (1 - cell.depthValue) ** 1.35)
-        : 0;
-
-    return {
-      id: `slice_${index}`,
-      shape: cell.shape,
-      assetId: asset.id,
-      rect,
-      clipRect,
-      clipPathPoints,
-      quadPoints,
-      clipRotation: cell.clipRotation ?? 0,
-      imageRect: null,
-      rotation: (cell.rotation ?? 0) + (rotationNoise * Math.PI) / 180,
-      rotationX: cell.rotationX ?? 0,
-      rotationY: cell.rotationY ?? 0,
-      scale: scaleNoise,
-      opacity:
-        project.layout.family === "3d" && cell.depthValue !== undefined
-          ? project.compositing.opacity *
-            lerp(0.72, 1, cell.depthValue)
-          : project.compositing.opacity,
-      blendMode: project.compositing.blendMode,
-      clipInset: project.compositing.feather,
-      displacementOffset: { x: displacement, y: displacement * (rng.next() - 0.5) },
-      distortion: project.effects.distortion * rng.next(),
-      sourceCrop: null,
-      wedgeSweepRadians: getWedgeSweepRadians(cell.shape, project, rng),
-      mirrorAxis: "none",
-      depth: cell.depthValue ?? rng.next(),
-      fogAmount,
-    };
-  });
+      assetByStrategy(project.sourceMapping.strategy, assets, index, rng, project),
+      rng,
+    ),
+  );
 
   return hideRandomSlices(
     applyLetterbox(

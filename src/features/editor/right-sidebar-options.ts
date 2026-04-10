@@ -18,6 +18,7 @@ export const LAYOUT_FAMILY_OPTIONS: LayoutFamily[] = [
   "organic",
   "flow",
   "3d",
+  "draw",
 ];
 
 export const RADIAL_CHILD_ROTATION_OPTIONS: RadialChildRotationMode[] = [

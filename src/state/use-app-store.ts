@@ -52,6 +52,7 @@ import type {
   BundleImportInspection,
   CellularSourceAsset,
   CompositorLayer,
+  DrawStroke,
   GradientSourceAsset,
   PerlinSourceAsset,
   ProjectDocument,
@@ -133,6 +134,8 @@ interface AppState {
   selectLayer: (layerId: string) => Promise<void>;
   addLayer: () => Promise<void>;
   deleteLayer: (layerId: string) => Promise<void>;
+  appendDrawStroke: (stroke: DrawStroke) => Promise<void>;
+  clearDrawLayer: () => Promise<void>;
   toggleLayerVisibility: (layerId: string) => Promise<void>;
   reorderLayers: (layerIds: string[]) => Promise<void>;
   moveLayerUp: (layerId: string) => Promise<void>;
@@ -911,6 +914,60 @@ export const useAppStore = create<AppState>((set, get) => {
           error instanceof Error
             ? `Could not delete layer: ${error.message}`
             : "Could not delete layer.",
+      },
+    );
+  },
+
+  async appendDrawStroke(stroke) {
+    await runWorkspaceAction(
+      async () => {
+        if (stroke.points.length === 0) return;
+
+        await get().updateProject((project) =>
+          updateSelectedProjectLayer(project, (layer) => ({
+            ...layer,
+            draw: {
+              ...layer.draw,
+              strokes: [...layer.draw.strokes, structuredClone(stroke)],
+            },
+          })),
+        );
+      },
+      {
+        queue: false,
+        getErrorStatus: (error) =>
+          error instanceof Error
+            ? `Could not add draw stroke: ${error.message}`
+            : "Could not add draw stroke.",
+      },
+    );
+  },
+
+  async clearDrawLayer() {
+    await runWorkspaceAction(
+      async () => {
+        await get().updateProject((project) =>
+          updateSelectedProjectLayer(project, (layer) => {
+            if (layer.draw.strokes.length === 0) {
+              return layer;
+            }
+
+            return {
+              ...layer,
+              draw: {
+                ...layer.draw,
+                strokes: [],
+              },
+            };
+          }),
+        );
+      },
+      {
+        queue: false,
+        getErrorStatus: (error) =>
+          error instanceof Error
+            ? `Could not clear draw layer: ${error.message}`
+            : "Could not clear draw layer.",
       },
     );
   },

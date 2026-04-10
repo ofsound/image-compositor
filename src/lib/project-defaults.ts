@@ -3,6 +3,7 @@ import type {
   CompositingSettings,
   CompositorLayer,
   CropDistribution,
+  DrawSettings,
   EffectSettings,
   ExportSettings,
   FinishSettings,
@@ -35,6 +36,7 @@ type LegacyProjectLike = {
   effects?: Partial<EffectSettings>;
   compositing?: LegacyCompositingSettings;
   finish?: Partial<FinishSettings>;
+  draw?: Partial<DrawSettings>;
   activeSeed?: number;
   presets?: GeneratorPreset[];
   passes?: RenderPass[];
@@ -82,6 +84,7 @@ export function createLayerRenderProject(
     effects: structuredClone(layer.effects),
     compositing: structuredClone(layer.compositing),
     finish: structuredClone(layer.finish),
+    draw: structuredClone(layer.draw),
     activeSeed: layer.activeSeed,
     presets: structuredClone(layer.presets),
     passes: structuredClone(layer.passes),
@@ -264,6 +267,11 @@ export const DEFAULT_FINISH: FinishSettings = {
   invert: 0,
   noise: 0,
   noiseMonochrome: 0,
+};
+
+export const DEFAULT_DRAW: DrawSettings = {
+  brushSize: 160,
+  strokes: [],
 };
 
 export const DEFAULT_EXPORT: ExportSettings = {
@@ -454,6 +462,29 @@ function normalizeLayerPresets(
   return structuredClone(presets ?? DEFAULT_PRESETS);
 }
 
+function normalizeDrawSettings(
+  draw: Partial<DrawSettings> | undefined,
+): DrawSettings {
+  return {
+    brushSize: Math.max(8, Math.round(draw?.brushSize ?? DEFAULT_DRAW.brushSize)),
+    strokes: (draw?.strokes ?? DEFAULT_DRAW.strokes).map((stroke, index) => ({
+      id: stroke?.id?.trim() || makeId(`stroke_${index + 1}`),
+      points: Array.isArray(stroke?.points)
+        ? stroke.points
+            .filter(
+              (point): point is { x: number; y: number } =>
+                Boolean(point) &&
+                typeof point.x === "number" &&
+                Number.isFinite(point.x) &&
+                typeof point.y === "number" &&
+                Number.isFinite(point.y),
+            )
+            .map((point) => ({ x: point.x, y: point.y }))
+        : [],
+    })),
+  };
+}
+
 export function normalizeCompositorLayer(
   layer: Partial<CompositorLayer> | undefined,
   fallbackCropDistribution: CropDistribution = "center",
@@ -473,6 +504,7 @@ export function normalizeCompositorLayer(
     effects: normalizeEffectSettings(layer?.effects),
     compositing: normalizeCompositingSettings(layer?.compositing),
     finish: normalizeFinishSettings(layer?.finish, layer?.compositing),
+    draw: normalizeDrawSettings(layer?.draw),
     activeSeed: layer?.activeSeed ?? 187310,
     presets: normalizeLayerPresets(layer?.presets),
     passes: normalizeLayerPasses(layer?.passes),
@@ -500,6 +532,7 @@ function createLegacyLayer(
       effects: value.effects,
       compositing: value.compositing,
       finish: value.finish,
+      draw: value.draw,
       activeSeed: value.activeSeed,
       presets: value.presets,
       passes: value.passes,
@@ -560,6 +593,7 @@ export function syncLegacyProjectFieldsToSelectedLayer<T extends ProjectSnapshot
     finish: structuredClone(
       legacySnapshot.finish ?? selectedLayer.finish,
     ) as CompositorLayer["finish"],
+    draw: normalizeDrawSettings(legacySnapshot.draw ?? selectedLayer.draw),
     activeSeed: legacySnapshot.activeSeed ?? selectedLayer.activeSeed,
     presets: structuredClone(legacySnapshot.presets ?? selectedLayer.presets),
     passes: structuredClone(legacySnapshot.passes ?? selectedLayer.passes),
@@ -582,6 +616,7 @@ function hasLegacyRootOverrides(snapshot: LegacySnapshotLike) {
     ("effects" in snapshot && snapshot.effects !== undefined) ||
     ("compositing" in snapshot && snapshot.compositing !== undefined) ||
     ("finish" in snapshot && snapshot.finish !== undefined) ||
+    ("draw" in snapshot && snapshot.draw !== undefined) ||
     ("activeSeed" in snapshot && snapshot.activeSeed !== undefined) ||
     ("presets" in snapshot && snapshot.presets !== undefined) ||
     ("passes" in snapshot && snapshot.passes !== undefined)
@@ -632,6 +667,7 @@ export function normalizeProjectSnapshot(
             effects: structuredClone(legacyLayer.effects),
             compositing: structuredClone(legacyLayer.compositing),
             finish: structuredClone(legacyLayer.finish),
+            draw: structuredClone(legacyLayer.draw),
             activeSeed: legacyLayer.activeSeed,
             presets: structuredClone(legacyLayer.presets),
             passes: structuredClone(legacyLayer.passes),

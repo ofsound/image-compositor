@@ -178,6 +178,8 @@ function createStoreState(overrides?: {
     addWaveSource: vi.fn(async () => undefined),
     removeSource: vi.fn(async () => undefined),
     updateGeneratedSource: vi.fn(async () => undefined),
+    appendDrawStroke: vi.fn(async () => undefined),
+    clearDrawLayer: vi.fn(async () => undefined),
     randomizeSeed: vi.fn(async () => undefined),
     saveVersion: vi.fn(async () => undefined),
     restoreVersion: vi.fn(async () => undefined),

@@ -1717,4 +1717,80 @@ describe("buildRenderSlices", () => {
       ),
     ).toBe(true);
   });
+
+  it("renders a single draw stamp for a click-only stroke", () => {
+    const project = createProjectView("Draw Click");
+    project.sourceIds = [assets[0]!.id];
+    project.layout.family = "draw";
+    project.layout.shapeMode = "rect";
+    project.draw.brushSize = 120;
+    project.draw.strokes = [
+      {
+        id: "stroke_click",
+        points: [{ x: 180, y: 220 }],
+      },
+    ];
+
+    const slices = buildRenderSlices(project, [assets[0]!]);
+
+    expect(slices).toHaveLength(1);
+    expect(slices[0]?.rect.width).toBeGreaterThanOrEqual(120);
+    expect(slices[0]?.rect.x).toBeLessThan(180);
+    expect(slices[0]?.rect.y).toBeLessThan(220);
+  });
+
+  it("changes draw stamp count as density changes and preserves overscan", () => {
+    const project = createProjectView("Draw Density");
+    project.sourceIds = [assets[0]!.id];
+    project.layout.family = "draw";
+    project.layout.shapeMode = "rect";
+    project.draw.brushSize = 120;
+    project.draw.strokes = [
+      {
+        id: "stroke_density",
+        points: [
+          { x: -40, y: 180 },
+          { x: 420, y: 180 },
+        ],
+      },
+    ];
+
+    project.layout.density = 0.2;
+    const sparse = buildRenderSlices(project, [assets[0]!]);
+
+    project.layout.density = 4;
+    const dense = buildRenderSlices(project, [assets[0]!]);
+
+    expect(dense.length).toBeGreaterThan(sparse.length);
+    expect(
+      dense.some((slice) => slice.rect.x < 0 || slice.rect.x + slice.rect.width > project.canvas.width),
+    ).toBe(true);
+  });
+
+  it("does not clone draw slices when symmetry is enabled", () => {
+    const project = createProjectView("Draw Symmetry");
+    project.sourceIds = [assets[0]!.id];
+    project.layout.family = "draw";
+    project.layout.shapeMode = "rect";
+    project.layout.density = 4;
+    project.draw.brushSize = 100;
+    project.draw.strokes = [
+      {
+        id: "stroke_symmetry",
+        points: [
+          { x: 200, y: 200 },
+          { x: 360, y: 200 },
+        ],
+      },
+    ];
+
+    project.layout.symmetryMode = "none";
+    const baseline = buildRenderSlices(project, [assets[0]!]);
+
+    project.layout.symmetryMode = "quad";
+    const slices = buildRenderSlices(project, [assets[0]!]);
+
+    expect(slices.length).toBe(baseline.length);
+    expect(slices.every((slice) => slice.mirrorAxis === "none")).toBe(true);
+  });
 });

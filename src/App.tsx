@@ -154,6 +154,8 @@ function App() {
     selectLayer,
     addLayer,
     deleteLayer,
+    appendDrawStroke,
+    clearDrawLayer,
     toggleLayerVisibility,
     reorderLayers,
     updateProject,
@@ -331,6 +333,7 @@ function App() {
   const isOrganicFamily = activeProjectView.layout.family === "organic";
   const isFlowFamily = activeProjectView.layout.family === "flow";
   const isThreeDFamily = activeProjectView.layout.family === "3d";
+  const isDrawFamily = activeProjectView.layout.family === "draw";
   const isRectShapeMode = activeProjectView.layout.shapeMode === "rect";
   const isWedgeShapeMode =
     activeProjectView.layout.shapeMode === "arc" ||
@@ -600,13 +603,19 @@ function App() {
               activeProject={activeProject}
               previewAssets={previewAssets}
               setRenderState={setRenderState}
+              drawEnabled={isDrawFamily}
+              drawBrushSize={activeProjectView.draw.brushSize}
+              appendDrawStroke={appendDrawStroke}
               patchProject={patchProject}
             />
             <RightSidebar
               previewExpanded={previewExpanded}
               activeProjectView={activeProjectView}
               patchProject={patchProject}
+              clearDrawLayer={clearDrawLayer}
+              hasDrawStrokes={activeProjectView.draw.strokes.length > 0}
               inspectorLayerName={inspectorLayerName}
+              isDrawFamily={isDrawFamily}
               isRectShapeMode={isRectShapeMode}
               isWedgeShapeMode={isWedgeShapeMode}
               isHollowShapeMode={isHollowShapeMode}

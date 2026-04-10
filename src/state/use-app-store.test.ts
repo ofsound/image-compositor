@@ -752,6 +752,101 @@ describe("useAppStore history", () => {
     expect(useAppStore.getState().canRedo).toBe(false);
   });
 
+  it("appends draw strokes as a single undoable history entry", async () => {
+    await useAppStore.getState().updateSelectedLayer((layer) => ({
+      ...layer,
+      layout: {
+        ...layer.layout,
+        family: "draw",
+      },
+    }));
+
+    await useAppStore.getState().appendDrawStroke({
+      id: "stroke_test",
+      points: [
+        { x: 10, y: 20 },
+        { x: 40, y: 60 },
+      ],
+    });
+
+    expect(getActiveProjectView()?.draw.strokes).toEqual([
+      {
+        id: "stroke_test",
+        points: [
+          { x: 10, y: 20 },
+          { x: 40, y: 60 },
+        ],
+      },
+    ]);
+    expect(useAppStore.getState().canUndo).toBe(true);
+
+    await useAppStore.getState().undo();
+    expect(getActiveProjectView()?.draw.strokes).toEqual([]);
+    expect(useAppStore.getState().canRedo).toBe(true);
+
+    await useAppStore.getState().redo();
+    expect(getActiveProjectView()?.draw.strokes).toEqual([
+      {
+        id: "stroke_test",
+        points: [
+          { x: 10, y: 20 },
+          { x: 40, y: 60 },
+        ],
+      },
+    ]);
+  });
+
+  it("clears draw strokes and restores them with undo", async () => {
+    const project = useAppStore.getState().projects[0]!;
+    const selectedLayer = project.layers[0]!;
+    useAppStore.setState((state) => ({
+      ...state,
+      projects: [
+        normalizeProjectDocument({
+          ...serializeProjectDocument(project),
+          layers: [
+            {
+              ...selectedLayer,
+              layout: {
+                ...selectedLayer.layout,
+                family: "draw",
+              },
+              draw: {
+                ...selectedLayer.draw,
+                strokes: [
+                  {
+                    id: "stroke_keep",
+                    points: [
+                      { x: 100, y: 120 },
+                      { x: 180, y: 220 },
+                    ],
+                  },
+                ],
+              },
+            },
+          ],
+          selectedLayerId: selectedLayer.id,
+        }),
+      ],
+    }));
+
+    await useAppStore.getState().clearDrawLayer();
+
+    expect(getActiveProjectView()?.draw.strokes).toEqual([]);
+
+    await useAppStore.getState().undo();
+
+    expect(getActiveProjectView()?.draw.strokes).toEqual([
+      {
+        id: "stroke_keep",
+        points: [
+          { x: 100, y: 120 },
+          { x: 180, y: 220 },
+        ],
+      },
+    ]);
+  });
+
   it("keeps source state unchanged when atomic removal fails", async () => {
     const project = useAppStore.getState().projects[0]!;
     const asset = createSolidAsset(project.id);

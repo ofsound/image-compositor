@@ -15,7 +15,7 @@ import {
 } from "@/components/ui/select";
 import { lockExportDimensionsToCanvas } from "@/lib/export-sizing";
 import type { ProjectEditorView } from "@/lib/project-editor-view";
-import type { ProjectDocument, SourceAsset } from "@/types/project";
+import type { DrawStroke, ProjectDocument, SourceAsset } from "@/types/project";
 import { SliderField } from "@/components/app/procedural-texture-tab";
 import { ControlBlock } from "@/components/app/procedural-texture-tab";
 
@@ -42,6 +42,9 @@ interface CenterCanvasProps {
   activeProject: ProjectDocument;
   previewAssets: SourceAsset[];
   setRenderState: React.Dispatch<React.SetStateAction<PreviewRenderState>>;
+  drawEnabled: boolean;
+  drawBrushSize: number;
+  appendDrawStroke: (stroke: DrawStroke) => Promise<void>;
   patchProject: (
     updater: (project: ProjectEditorView) => ProjectEditorView,
   ) => void;
@@ -55,6 +58,9 @@ export function CenterCanvas({
   activeProject,
   previewAssets,
   setRenderState,
+  drawEnabled,
+  drawBrushSize,
+  appendDrawStroke,
   patchProject,
 }: CenterCanvasProps) {
   const previewPanel = (
@@ -87,6 +93,9 @@ export function CenterCanvas({
         project={previewProject ?? activeProject}
         assets={previewAssets}
         onRenderState={setRenderState}
+        drawEnabled={drawEnabled}
+        drawBrushSize={drawBrushSize}
+        onAppendDrawStroke={appendDrawStroke}
       />
     </PanelShell>
   );

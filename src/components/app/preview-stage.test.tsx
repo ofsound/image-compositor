@@ -1,4 +1,4 @@
-import { render, waitFor } from "@testing-library/react";
+import { fireEvent, render, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { PreviewStage } from "@/components/app/preview-stage";
@@ -95,6 +95,155 @@ describe("PreviewStage", () => {
 
     await waitFor(() =>
       expect(buildBitmapMap).toHaveBeenCalledTimes(initialCallCount + 1),
+    );
+  });
+
+  it("commits one draw stroke on pointer up without rerendering the project mid-drag", async () => {
+    const project = createProjectDocument("Preview Draw");
+    project.layers[0]!.layout.family = "draw";
+    project.selectedLayerId = project.layers[0]!.id;
+    const canvasRef = { current: document.createElement("canvas") };
+    const onAppendDrawStroke = vi.fn(async () => undefined);
+    const { container } = render(
+      <PreviewStage
+        canvasRef={canvasRef}
+        project={project}
+        assets={[asset]}
+        drawEnabled
+        drawBrushSize={120}
+        onAppendDrawStroke={onAppendDrawStroke}
+      />,
+    );
+
+    const previewCanvas = container.querySelectorAll("canvas")[0] as HTMLCanvasElement;
+    const overlay = container.querySelectorAll("canvas")[1] as HTMLCanvasElement;
+    expect(overlay).toBeTruthy();
+    const bounds = {
+      left: 0,
+      top: 0,
+      width: 300,
+      height: 300,
+      right: 300,
+      bottom: 300,
+      x: 0,
+      y: 0,
+      toJSON: () => undefined,
+    };
+    Object.defineProperty(previewCanvas, "getBoundingClientRect", {
+      value: () => bounds,
+    });
+    Object.defineProperty(overlay, "getBoundingClientRect", {
+      value: () => ({
+        ...bounds,
+      }),
+    });
+    Object.defineProperty(overlay, "setPointerCapture", {
+      value: vi.fn(),
+    });
+
+    fireEvent.pointerDown(overlay, {
+      button: 0,
+      clientX: 30,
+      clientY: 60,
+      pointerId: 1,
+      pointerType: "mouse",
+    });
+    fireEvent.pointerMove(overlay, {
+      clientX: 150,
+      clientY: 180,
+      pointerId: 1,
+      pointerType: "mouse",
+    });
+
+    expect(onAppendDrawStroke).not.toHaveBeenCalled();
+
+    fireEvent.pointerUp(overlay, {
+      clientX: 240,
+      clientY: 210,
+      pointerId: 1,
+      pointerType: "mouse",
+    });
+
+    await waitFor(() =>
+      expect(onAppendDrawStroke).toHaveBeenCalledWith(
+        expect.objectContaining({
+          points: [
+            { x: 300, y: 600 },
+            { x: 1500, y: 1800 },
+            { x: 2400, y: 2100 },
+          ],
+        }),
+      ),
+    );
+  });
+
+  it("maps non-square preview coordinates without horizontal drift", async () => {
+    const project = createProjectDocument("Preview Draw Wide");
+    project.canvas.width = 3000;
+    project.canvas.height = 1500;
+    project.layers[0]!.layout.family = "draw";
+    project.selectedLayerId = project.layers[0]!.id;
+    const canvasRef = { current: document.createElement("canvas") };
+    const onAppendDrawStroke = vi.fn(async () => undefined);
+    const { container } = render(
+      <PreviewStage
+        canvasRef={canvasRef}
+        project={project}
+        assets={[asset]}
+        drawEnabled
+        drawBrushSize={120}
+        onAppendDrawStroke={onAppendDrawStroke}
+      />,
+    );
+
+    const previewCanvas = container.querySelectorAll("canvas")[0] as HTMLCanvasElement;
+    const overlay = container.querySelectorAll("canvas")[1] as HTMLCanvasElement;
+    const bounds = {
+      left: 50,
+      top: 20,
+      width: 600,
+      height: 300,
+      right: 650,
+      bottom: 320,
+      x: 50,
+      y: 20,
+      toJSON: () => undefined,
+    };
+    Object.defineProperty(previewCanvas, "getBoundingClientRect", {
+      value: () => bounds,
+    });
+    Object.defineProperty(overlay, "getBoundingClientRect", {
+      value: () => ({
+        ...bounds,
+      }),
+    });
+    Object.defineProperty(overlay, "setPointerCapture", {
+      value: vi.fn(),
+    });
+
+    fireEvent.pointerDown(overlay, {
+      button: 0,
+      clientX: 50,
+      clientY: 170,
+      pointerId: 2,
+      pointerType: "mouse",
+    });
+    fireEvent.pointerUp(overlay, {
+      clientX: 650,
+      clientY: 170,
+      pointerId: 2,
+      pointerType: "mouse",
+    });
+
+    await waitFor(() =>
+      expect(onAppendDrawStroke).toHaveBeenCalledWith(
+        expect.objectContaining({
+          points: [
+            { x: 0, y: 750 },
+            { x: 3000, y: 750 },
+          ],
+        }),
+      ),
     );
   });
 });

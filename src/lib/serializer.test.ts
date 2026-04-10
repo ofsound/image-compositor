@@ -5,6 +5,7 @@ import {
   getSelectedLayer,
   normalizeProjectDocument,
   normalizeProjectSnapshot,
+  serializeProjectDocument,
 } from "@/lib/project-defaults";
 import { createProjectEditorView } from "@/lib/project-editor-view";
 import { createImportCopy, loadProjectBundle } from "@/lib/serializer";
@@ -567,5 +568,78 @@ describe("loadProjectBundle", () => {
     const loaded = await loadProjectBundle(await zip.generateAsync({ type: "blob" }));
 
     expect(loaded.assetDocs[0]?.kind).toBe("image");
+  });
+
+  it("preserves draw layer settings in version 4 bundles", async () => {
+    const zip = new JSZip();
+    const drawProject = normalizeProjectDocument({
+      ...serializeProjectDocument(bundle.projectDoc),
+      layers: serializeProjectDocument(bundle.projectDoc).layers.map((layer, index) =>
+        index === 0
+          ? {
+              ...layer,
+              layout: {
+                ...layer.layout,
+                family: "draw",
+              },
+              draw: {
+                brushSize: 192,
+                strokes: [
+                  {
+                    id: "stroke_bundle",
+                    points: [
+                      { x: -20, y: 40 },
+                      { x: 120, y: 160 },
+                    ],
+                  },
+                ],
+              },
+            }
+          : layer,
+      ),
+    } as Parameters<typeof normalizeProjectDocument>[0]);
+    const drawVersion = {
+      ...bundle.versionDocs[0]!,
+      snapshot: normalizeProjectSnapshot({
+        ...bundle.versionDocs[0]!.snapshot,
+        layers: drawProject.layers,
+        selectedLayerId: drawProject.selectedLayerId,
+      }),
+    };
+
+    zip.file(
+      "manifest.json",
+      JSON.stringify({
+        ...bundle.manifest,
+        version: 4,
+      }),
+    );
+    zip.file("project.json", JSON.stringify(serializeProjectDocument(drawProject)));
+    zip.file("versions.json", JSON.stringify([drawVersion]));
+    zip.file("assets.json", JSON.stringify(bundle.assetDocs));
+    for (const [path, blob] of Object.entries(bundle.assetBlobs)) {
+      zip.file(path, blob);
+    }
+    for (const [path, blob] of Object.entries(bundle.versionBlobs)) {
+      zip.file(path, blob);
+    }
+
+    const loaded = await loadProjectBundle(await zip.generateAsync({ type: "blob" }));
+    const loadedLayer = getProjectView(loaded.projectDoc).layers[0]!;
+    const loadedVersionLayer = getVersionSnapshotLayer(loaded.versionDocs[0]!.snapshot);
+
+    expect(loadedLayer.layout.family).toBe("draw");
+    expect(loadedLayer.draw.brushSize).toBe(192);
+    expect(loadedLayer.draw.strokes).toEqual([
+      {
+        id: "stroke_bundle",
+        points: [
+          { x: -20, y: 40 },
+          { x: 120, y: 160 },
+        ],
+      },
+    ]);
+    expect(loadedVersionLayer.draw.brushSize).toBe(192);
+    expect(loadedVersionLayer.draw.strokes[0]?.id).toBe("stroke_bundle");
   });
 });

@@ -15,7 +15,7 @@ describe("bundle validation", () => {
         assetIds: ["asset_1"],
         versionIds: ["version_1"],
       }),
-    ).toThrow("Bundle manifest.version must be 1, 2, or 3.");
+    ).toThrow("Bundle manifest.version must be 1, 2, 3, or 4.");
   });
 
   it("rejects bundle assets with invalid numeric metadata", () => {

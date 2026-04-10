@@ -64,8 +64,8 @@ export function parseBundleManifest(rawManifest: unknown): ProjectBundleManifest
   const manifest = assertRecord(rawManifest, "Bundle manifest");
   const version = manifest.version;
 
-  if (version !== 1 && version !== 2 && version !== 3) {
-    throw new Error("Bundle manifest.version must be 1, 2, or 3.");
+  if (version !== 1 && version !== 2 && version !== 3 && version !== 4) {
+    throw new Error("Bundle manifest.version must be 1, 2, 3, or 4.");
   }
 
   assertString(manifest, "projectId", "Bundle manifest");

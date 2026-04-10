@@ -7,6 +7,7 @@ import type {
   CanvasSettings,
   CompositingSettings,
   CompositorLayer,
+  DrawSettings,
   EffectSettings,
   FinishSettings,
   GeneratorPreset,
@@ -23,6 +24,7 @@ type SelectedLayerEditorFields = {
   effects: EffectSettings;
   compositing: CompositingSettings;
   finish: FinishSettings;
+  draw: DrawSettings;
   activeSeed: number;
   presets: GeneratorPreset[];
   passes: RenderPass[];
@@ -41,6 +43,7 @@ function createEditorLayer(layer: CompositorLayer) {
     effects: structuredClone(layer.effects),
     compositing: structuredClone(layer.compositing),
     finish: structuredClone(layer.finish),
+    draw: structuredClone(layer.draw),
     activeSeed: layer.activeSeed,
     presets: structuredClone(layer.presets),
     passes: structuredClone(layer.passes),
@@ -78,6 +81,7 @@ function applyEditorFieldsToLayer(
       effects: structuredClone(view.effects),
       compositing: structuredClone(view.compositing),
       finish: structuredClone(view.finish),
+      draw: structuredClone(view.draw),
       activeSeed: view.activeSeed,
       presets: structuredClone(view.presets),
       passes: structuredClone(view.passes),

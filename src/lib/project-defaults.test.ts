@@ -87,6 +87,8 @@ describe("createProjectDocument", () => {
     expect(project.finish.invert).toBe(0);
     expect(project.finish.noise).toBe(0);
     expect(project.finish.noiseMonochrome).toBe(0);
+    expect(project.draw.brushSize).toBe(160);
+    expect(project.draw.strokes).toEqual([]);
     expect(project.passes.map((pass) => pass.type)).toEqual([
       "layout",
       "assignment",
@@ -111,6 +113,45 @@ describe("createProjectDocument", () => {
     } as unknown as ProjectDocument;
 
     expect(normalizeProjectView(legacyProject).sourceMapping.cropDistribution).toBe("center");
+  });
+
+  it("normalizes draw settings and filters invalid stroke points", () => {
+    const project = createProjectDocument("Draw Layer");
+    const layer = project.layers[0]!;
+    const drawProject = {
+      ...serializeProjectDocument(project),
+      layers: [
+        {
+          ...layer,
+          layout: {
+            ...layer.layout,
+            family: "draw",
+          },
+          draw: {
+            brushSize: 0,
+            strokes: [
+              {
+                id: "",
+                points: [
+                  { x: -24, y: 48 },
+                  { x: Number.NaN, y: 12 },
+                ],
+              },
+            ],
+          },
+        },
+      ],
+      selectedLayerId: layer.id,
+    } as ProjectDocument;
+
+    const normalized = normalizeProjectDocument(drawProject);
+    const normalizedLayer = normalized.layers[0]!;
+
+    expect(normalizedLayer.layout.family).toBe("draw");
+    expect(normalizedLayer.draw.brushSize).toBe(8);
+    expect(normalizedLayer.draw.strokes).toHaveLength(1);
+    expect(normalizedLayer.draw.strokes[0]?.id.startsWith("stroke_")).toBe(true);
+    expect(normalizedLayer.draw.strokes[0]?.points).toEqual([{ x: -24, y: 48 }]);
   });
 
   it("moves legacy root settings into the selected layer and serializes canonically", () => {

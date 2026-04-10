@@ -33,6 +33,8 @@ export function useWorkspaceActions() {
       selectLayer: state.selectLayer,
       addLayer: state.addLayer,
       deleteLayer: state.deleteLayer,
+      appendDrawStroke: state.appendDrawStroke,
+      clearDrawLayer: state.clearDrawLayer,
       toggleLayerVisibility: state.toggleLayerVisibility,
       reorderLayers: state.reorderLayers,
       updateProject: state.updateProject,

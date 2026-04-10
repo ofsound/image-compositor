@@ -51,7 +51,7 @@ export async function exportProjectBundle(
 ) {
   const zip = new JSZip();
   const manifest: ProjectBundleManifest = {
-    version: 3,
+    version: 4,
     projectId: project.id,
     exportedAt: new Date().toISOString(),
     assetIds: assets.map((asset) => asset.id),

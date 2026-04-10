@@ -10,6 +10,21 @@ const rendererDistPath = path.resolve(__dirname, "../dist/client");
 const preloadPath = path.resolve(__dirname, "preload.js");
 const devServerUrl = process.env.ELECTRON_RENDERER_URL?.trim() || null;
 const ALLOWED_EXTERNAL_PROTOCOLS = new Set(["https:", "http:", "mailto:"]);
+const disableRendererSandbox = process.env.ELECTRON_DISABLE_RENDERER_SANDBOX === "1";
+
+function shouldEnableRendererSandbox() {
+  if (disableRendererSandbox) {
+    return false;
+  }
+
+  // Unpackaged Linux CI frequently lacks sandbox prerequisites (user namespaces /
+  // setuid helper), which can cause Electron to terminate at launch.
+  if (process.platform === "linux" && !app.isPackaged) {
+    return false;
+  }
+
+  return true;
+}
 
 function getAppIconPath() {
   const devIconPath = path.resolve(__dirname, "../public/electron-icon.png");
@@ -48,7 +63,7 @@ async function createMainWindow() {
       preload: preloadPath,
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: true,
+      sandbox: shouldEnableRendererSandbox(),
     },
   });
 

@@ -41,6 +41,7 @@ async function launchApp(userDataDir: string) {
     env: {
       ...process.env,
       IMAGE_GRID_USER_DATA_DIR: userDataDir,
+      ELECTRON_DISABLE_RENDERER_SANDBOX: "1",
     },
   });
   const page = await app.firstWindow();

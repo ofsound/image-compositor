@@ -48,6 +48,11 @@ import { PreviewStage } from "@/components/app/preview-stage";
 import type { PreviewRenderState } from "@/components/app/preview-stage";
 import { SourceAssetCard } from "@/components/app/source-asset-card";
 import { ThemeToggle } from "@/components/app/theme-toggle";
+
+import { LeftSidebar } from "@/features/editor/left-sidebar";
+import { CenterCanvas } from "@/features/editor/center-canvas";
+import { RightSidebar } from "@/features/editor/right-sidebar";
+
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -102,10 +107,7 @@ import {
 import { lockExportDimensionsToCanvas } from "@/lib/export-sizing";
 import { readBlob } from "@/lib/opfs";
 import { toggleSourceId } from "@/lib/source-selection";
-import {
-  getSourceWeight,
-  setSourceWeight,
-} from "@/lib/source-weights";
+import { getSourceWeight, setSourceWeight } from "@/lib/source-weights";
 import { cn } from "@/lib/utils";
 import {
   useWorkspaceActions,
@@ -184,7 +186,11 @@ function SourceThumbnail({
     <img
       src={previewUrl}
       alt={label}
-      className={compact ? "h-24 w-full rounded-md object-cover" : "h-20 w-full rounded-md object-cover"}
+      className={
+        compact
+          ? "h-24 w-full rounded-md object-cover"
+          : "h-20 w-full rounded-md object-cover"
+      }
     />
   ) : (
     <div
@@ -216,8 +222,14 @@ function SortableLayerRow({
   onToggleVisibility: () => void;
   onDelete: () => void;
 }) {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
-    useSortable({ id: layer.id });
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: layer.id });
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
@@ -292,7 +304,9 @@ function SortableLayerRow({
               : "border-border bg-transparent text-text-secondary hover:border-border-strong hover:bg-control-ghost-hover hover:text-text",
           )}
           onClick={onToggleVisibility}
-          aria-label={layer.visible ? `Hide ${layer.name}` : `Show ${layer.name}`}
+          aria-label={
+            layer.visible ? `Hide ${layer.name}` : `Show ${layer.name}`
+          }
         >
           {layer.visible ? (
             <EyeOff className="h-3.5 w-3.5" />
@@ -443,14 +457,16 @@ function SourceColorField({
   label,
   value,
   onChange,
+  className,
 }: {
   id: string;
   label: string;
   value: string;
   onChange: (value: string) => void;
+  className?: string;
 }) {
   return (
-    <div className="space-y-2">
+    <div className={cn("space-y-2", className)}>
       <Label htmlFor={id}>{label}</Label>
       <div className="flex items-center gap-2">
         <Input
@@ -516,7 +532,9 @@ function GeneratedSourcePreview({
             data-testid="source-editor-preview-canvas"
             aria-label="Generated source preview"
             className="h-auto w-full rounded-md bg-preview-canvas object-contain"
-            style={{ aspectRatio: `${canvasSize.width} / ${canvasSize.height}` }}
+            style={{
+              aspectRatio: `${canvasSize.width} / ${canvasSize.height}`,
+            }}
             width={previewWidth}
             height={previewHeight}
           />
@@ -530,13 +548,15 @@ function ControlBlock({
   label,
   value,
   children,
+  className,
 }: {
   label: string;
   value?: string;
   children: React.ReactNode;
+  className?: string;
 }) {
   return (
-    <div className="space-y-2">
+    <div className={cn("space-y-2", className)}>
       <div className="flex items-center justify-between gap-3">
         <Label>{label}</Label>
         {value ? (
@@ -546,6 +566,40 @@ function ControlBlock({
       {children}
     </div>
   );
+}
+
+function InspectorGroup({
+  title,
+  children,
+  className,
+}: {
+  title: string;
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <section
+      className={cn(
+        "rounded-lg border border-border-subtle bg-surface-sunken/40 p-3",
+        className,
+      )}
+    >
+      <div className="border-b border-border-subtle pb-2 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-text-muted">
+        {title}
+      </div>
+      <div className="mt-3 space-y-3">{children}</div>
+    </section>
+  );
+}
+
+function InspectorFieldGrid({
+  children,
+  className,
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) {
+  return <div className={cn("grid gap-3", className)}>{children}</div>;
 }
 
 function isEditableTarget(target: EventTarget | null) {
@@ -616,6 +670,7 @@ function SliderField({
   value,
   disabled = false,
   onChange,
+  className,
   formatter = (next) => next.toFixed(2),
 }: {
   label: string;
@@ -625,6 +680,7 @@ function SliderField({
   value: number;
   disabled?: boolean;
   onChange: (value: number) => void;
+  className?: string;
   formatter?: (value: number) => string;
 }) {
   const [draftValue, setDraftValue] = useState<number | null>(null);
@@ -638,7 +694,11 @@ function SliderField({
   const displayValue = draftValue ?? value;
 
   return (
-    <ControlBlock label={label} value={formatter(displayValue)}>
+    <ControlBlock
+      label={label}
+      value={formatter(displayValue)}
+      className={className}
+    >
       <Slider
         aria-label={label}
         disabled={disabled}
@@ -725,7 +785,8 @@ function ProceduralTextureTab({
               <div>
                 <Label>Variation</Label>
                 <div className="text-xs text-text-muted">
-                  Regenerate the hidden seed while keeping the sliders unchanged.
+                  Regenerate the hidden seed while keeping the sliders
+                  unchanged.
                 </div>
               </div>
               <Button
@@ -760,7 +821,10 @@ function ProceduralTextureTab({
             </Button>
           </div>
         </div>
-        <GeneratedSourcePreview source={previewSource} canvasSize={canvasSize} />
+        <GeneratedSourcePreview
+          source={previewSource}
+          canvasSize={canvasSize}
+        />
       </div>
     </TabsContent>
   );
@@ -854,21 +918,27 @@ function App() {
   const [perlinSourceDetail, setPerlinSourceDetail] = useState(0.55);
   const [perlinSourceContrast, setPerlinSourceContrast] = useState(0.45);
   const [perlinSourceDistortion, setPerlinSourceDistortion] = useState(0.25);
-  const [perlinSourceSeed, setPerlinSourceSeed] = useState(() => createNoiseSeed());
+  const [perlinSourceSeed, setPerlinSourceSeed] = useState(() =>
+    createNoiseSeed(),
+  );
   const [cellularSourceName, setCellularSourceName] = useState("");
   const [cellularSourceColor, setCellularSourceColor] = useState("#8b5cf6");
   const [cellularSourceScale, setCellularSourceScale] = useState(0.55);
   const [cellularSourceJitter, setCellularSourceJitter] = useState(0.6);
   const [cellularSourceEdge, setCellularSourceEdge] = useState(0.55);
   const [cellularSourceContrast, setCellularSourceContrast] = useState(0.45);
-  const [cellularSourceSeed, setCellularSourceSeed] = useState(() => createNoiseSeed());
+  const [cellularSourceSeed, setCellularSourceSeed] = useState(() =>
+    createNoiseSeed(),
+  );
   const [reactionSourceName, setReactionSourceName] = useState("");
   const [reactionSourceColor, setReactionSourceColor] = useState("#ef4444");
   const [reactionSourceScale, setReactionSourceScale] = useState(0.55);
   const [reactionSourceDiffusion, setReactionSourceDiffusion] = useState(0.55);
   const [reactionSourceBalance, setReactionSourceBalance] = useState(0.5);
   const [reactionSourceDistortion, setReactionSourceDistortion] = useState(0.2);
-  const [reactionSourceSeed, setReactionSourceSeed] = useState(() => createNoiseSeed());
+  const [reactionSourceSeed, setReactionSourceSeed] = useState(() =>
+    createNoiseSeed(),
+  );
   const [waveSourceName, setWaveSourceName] = useState("");
   const [waveSourceColor, setWaveSourceColor] = useState("#0ea5e9");
   const [waveSourceScale, setWaveSourceScale] = useState(0.55);
@@ -1011,15 +1081,21 @@ function App() {
     ? (projectAssets.find((asset) => asset.id === editingSourceId) ?? null)
     : null;
   const selectedLayer = activeProject
-    ? activeProject.layers.find((layer) => layer.id === activeProject.selectedLayerId) ??
+    ? (activeProject.layers.find(
+        (layer) => layer.id === activeProject.selectedLayerId,
+      ) ??
       activeProject.layers.at(-1) ??
-      null
+      null)
     : null;
-  const displayLayers = activeProject ? [...activeProject.layers].reverse() : [];
+  const displayLayers = activeProject
+    ? [...activeProject.layers].reverse()
+    : [];
   const activeVersions = activeProject
     ? versions.filter((version) => version.projectId === activeProject.id)
     : [];
-  const previewAssetSignature = previewAssets.map((asset) => asset.id).join("|");
+  const previewAssetSignature = previewAssets
+    .map((asset) => asset.id)
+    .join("|");
   const purgeDialogProject =
     projects.find((project) => project.id === purgeDialogProjectId) ?? null;
   const isLinearGradientMode = gradientSourceMode === "linear";
@@ -1063,7 +1139,11 @@ function App() {
       return;
     }
 
-    const nextDisplayLayerIds = arrayMove(displayLayerIds, activeIndex, overIndex);
+    const nextDisplayLayerIds = arrayMove(
+      displayLayerIds,
+      activeIndex,
+      overIndex,
+    );
     void reorderLayers([...nextDisplayLayerIds].reverse());
   };
 
@@ -1113,9 +1193,12 @@ function App() {
     activeProjectView.sourceMapping.strategy === "weighted";
   const isPaletteAssignment =
     activeProjectView.sourceMapping.strategy === "palette";
-  const isKaleidoscopeActive = activeProjectView.effects.kaleidoscopeSegments > 1;
+  const isKaleidoscopeActive =
+    activeProjectView.effects.kaleidoscopeSegments > 1;
   const geometryOptions = getGeometryOptions(activeProjectView.layout.family);
-  const geometryValue = geometryOptions.includes(activeProjectView.layout.shapeMode)
+  const geometryValue = geometryOptions.includes(
+    activeProjectView.layout.shapeMode,
+  )
     ? activeProjectView.layout.shapeMode
     : coerceShapeModeForFamily(
         activeProjectView.layout.family,
@@ -1204,7 +1287,7 @@ function App() {
     <PanelShell
       title="Preview"
       sectionLabel="Preview"
-      className={previewExpanded ? "min-w-0 flex-1" : undefined}
+      className="min-w-0 flex-1"
       actions={
         <Button
           type="button"
@@ -1231,6 +1314,208 @@ function App() {
         assets={previewAssets}
         onRenderState={setRenderState}
       />
+    </PanelShell>
+  );
+  const projectSettingsPanel = (
+    <PanelShell
+      title="Project Settings"
+      sectionLabel="Project Settings"
+      className="shrink-0"
+      cardClassName="bg-surface-raised shadow-none"
+      contentClassName="max-h-[38vh] overflow-y-auto space-y-4"
+    >
+      <div className="grid gap-6 md:grid-cols-2 md:items-start">
+        <section aria-label="Canvas settings" className="min-w-0 space-y-4">
+          <SliderField
+            label="Canvas W"
+            min={1200}
+            max={3840}
+            step={10}
+            value={activeProject.canvas.width}
+            formatter={(value) => `${Math.round(value)} px`}
+            onChange={(value) =>
+              patchProject((project) => {
+                const canvas = {
+                  ...project.canvas,
+                  width: Math.round(value),
+                };
+                return {
+                  ...project,
+                  canvas,
+                  export: {
+                    ...project.export,
+                    ...lockExportDimensionsToCanvas(
+                      canvas,
+                      project.export,
+                      "width",
+                    ),
+                  },
+                };
+              })
+            }
+          />
+          <SliderField
+            label="Canvas H"
+            min={800}
+            max={3200}
+            step={10}
+            value={activeProject.canvas.height}
+            formatter={(value) => `${Math.round(value)} px`}
+            onChange={(value) =>
+              patchProject((project) => {
+                const canvas = {
+                  ...project.canvas,
+                  height: Math.round(value),
+                };
+                return {
+                  ...project,
+                  canvas,
+                  export: {
+                    ...project.export,
+                    ...lockExportDimensionsToCanvas(
+                      canvas,
+                      project.export,
+                      "width",
+                    ),
+                  },
+                };
+              })
+            }
+          />
+          <ControlBlock
+            label="Canvas Background"
+            value={`${Math.round(activeProject.canvas.backgroundAlpha * 100)}%`}
+          >
+            <SourceColorField
+              id="canvas-background-color"
+              label="Color"
+              value={activeProject.canvas.background}
+              onChange={(value) =>
+                patchProject((project) => ({
+                  ...project,
+                  canvas: {
+                    ...project.canvas,
+                    background: value,
+                  },
+                }))
+              }
+            />
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-xs text-text-muted">
+                <span>Alpha</span>
+                <span className="font-mono text-[10px] text-text-faint">
+                  {Math.round(activeProject.canvas.backgroundAlpha * 100)}%
+                </span>
+              </div>
+              <Slider
+                min={0}
+                max={1}
+                step={0.01}
+                value={[activeProject.canvas.backgroundAlpha]}
+                onValueChange={(next) =>
+                  patchProject((project) => ({
+                    ...project,
+                    canvas: {
+                      ...project.canvas,
+                      backgroundAlpha:
+                        next[0] ?? project.canvas.backgroundAlpha,
+                    },
+                  }))
+                }
+              />
+            </div>
+          </ControlBlock>
+        </section>
+
+        <section aria-label="Export settings" className="min-w-0 space-y-4">
+          <ControlBlock label="Export Format">
+            <Select
+              value={activeProject.export.format}
+              onValueChange={(value) =>
+                patchProject((project) => ({
+                  ...project,
+                  export: {
+                    ...project.export,
+                    format: value as typeof project.export.format,
+                  },
+                }))
+              }
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="image/png">PNG</SelectItem>
+                <SelectItem value="image/jpeg">JPEG</SelectItem>
+                <SelectItem value="image/png-transparent">
+                  Transparent PNG
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </ControlBlock>
+          <SliderField
+            label="Export W"
+            min={1920}
+            max={7680}
+            step={16}
+            value={activeProject.export.width}
+            formatter={(value) => `${Math.round(value)} px`}
+            onChange={(value) =>
+              patchProject((project) => ({
+                ...project,
+                export: {
+                  ...project.export,
+                  ...lockExportDimensionsToCanvas(
+                    project.canvas,
+                    {
+                      ...project.export,
+                      width: Math.round(value),
+                    },
+                    "width",
+                  ),
+                },
+              }))
+            }
+          />
+          <SliderField
+            label="Export H"
+            min={1080}
+            max={7680}
+            step={16}
+            value={activeProject.export.height}
+            formatter={(value) => `${Math.round(value)} px`}
+            onChange={(value) =>
+              patchProject((project) => ({
+                ...project,
+                export: {
+                  ...project.export,
+                  ...lockExportDimensionsToCanvas(
+                    project.canvas,
+                    {
+                      ...project.export,
+                      height: Math.round(value),
+                    },
+                    "height",
+                  ),
+                },
+              }))
+            }
+          />
+          <SliderField
+            label="Export Quality"
+            min={0.7}
+            max={1}
+            step={0.01}
+            value={activeProject.export.quality}
+            onChange={(value) =>
+              patchProject((project) => ({
+                ...project,
+                export: { ...project.export, quality: value },
+              }))
+            }
+          />
+        </section>
+      </div>
     </PanelShell>
   );
 
@@ -1391,8 +1676,7 @@ function App() {
         | PerlinSourceAsset
         | CellularSourceAsset
         | ReactionSourceAsset
-        | WaveSourceAsset =>
-        entry.id === assetId && entry.kind !== "image",
+        | WaveSourceAsset => entry.id === assetId && entry.kind !== "image",
     );
     if (!asset) return;
 
@@ -1793,1944 +2077,63 @@ function App() {
               "min-h-0 flex-1 gap-3 overflow-hidden",
               previewExpanded
                 ? "flex"
-                : "grid grid-cols-[288px_minmax(280px,22vw)_minmax(640px,1fr)_560px]",
+                : "grid grid-cols-[288px_minmax(0,260px)_minmax(640px,1fr)_560px]",
             )}
           >
-            {previewExpanded ? null : (
-            <PanelShell
-              title="Sources"
-              actions={
-                <Button
-                  className="w-fit shrink-0"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => openAddSourceDialog("image")}
-                >
-                  <ImagePlus className="h-3.5 w-3.5" />
-                  Add Source
-                </Button>
-              }
-              contentClassName="min-h-0 overflow-y-auto pr-1"
-            >
-              {projectAssets.length === 0 ? (
-                <div className="rounded-md bg-surface-sunken p-4 text-xs leading-relaxed text-text-faint">
-                  Add image, solid, or gradient sources to begin. Imported
-                  images stay immutable, while generated sources can be edited
-                  later.
-                </div>
-              ) : (
-                <div className="flex flex-col gap-3" data-testid="sources-rail">
-                  {projectAssets.map((asset) => {
-                    const enabled = activeProjectView.sourceIds.includes(asset.id);
-                    const mixWeight = getSourceWeight(
-                      activeProjectView.sourceMapping.sourceWeights,
-                      asset.id,
-                    );
-
-                    return (
-                      <SourceAssetCard
-                        key={asset.id}
-                        asset={asset}
-                        enabled={enabled}
-                        layout="rail"
-                        topContent={
-                          enabled ? (
-                            <div className="space-y-1.5">
-                              <div className="flex items-center justify-between gap-2 font-mono text-[10px] uppercase tracking-[0.08em] text-text-muted">
-                                <span>Mix</span>
-                                <span>{formatSourceWeightValue(mixWeight)}</span>
-                              </div>
-                              <Slider
-                                aria-label={`${asset.name} mix weight`}
-                                min={0}
-                                max={4}
-                                step={0.05}
-                                value={[mixWeight]}
-                                onValueChange={(next) =>
-                                  updateSourceWeight(
-                                    asset.id,
-                                    next[0] ?? mixWeight,
-                                  )
-                                }
-                              />
-                            </div>
-                          ) : null
-                        }
-                        onToggle={toggleAssetEnabled}
-                        onRemove={(assetId) => void handleRemoveSource(assetId)}
-                        onEdit={
-                          asset.kind === "image"
-                            ? undefined
-                            : openEditSourceDialog
-                        }
-                        thumbnail={
-                          <SourceThumbnail
-                            previewPath={asset.previewPath}
-                            label={asset.name}
-                            versionKey={getSourceContentSignature(asset)}
-                            compact
-                          />
-                        }
-                      />
-                    );
-                  })}
-                </div>
-              )}
-            </PanelShell>
-            )}
-
-            {previewExpanded ? null : (
-            <PanelShell
-              title="Layers"
-              actions={
-                <Button
-                  className="min-w-[9rem] shrink-0 justify-center"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => void addLayer()}
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                  Add Layer
-                </Button>
-              }
-              contentClassName="min-h-0 overflow-y-auto pr-1"
-            >
-              <DndContext
-                sensors={layerSensors}
-                collisionDetection={closestCenter}
-                onDragEnd={handleLayerDragEnd}
-              >
-                <SortableContext
-                  items={displayLayers.map((layer) => layer.id)}
-                  strategy={verticalListSortingStrategy}
-                >
-                  <div className="flex flex-col gap-2">
-                    {displayLayers.map((layer) => (
-                      <SortableLayerRow
-                        key={layer.id}
-                        layer={layer}
-                        isSelected={layer.id === selectedLayer?.id}
-                        thumbnailUrl={layerThumbnailUrls[layer.id] ?? null}
-                        canDelete={activeProject.layers.length > 1}
-                        onSelect={() => void selectLayer(layer.id)}
-                        onToggleVisibility={() => void toggleLayerVisibility(layer.id)}
-                        onDelete={() => void deleteLayer(layer.id)}
-                      />
-                    ))}
-                  </div>
-                </SortableContext>
-              </DndContext>
-            </PanelShell>
-            )}
-
-            {previewPanel}
-
-            {previewExpanded ? null : (
-            <div className="flex min-h-0 flex-col gap-3">
-              <section
-                aria-label="Inspector"
-                className="flex min-h-0 flex-1 flex-col"
-              >
-                <Card className="flex min-h-0 flex-1 flex-col overflow-hidden">
-                  <CardHeader>
-                    <CardTitle>Inspector</CardTitle>
-                  </CardHeader>
-                  <CardContent className="flex min-h-0 flex-1 flex-col overflow-y-auto px-3 pb-3">
-                    <section aria-label="Layer Controls" className="space-y-4">
-                  <div className="rounded-md border border-border-subtle bg-surface-sunken/70 px-3 py-2.5">
-                    <div
-                      id="layer-controls-heading"
-                      className="font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-text-muted"
-                    >
-                      Layer Controls
-                    </div>
-                    <div className="mt-1 text-sm font-medium text-text">
-                      Editing {inspectorLayerName}
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-3 gap-4">
-                    <div className="min-w-0 space-y-4">
-                    <div className="border-b border-border-subtle pb-1 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-text-muted">
-                      Layout
-                    </div>
-                    <ControlBlock label="Family">
-                      <Select
-                        value={activeProjectView.layout.family}
-                        onValueChange={(value) =>
-                          patchProject((project) => {
-                            const nextFamily = value as LayoutFamily;
-                            return {
-                              ...project,
-                              layout: {
-                                ...project.layout,
-                                family: nextFamily,
-                                shapeMode: coerceShapeModeForFamily(
-                                  nextFamily,
-                                  project.layout.shapeMode,
-                                ),
-                              },
-                            };
-                          })
-                        }
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {["blocks", "grid", "strips", "radial", "organic", "flow", "3d"].map(
-                            (option) => (
-                              <SelectItem key={option} value={option}>
-                                {option}
-                              </SelectItem>
-                            ),
-                          )}
-                        </SelectContent>
-                      </Select>
-                    </ControlBlock>
-                    <ControlBlock label="Geometry">
-                      <Select
-                        value={geometryValue}
-                        onValueChange={(value) =>
-                          patchProject((project) => ({
-                            ...project,
-                            layout: {
-                              ...project.layout,
-                              shapeMode: value as GeometryShape,
-                            },
-                          }))
-                        }
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {geometryOptions.map((option) => (
-                            <SelectItem key={option} value={option}>
-                              {option}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </ControlBlock>
-                    {isRectShapeMode ? (
-                      <SliderField
-                        label="Corner Radius"
-                        min={0}
-                        max={1}
-                        step={0.01}
-                        value={activeProjectView.layout.rectCornerRadius}
-                        formatter={(value) => `${Math.round(value * 100)}%`}
-                        onChange={(value) =>
-                          patchProject((project) => ({
-                            ...project,
-                            layout: {
-                              ...project.layout,
-                              rectCornerRadius: value,
-                            },
-                          }))
-                        }
-                      />
-                    ) : null}
-                    {isStripsFamily ||
-                    isOrganicFamily ||
-                    isFlowFamily ||
-                    isThreeDFamily ? (
-                      <>
-                        {isStripsFamily ? (
-                          <SliderField
-                            label="Strips Angle"
-                            min={0}
-                            max={180}
-                            step={1}
-                            value={activeProjectView.layout.stripAngle}
-                            formatter={(value) => `${Math.round(value)}°`}
-                            onChange={(value) =>
-                              patchProject((project) => ({
-                                ...project,
-                                layout: {
-                                  ...project.layout,
-                                  stripAngle: value,
-                                },
-                              }))
-                            }
-                          />
-                        ) : null}
-                        <SliderField
-                          label="Density"
-                          min={0.05}
-                          max={1}
-                          step={0.01}
-                          value={
-                            activeProjectView.layout.density / DENSITY_UI_SCALE
-                          }
-                          onChange={(value) =>
-                            patchProject((project) => ({
-                              ...project,
-                              layout: {
-                                ...project.layout,
-                                density: Number(
-                                  (value * DENSITY_UI_SCALE).toFixed(2),
-                                ),
-                              },
-                            }))
-                          }
-                        />
-                        {isThreeDFamily ? (
-                          <ControlBlock label="Structure">
-                            <Select
-                              value={activeProjectView.layout.threeDStructure}
-                              onValueChange={(value) =>
-                                patchProject((project) => ({
-                                  ...project,
-                                  layout: {
-                                    ...project.layout,
-                                    threeDStructure: value as ThreeDStructureMode,
-                                  },
-                                }))
-                              }
-                            >
-                              <SelectTrigger aria-label="Structure">
-                                <SelectValue />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {["sphere", "torus", "attractor"].map((option) => (
-                                  <SelectItem key={option} value={option}>
-                                    {option}
-                                  </SelectItem>
-                                ))}
-                              </SelectContent>
-                            </Select>
-                          </ControlBlock>
-                        ) : null}
-                        {isOrganicFamily ? (
-                          <SliderField
-                            label="Distribution"
-                            min={0}
-                            max={ORGANIC_DISTRIBUTION_MAX}
-                            step={1}
-                            value={activeProjectView.layout.organicVariation}
-                            formatter={(value) => `${Math.round(value)}`}
-                            onChange={(value) =>
-                              patchProject((project) => ({
-                                ...project,
-                                layout: {
-                                  ...project.layout,
-                                  organicVariation: Math.round(value),
-                                },
-                              }))
-                            }
-                          />
-                        ) : null}
-                        {isFlowFamily ? (
-                          <>
-                            <SliderField
-                              label="Flow Curvature"
-                              min={0}
-                              max={1}
-                              step={0.01}
-                              value={activeProjectView.layout.flowCurvature}
-                              formatter={(value) => `${Math.round(value * 100)}%`}
-                              onChange={(value) =>
-                                patchProject((project) => ({
-                                  ...project,
-                                  layout: {
-                                    ...project.layout,
-                                    flowCurvature: value,
-                                  },
-                                }))
-                              }
-                            />
-                            <SliderField
-                              label="Flow Coherence"
-                              min={0}
-                              max={1}
-                              step={0.01}
-                              value={activeProjectView.layout.flowCoherence}
-                              formatter={(value) => `${Math.round(value * 100)}%`}
-                              onChange={(value) =>
-                                patchProject((project) => ({
-                                  ...project,
-                                  layout: {
-                                    ...project.layout,
-                                    flowCoherence: value,
-                                  },
-                                }))
-                              }
-                            />
-                            <SliderField
-                              label="Flow Branch Rate"
-                              min={0}
-                              max={1}
-                              step={0.01}
-                              value={activeProjectView.layout.flowBranchRate}
-                              formatter={(value) => `${Math.round(value * 100)}%`}
-                              onChange={(value) =>
-                                patchProject((project) => ({
-                                  ...project,
-                                  layout: {
-                                    ...project.layout,
-                                    flowBranchRate: value,
-                                  },
-                                }))
-                              }
-                            />
-                            <SliderField
-                              label="Flow Taper"
-                              min={0}
-                              max={1}
-                              step={0.01}
-                              value={activeProjectView.layout.flowTaper}
-                              formatter={(value) => `${Math.round(value * 100)}%`}
-                              onChange={(value) =>
-                                patchProject((project) => ({
-                                  ...project,
-                                  layout: {
-                                    ...project.layout,
-                                    flowTaper: value,
-                                  },
-                                }))
-                              }
-                            />
-                          </>
-                        ) : null}
-                        {isThreeDFamily ? (
-                          <>
-                            <SliderField
-                              label="Distribution"
-                              min={0}
-                              max={THREE_D_DISTRIBUTION_MAX}
-                              step={1}
-                              value={activeProjectView.layout.threeDDistribution}
-                              formatter={(value) => `${Math.round(value)}`}
-                              onChange={(value) =>
-                                patchProject((project) => ({
-                                  ...project,
-                                  layout: {
-                                    ...project.layout,
-                                    threeDDistribution: Math.round(value),
-                                  },
-                                }))
-                              }
-                            />
-                            <SliderField
-                              label="Depth"
-                              min={0}
-                              max={1}
-                              step={0.01}
-                              value={activeProjectView.layout.threeDDepth}
-                              formatter={(value) => `${Math.round(value * 100)}%`}
-                              onChange={(value) =>
-                                patchProject((project) => ({
-                                  ...project,
-                                  layout: {
-                                    ...project.layout,
-                                    threeDDepth: value,
-                                  },
-                                }))
-                              }
-                            />
-                            <SliderField
-                              label="Camera Distance"
-                              min={0}
-                              max={1}
-                              step={0.01}
-                              value={activeProjectView.layout.threeDCameraDistance}
-                              formatter={(value) => `${Math.round(value * 100)}%`}
-                              onChange={(value) =>
-                                patchProject((project) => ({
-                                  ...project,
-                                  layout: {
-                                    ...project.layout,
-                                    threeDCameraDistance: value,
-                                  },
-                                }))
-                              }
-                            />
-                            <SliderField
-                              label="Pan X"
-                              min={-1}
-                              max={1}
-                              step={0.01}
-                              value={activeProjectView.layout.threeDPanX}
-                              formatter={(value) => `${Math.round(value * 100)}%`}
-                              onChange={(value) =>
-                                patchProject((project) => ({
-                                  ...project,
-                                  layout: {
-                                    ...project.layout,
-                                    threeDPanX: value,
-                                  },
-                                }))
-                              }
-                            />
-                            <SliderField
-                              label="Pan Y"
-                              min={-1}
-                              max={1}
-                              step={0.01}
-                              value={activeProjectView.layout.threeDPanY}
-                              formatter={(value) => `${Math.round(value * 100)}%`}
-                              onChange={(value) =>
-                                patchProject((project) => ({
-                                  ...project,
-                                  layout: {
-                                    ...project.layout,
-                                    threeDPanY: value,
-                                  },
-                                }))
-                              }
-                            />
-                            <SliderField
-                              label="Yaw"
-                              min={-180}
-                              max={180}
-                              step={1}
-                              value={activeProjectView.layout.threeDYaw}
-                              formatter={(value) => `${Math.round(value)}°`}
-                              onChange={(value) =>
-                                patchProject((project) => ({
-                                  ...project,
-                                  layout: {
-                                    ...project.layout,
-                                    threeDYaw: value,
-                                  },
-                                }))
-                              }
-                            />
-                            <SliderField
-                              label="Pitch"
-                              min={-89}
-                              max={89}
-                              step={1}
-                              value={activeProjectView.layout.threeDPitch}
-                              formatter={(value) => `${Math.round(value)}°`}
-                              onChange={(value) =>
-                                patchProject((project) => ({
-                                  ...project,
-                                  layout: {
-                                    ...project.layout,
-                                    threeDPitch: value,
-                                  },
-                                }))
-                              }
-                            />
-                            <SliderField
-                              label="Perspective"
-                              min={0}
-                              max={1}
-                              step={0.01}
-                              value={activeProjectView.layout.threeDPerspective}
-                              formatter={(value) => `${Math.round(value * 100)}%`}
-                              onChange={(value) =>
-                                patchProject((project) => ({
-                                  ...project,
-                                  layout: {
-                                    ...project.layout,
-                                    threeDPerspective: value,
-                                  },
-                                }))
-                              }
-                            />
-                            <SliderField
-                              label="Billboard"
-                              min={0}
-                              max={1}
-                              step={0.01}
-                              value={activeProjectView.layout.threeDBillboard}
-                              formatter={(value) => `${Math.round(value * 100)}%`}
-                              onChange={(value) =>
-                                patchProject((project) => ({
-                                  ...project,
-                                  layout: {
-                                    ...project.layout,
-                                    threeDBillboard: value,
-                                  },
-                                }))
-                              }
-                            />
-                            <SliderField
-                              label="Z Jitter"
-                              min={0}
-                              max={1}
-                              step={0.01}
-                              value={activeProjectView.layout.threeDZJitter}
-                              formatter={(value) => `${Math.round(value * 100)}%`}
-                              onChange={(value) =>
-                                patchProject((project) => ({
-                                  ...project,
-                                  layout: {
-                                    ...project.layout,
-                                    threeDZJitter: value,
-                                  },
-                                }))
-                              }
-                            />
-                          </>
-                        ) : null}
-                      </>
-                    ) : null}
-                    {isWedgeShapeMode ? (
-                      <>
-                        <SliderField
-                          label="Wedge Angle"
-                          min={0}
-                          max={360}
-                          step={1}
-                          value={activeProjectView.layout.wedgeAngle}
-                          formatter={(value) => `${Math.round(value)}°`}
-                          onChange={(value) =>
-                            patchProject((project) => ({
-                              ...project,
-                              layout: {
-                                ...project.layout,
-                                wedgeAngle: value,
-                              },
-                            }))
-                          }
-                        />
-                        <SliderField
-                          label="Wedge Jitter"
-                          min={0}
-                          max={360}
-                          step={1}
-                          value={activeProjectView.layout.wedgeJitter}
-                          formatter={(value) => `${Math.round(value)}°`}
-                          onChange={(value) =>
-                            patchProject((project) => ({
-                              ...project,
-                              layout: {
-                                ...project.layout,
-                                wedgeJitter: value,
-                              },
-                            }))
-                          }
-                        />
-                      </>
-                    ) : null}
-                    {isHollowShapeMode ? (
-                      <SliderField
-                        label="Hollow Ratio"
-                        min={0}
-                        max={0.95}
-                        step={0.01}
-                        value={activeProjectView.layout.hollowRatio}
-                        formatter={(value) => `${Math.round(value * 100)}%`}
-                        onChange={(value) =>
-                          patchProject((project) => ({
-                            ...project,
-                            layout: {
-                              ...project.layout,
-                              hollowRatio: value,
-                            },
-                          }))
-                        }
-                      />
-                    ) : null}
-                    {isGridFamily ? (
-                      <>
-                        <SliderField
-                          label="Columns"
-                          min={2}
-                          max={32}
-                          step={1}
-                          value={activeProjectView.layout.columns}
-                          formatter={(value) => `${Math.round(value)}`}
-                          onChange={(value) =>
-                            patchProject((project) => ({
-                              ...project,
-                              layout: {
-                                ...project.layout,
-                                columns: Math.round(value),
-                              },
-                            }))
-                          }
-                        />
-                        <SliderField
-                          label="Rows"
-                          min={2}
-                          max={32}
-                          step={1}
-                          value={activeProjectView.layout.rows}
-                          formatter={(value) => `${Math.round(value)}`}
-                          onChange={(value) =>
-                            patchProject((project) => ({
-                              ...project,
-                              layout: {
-                                ...project.layout,
-                                rows: Math.round(value),
-                              },
-                            }))
-                          }
-                        />
-                      </>
-                    ) : null}
-                    {isRadialFamily ? (
-                      <>
-                        <SliderField
-                          label="Radial Segments"
-                          min={2}
-                          max={36}
-                          step={1}
-                          value={activeProjectView.layout.radialSegments}
-                          formatter={(value) => `${Math.round(value)}`}
-                          onChange={(value) =>
-                            patchProject((project) => ({
-                              ...project,
-                              layout: {
-                                ...project.layout,
-                                radialSegments: Math.round(value),
-                              },
-                            }))
-                          }
-                        />
-                        <SliderField
-                          label="Radial Rings"
-                          min={1}
-                          max={12}
-                          step={1}
-                          value={activeProjectView.layout.radialRings}
-                          formatter={(value) => `${Math.round(value)}`}
-                          onChange={(value) =>
-                            patchProject((project) => ({
-                              ...project,
-                              layout: {
-                                ...project.layout,
-                                radialRings: Math.round(value),
-                              },
-                            }))
-                          }
-                        />
-                        <SliderField
-                          label="Angle Offset"
-                          min={0}
-                          max={360}
-                          step={1}
-                          value={activeProjectView.layout.radialAngleOffset}
-                          formatter={(value) => `${Math.round(value)}°`}
-                          onChange={(value) =>
-                            patchProject((project) => ({
-                              ...project,
-                              layout: {
-                                ...project.layout,
-                                radialAngleOffset: value,
-                              },
-                            }))
-                          }
-                        />
-                        <SliderField
-                          label="Ring Phase"
-                          min={-180}
-                          max={180}
-                          step={1}
-                          value={activeProjectView.layout.radialRingPhaseStep}
-                          formatter={(value) => `${Math.round(value)}°`}
-                          onChange={(value) =>
-                            patchProject((project) => ({
-                              ...project,
-                              layout: {
-                                ...project.layout,
-                                radialRingPhaseStep: value,
-                              },
-                            }))
-                          }
-                        />
-                        <SliderField
-                          label="Inner Radius"
-                          min={0}
-                          max={0.85}
-                          step={0.01}
-                          value={activeProjectView.layout.radialInnerRadius}
-                          formatter={(value) => `${Math.round(value * 100)}%`}
-                          onChange={(value) =>
-                            patchProject((project) => ({
-                              ...project,
-                              layout: {
-                                ...project.layout,
-                                radialInnerRadius: value,
-                              },
-                            }))
-                          }
-                        />
-                        <ControlBlock label="Child Rotation">
-                          <Select
-                            value={activeProjectView.layout.radialChildRotationMode}
-                            onValueChange={(value) =>
-                              patchProject((project) => ({
-                                ...project,
-                                layout: {
-                                  ...project.layout,
-                                  radialChildRotationMode:
-                                    value as RadialChildRotationMode,
-                                },
-                              }))
-                            }
-                          >
-                            <SelectTrigger aria-label="Child Rotation">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {["none", "tangent", "outward"].map((option) => (
-                                <SelectItem key={option} value={option}>
-                                  {option}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </ControlBlock>
-                      </>
-                    ) : null}
-                    {isStripsFamily ? (
-                      <SliderField
-                        label="Gutter"
-                        min={0}
-                        max={300}
-                        step={1}
-                        value={activeProjectView.layout.gutter}
-                        formatter={(value) => `${Math.round(value)} px`}
-                        onChange={(value) =>
-                          patchProject((project) => ({
-                            ...project,
-                            layout: { ...project.layout, gutter: value },
-                          }))
-                        }
-                      />
-                    ) : null}
-                    {isGridFamily ? (
-                      <>
-                        <SliderField
-                          label="Gutter Horizontal"
-                          min={0}
-                          max={300}
-                          step={1}
-                          value={activeProjectView.layout.gutterHorizontal}
-                          formatter={(value) => `${Math.round(value)} px`}
-                          onChange={(value) =>
-                            patchProject((project) => ({
-                              ...project,
-                              layout: {
-                                ...project.layout,
-                                gutterHorizontal: value,
-                              },
-                            }))
-                          }
-                        />
-                        <SliderField
-                          label="Gutter Vertical"
-                          min={0}
-                          max={300}
-                          step={1}
-                          value={activeProjectView.layout.gutterVertical}
-                          formatter={(value) => `${Math.round(value)} px`}
-                          onChange={(value) =>
-                            patchProject((project) => ({
-                              ...project,
-                              layout: {
-                                ...project.layout,
-                                gutterVertical: value,
-                              },
-                            }))
-                          }
-                        />
-                      </>
-                    ) : null}
-                    {isBlocksFamily ? (
-                      <>
-                        <SliderField
-                          label="Block Depth"
-                          min={0}
-                          max={7}
-                          step={1}
-                          value={activeProjectView.layout.blockDepth}
-                          formatter={(value) => `${Math.round(value)}`}
-                          onChange={(value) =>
-                            patchProject((project) => ({
-                              ...project,
-                              layout: {
-                                ...project.layout,
-                                blockDepth: Math.round(value),
-                              },
-                            }))
-                          }
-                        />
-                        <SliderField
-                          label="Split Randomness"
-                          min={0}
-                          max={1}
-                          step={0.01}
-                          value={activeProjectView.layout.blockSplitRandomness}
-                          formatter={(value) => `${Math.round(value * 100)}%`}
-                          onChange={(value) =>
-                            patchProject((project) => ({
-                              ...project,
-                              layout: {
-                                ...project.layout,
-                                blockSplitRandomness: value,
-                              },
-                            }))
-                          }
-                        />
-                        <SliderField
-                          label="Min Block Size"
-                          min={32}
-                          max={400}
-                          step={1}
-                          value={activeProjectView.layout.blockMinSize}
-                          formatter={(value) => `${Math.round(value)} px`}
-                          onChange={(value) =>
-                            patchProject((project) => ({
-                              ...project,
-                              layout: {
-                                ...project.layout,
-                                blockMinSize: Math.round(value),
-                              },
-                            }))
-                          }
-                        />
-                        <SliderField
-                          label="Split Bias"
-                          min={0}
-                          max={1}
-                          step={0.01}
-                          value={activeProjectView.layout.blockSplitBias}
-                          formatter={(value) => {
-                            if (value < 0.45) return "horizontal";
-                            if (value > 0.55) return "vertical";
-                            return "balanced";
-                          }}
-                          onChange={(value) =>
-                            patchProject((project) => ({
-                              ...project,
-                              layout: {
-                                ...project.layout,
-                                blockSplitBias: value,
-                              },
-                            }))
-                          }
-                        />
-                      </>
-                    ) : null}
-                    <ControlBlock label="Symmetry">
-                      <Select
-                        value={activeProjectView.layout.symmetryMode}
-                        onValueChange={(value) =>
-                          patchProject((project) => ({
-                            ...project,
-                            layout: {
-                              ...project.layout,
-                              symmetryMode:
-                                value as typeof project.layout.symmetryMode,
-                            },
-                          }))
-                        }
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {[
-                            "none",
-                            "mirror-x",
-                            "mirror-y",
-                            "quad",
-                            "radial",
-                          ].map((option) => (
-                            <SelectItem key={option} value={option}>
-                              {option}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </ControlBlock>
-                    {isSymmetryActive ? (
-                      <>
-                        <SliderField
-                          label="Symmetry Center X"
-                          min={0}
-                          max={1}
-                          step={0.01}
-                          value={activeProjectView.layout.symmetryCenterX}
-                          formatter={formatPercentValue}
-                          onChange={(value) =>
-                            patchProject((project) => ({
-                              ...project,
-                              layout: {
-                                ...project.layout,
-                                symmetryCenterX: value,
-                              },
-                            }))
-                          }
-                        />
-                        <SliderField
-                          label="Symmetry Center Y"
-                          min={0}
-                          max={1}
-                          step={0.01}
-                          value={activeProjectView.layout.symmetryCenterY}
-                          formatter={formatPercentValue}
-                          onChange={(value) =>
-                            patchProject((project) => ({
-                              ...project,
-                              layout: {
-                                ...project.layout,
-                                symmetryCenterY: value,
-                              },
-                            }))
-                          }
-                        />
-                        <SliderField
-                          label="Clone Drift"
-                          min={0}
-                          max={1}
-                          step={0.01}
-                          value={activeProjectView.layout.symmetryJitter}
-                          formatter={formatPercentValue}
-                          onChange={(value) =>
-                            patchProject((project) => ({
-                              ...project,
-                              layout: {
-                                ...project.layout,
-                                symmetryJitter: value,
-                              },
-                            }))
-                          }
-                        />
-                      </>
-                    ) : null}
-                    {isRadialSymmetry ? (
-                      <>
-                        <SliderField
-                          label="Symmetry Angle Offset"
-                          min={-180}
-                          max={180}
-                          step={1}
-                          value={activeProjectView.layout.symmetryAngleOffset}
-                          formatter={formatDegreeValue}
-                          onChange={(value) =>
-                            patchProject((project) => ({
-                              ...project,
-                              layout: {
-                                ...project.layout,
-                                symmetryAngleOffset: value,
-                              },
-                            }))
-                          }
-                        />
-                        <SliderField
-                          label="Radial Copies"
-                          min={2}
-                          max={12}
-                          step={1}
-                          value={activeProjectView.layout.symmetryCopies}
-                          formatter={(value) => `${Math.round(value)}`}
-                          onChange={(value) =>
-                            patchProject((project) => ({
-                              ...project,
-                              layout: {
-                                ...project.layout,
-                                symmetryCopies: Math.round(value),
-                              },
-                            }))
-                          }
-                        />
-                      </>
-                    ) : null}
-                    <SliderField
-                      label="Hide Percentage"
-                      min={0}
-                      max={1}
-                      step={0.01}
-                      value={activeProjectView.layout.hidePercentage}
-                      formatter={(value) => `${Math.round(value * 100)}%`}
-                      onChange={(value) =>
-                        patchProject((project) => ({
-                          ...project,
-                          layout: {
-                            ...project.layout,
-                            hidePercentage: value,
-                          },
-                        }))
-                      }
-                    />
-                    <SliderField
-                      label="Letterbox"
-                      min={0}
-                      max={1}
-                      step={0.01}
-                      value={activeProjectView.layout.letterbox}
-                      formatter={(value) => `${Math.round(value * 100)}%`}
-                      onChange={(value) =>
-                        patchProject((project) => ({
-                          ...project,
-                          layout: {
-                            ...project.layout,
-                            letterbox: value,
-                          },
-                        }))
-                      }
-                    />
-                  </div>
-
-                  <div className="min-w-0 space-y-4">
-                    <div className="border-b border-border-subtle pb-1 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-text-muted">
-                      Mapping
-                    </div>
-                    <ControlBlock label="Source Assignment">
-                      <Select
-                        value={activeProjectView.sourceMapping.strategy}
-                        onValueChange={(value) =>
-                          patchProject((project) => ({
-                            ...project,
-                            sourceMapping: {
-                              ...project.sourceMapping,
-                              strategy: value as SourceAssignmentStrategy,
-                            },
-                          }))
-                        }
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {[
-                            "random",
-                            "weighted",
-                            "sequential",
-                            "luminance",
-                            "palette",
-                            "symmetry",
-                          ].map((option) => (
-                            <SelectItem key={option} value={option}>
-                              {option}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </ControlBlock>
-                    <ControlBlock label="Crop Distribution">
-                      <Select
-                        value={activeProjectView.sourceMapping.cropDistribution}
-                        onValueChange={(value) =>
-                          patchProject((project) => ({
-                            ...project,
-                            sourceMapping: {
-                              ...project.sourceMapping,
-                              cropDistribution: value as CropDistribution,
-                            },
-                          }))
-                        }
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="center">Centered</SelectItem>
-                          <SelectItem value="distributed">
-                            Distributed
-                          </SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </ControlBlock>
-                    <SliderField
-                      label="Crop Zoom"
-                      min={1}
-                      max={2.5}
-                      step={0.01}
-                      value={activeProjectView.sourceMapping.cropZoom}
-                      onChange={(value) =>
-                        patchProject((project) => ({
-                          ...project,
-                          sourceMapping: {
-                            ...project.sourceMapping,
-                            cropZoom: value,
-                          },
-                        }))
-                      }
-                    />
-                    {isWeightedAssignment ? (
-                      <SliderField
-                        label="Source Bias"
-                        min={0}
-                        max={1}
-                        step={0.01}
-                        value={activeProjectView.sourceMapping.sourceBias}
-                        onChange={(value) =>
-                          patchProject((project) => ({
-                            ...project,
-                            sourceMapping: {
-                              ...project.sourceMapping,
-                              sourceBias: value,
-                            },
-                          }))
-                        }
-                      />
-                    ) : null}
-                    {isPaletteAssignment ? (
-                      <SliderField
-                        label="Palette Emphasis"
-                        min={0}
-                        max={1}
-                        step={0.01}
-                        value={activeProjectView.sourceMapping.paletteEmphasis}
-                        onChange={(value) =>
-                          patchProject((project) => ({
-                            ...project,
-                            sourceMapping: {
-                              ...project.sourceMapping,
-                              paletteEmphasis: value,
-                            },
-                          }))
-                        }
-                      />
-                    ) : null}
-                    <ControlBlock label="Preserve Aspect">
-                      <div className="flex items-center justify-between rounded-md bg-surface-muted px-3 py-2.5">
-                        <span className="text-xs text-text-muted">
-                          Center crop, no stretch
-                        </span>
-                        <Switch
-                          checked={activeProjectView.sourceMapping.preserveAspect}
-                          onCheckedChange={(checked) =>
-                            patchProject((project) => ({
-                              ...project,
-                              sourceMapping: {
-                                ...project.sourceMapping,
-                                preserveAspect: checked,
-                              },
-                            }))
-                          }
-                        />
-                      </div>
-                    </ControlBlock>
-                    <ControlBlock label="Blend Mode">
-                      <Select
-                        value={activeProjectView.compositing.blendMode}
-                        onValueChange={(value) =>
-                          patchProject((project) => ({
-                            ...project,
-                            compositing: {
-                              ...project.compositing,
-                              blendMode: value as BlendMode,
-                            },
-                          }))
-                        }
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {[
-                            "source-over",
-                            "multiply",
-                            "screen",
-                            "overlay",
-                            "soft-light",
-                            "hard-light",
-                            "difference",
-                            "color-dodge",
-                            "luminosity",
-                          ].map((option) => (
-                            <SelectItem key={option} value={option}>
-                              {option}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </ControlBlock>
-                    <SliderField
-                      label="Opacity"
-                      min={0.2}
-                      max={1}
-                      step={0.01}
-                      value={activeProjectView.compositing.opacity}
-                      onChange={(value) =>
-                        patchProject((project) => ({
-                          ...project,
-                          compositing: {
-                            ...project.compositing,
-                            opacity: value,
-                          },
-                        }))
-                      }
-                    />
-                    <SliderField
-                      label="Overlap"
-                      min={0}
-                      max={1}
-                      step={0.01}
-                      value={activeProjectView.compositing.overlap}
-                      onChange={(value) =>
-                        patchProject((project) => ({
-                          ...project,
-                          compositing: {
-                            ...project.compositing,
-                            overlap: value,
-                          },
-                        }))
-                      }
-                    />
-                  </div>
-
-                  <div className="min-w-0 space-y-4">
-                    <div className="border-b border-border-subtle pb-1 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-text-muted">
-                      Effects + Finish
-                    </div>
-                    <SliderField
-                      label="Blur"
-                      min={0}
-                      max={18}
-                      step={0.1}
-                      value={activeProjectView.effects.blur}
-                      formatter={(value) => `${value.toFixed(1)} px`}
-                      onChange={(value) =>
-                        patchProject((project) => ({
-                          ...project,
-                          effects: { ...project.effects, blur: value },
-                        }))
-                      }
-                    />
-                    <SliderField
-                      label="Sharpen"
-                      min={0}
-                      max={1}
-                      step={0.01}
-                      value={activeProjectView.effects.sharpen}
-                      onChange={(value) =>
-                        patchProject((project) => ({
-                          ...project,
-                          effects: { ...project.effects, sharpen: value },
-                        }))
-                      }
-                    />
-                    <SliderField
-                      label="Rotation Jitter"
-                      min={0}
-                      max={180}
-                      step={1}
-                      value={activeProjectView.effects.rotationJitter}
-                      formatter={(value) => `${Math.round(value)}°`}
-                      onChange={(value) =>
-                        patchProject((project) => ({
-                          ...project,
-                          effects: {
-                            ...project.effects,
-                            rotationJitter: value,
-                          },
-                        }))
-                      }
-                    />
-                    <SliderField
-                      label="Scale Jitter"
-                      min={0}
-                      max={0.8}
-                      step={0.01}
-                      value={activeProjectView.effects.scaleJitter}
-                      onChange={(value) =>
-                        patchProject((project) => ({
-                          ...project,
-                          effects: { ...project.effects, scaleJitter: value },
-                        }))
-                      }
-                    />
-                    <SliderField
-                      label="Displacement"
-                      min={0}
-                      max={100}
-                      step={1}
-                      value={activeProjectView.effects.displacement}
-                      formatter={(value) => `${Math.round(value)} px`}
-                      onChange={(value) =>
-                        patchProject((project) => ({
-                          ...project,
-                          effects: { ...project.effects, displacement: value },
-                        }))
-                      }
-                    />
-                    <SliderField
-                      label="Distortion"
-                      min={0}
-                      max={0.8}
-                      step={0.01}
-                      value={activeProjectView.effects.distortion}
-                      onChange={(value) =>
-                        patchProject((project) => ({
-                          ...project,
-                          effects: { ...project.effects, distortion: value },
-                        }))
-                      }
-                    />
-                    <SliderField
-                      label="Kaleidoscope"
-                      min={1}
-                      max={12}
-                      step={1}
-                      value={activeProjectView.effects.kaleidoscopeSegments}
-                      formatter={(value) => `${Math.round(value)} seg`}
-                      onChange={(value) =>
-                        patchProject((project) => ({
-                          ...project,
-                          effects: {
-                            ...project.effects,
-                            kaleidoscopeSegments: Math.round(value),
-                          },
-                        }))
-                      }
-                    />
-                    {isKaleidoscopeActive ? (
-                      <>
-                        <SliderField
-                          label="Center X"
-                          min={0}
-                          max={1}
-                          step={0.01}
-                          value={activeProjectView.effects.kaleidoscopeCenterX}
-                          formatter={(value) => `${Math.round(value * 100)}%`}
-                          onChange={(value) =>
-                            patchProject((project) => ({
-                              ...project,
-                              effects: {
-                                ...project.effects,
-                                kaleidoscopeCenterX: value,
-                              },
-                            }))
-                          }
-                        />
-                        <SliderField
-                          label="Center Y"
-                          min={0}
-                          max={1}
-                          step={0.01}
-                          value={activeProjectView.effects.kaleidoscopeCenterY}
-                          formatter={(value) => `${Math.round(value * 100)}%`}
-                          onChange={(value) =>
-                            patchProject((project) => ({
-                              ...project,
-                              effects: {
-                                ...project.effects,
-                                kaleidoscopeCenterY: value,
-                              },
-                            }))
-                          }
-                        />
-                        <SliderField
-                          label="Angle Offset"
-                          min={0}
-                          max={360}
-                          step={1}
-                          value={activeProjectView.effects.kaleidoscopeAngleOffset}
-                          formatter={(value) => `${Math.round(value)}°`}
-                          onChange={(value) =>
-                            patchProject((project) => ({
-                              ...project,
-                              effects: {
-                                ...project.effects,
-                                kaleidoscopeAngleOffset: value,
-                              },
-                            }))
-                          }
-                        />
-                        <SliderField
-                          label="Rotation Drift"
-                          min={-180}
-                          max={180}
-                          step={1}
-                          value={
-                            activeProjectView.effects.kaleidoscopeRotationDrift
-                          }
-                          formatter={(value) => `${Math.round(value)}°`}
-                          onChange={(value) =>
-                            patchProject((project) => ({
-                              ...project,
-                              effects: {
-                                ...project.effects,
-                                kaleidoscopeRotationDrift: value,
-                              },
-                            }))
-                          }
-                        />
-                        <SliderField
-                          label="Scale Falloff"
-                          min={0}
-                          max={1}
-                          step={0.01}
-                          value={activeProjectView.effects.kaleidoscopeScaleFalloff}
-                          formatter={(value) => `${Math.round(value * 100)}%`}
-                          onChange={(value) =>
-                            patchProject((project) => ({
-                              ...project,
-                              effects: {
-                                ...project.effects,
-                                kaleidoscopeScaleFalloff: value,
-                              },
-                            }))
-                          }
-                        />
-                        <SliderField
-                          label="Kaleidoscope Opacity"
-                          min={0}
-                          max={1}
-                          step={0.01}
-                          value={activeProjectView.effects.kaleidoscopeOpacity}
-                          formatter={(value) => `${Math.round(value * 100)}%`}
-                          onChange={(value) =>
-                            patchProject((project) => ({
-                              ...project,
-                              effects: {
-                                ...project.effects,
-                                kaleidoscopeOpacity: value,
-                              },
-                            }))
-                          }
-                        />
-                        <ControlBlock label="Mirror Mode">
-                          <Select
-                            value={activeProjectView.effects.kaleidoscopeMirrorMode}
-                            onValueChange={(value) =>
-                              patchProject((project) => ({
-                                ...project,
-                                effects: {
-                                  ...project.effects,
-                                  kaleidoscopeMirrorMode:
-                                    value as KaleidoscopeMirrorMode,
-                                },
-                              }))
-                            }
-                          >
-                            <SelectTrigger aria-label="Mirror Mode">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {["rotate-only", "alternate", "mirror-all"].map(
-                                (option) => (
-                                  <SelectItem key={option} value={option}>
-                                    {option}
-                                  </SelectItem>
-                                ),
-                              )}
-                            </SelectContent>
-                          </Select>
-                        </ControlBlock>
-                      </>
-                    ) : null}
-                    <div className="space-y-4 border-t border-border-subtle pt-4">
-                      <div className="border-b border-border-subtle pb-1 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-text-muted">
-                        Layer Finish
-                      </div>
-                      <SliderField
-                        label="Shadow X"
-                        min={-200}
-                        max={200}
-                        step={1}
-                        value={activeProjectView.finish.shadowOffsetX}
-                        formatter={(value) => `${Math.round(value)} px`}
-                        onChange={(value) =>
-                          patchProject((project) => ({
-                            ...project,
-                            finish: {
-                              ...project.finish,
-                              shadowOffsetX: value,
-                            },
-                          }))
-                        }
-                      />
-                      <SliderField
-                        label="Shadow Y"
-                        min={-200}
-                        max={200}
-                        step={1}
-                        value={activeProjectView.finish.shadowOffsetY}
-                        formatter={(value) => `${Math.round(value)} px`}
-                        onChange={(value) =>
-                          patchProject((project) => ({
-                            ...project,
-                            finish: {
-                              ...project.finish,
-                              shadowOffsetY: value,
-                            },
-                          }))
-                        }
-                      />
-                      <SliderField
-                        label="Shadow Blur"
-                        min={0}
-                        max={200}
-                        step={1}
-                        value={activeProjectView.finish.shadowBlur}
-                        formatter={(value) => `${Math.round(value)} px`}
-                        onChange={(value) =>
-                          patchProject((project) => ({
-                            ...project,
-                            finish: {
-                              ...project.finish,
-                              shadowBlur: value,
-                            },
-                          }))
-                        }
-                      />
-                      <SliderField
-                        label="Shadow Opacity"
-                        min={0}
-                        max={1}
-                        step={0.01}
-                        value={activeProjectView.finish.shadowOpacity}
-                        formatter={formatPercentValue}
-                        onChange={(value) =>
-                          patchProject((project) => ({
-                            ...project,
-                            finish: {
-                              ...project.finish,
-                              shadowOpacity: value,
-                            },
-                          }))
-                        }
-                      />
-                      <SourceColorField
-                        id="finish-shadow-color"
-                        label="Shadow Color"
-                        value={activeProjectView.finish.shadowColor}
-                        onChange={(value) =>
-                          patchProject((project) => ({
-                            ...project,
-                            finish: {
-                              ...project.finish,
-                              shadowColor: value,
-                            },
-                          }))
-                        }
-                      />
-                      <SliderField
-                        label="Brightness"
-                        min={0}
-                        max={2}
-                        step={0.01}
-                        value={activeProjectView.finish.brightness}
-                        formatter={formatPercentValue}
-                        onChange={(value) =>
-                          patchProject((project) => ({
-                            ...project,
-                            finish: {
-                              ...project.finish,
-                              brightness: value,
-                            },
-                          }))
-                        }
-                      />
-                      <SliderField
-                        label="Contrast"
-                        min={0}
-                        max={2}
-                        step={0.01}
-                        value={activeProjectView.finish.contrast}
-                        formatter={formatPercentValue}
-                        onChange={(value) =>
-                          patchProject((project) => ({
-                            ...project,
-                            finish: {
-                              ...project.finish,
-                              contrast: value,
-                            },
-                          }))
-                        }
-                      />
-                      <SliderField
-                        label="Saturate"
-                        min={0}
-                        max={2}
-                        step={0.01}
-                        value={activeProjectView.finish.saturate}
-                        formatter={formatPercentValue}
-                        onChange={(value) =>
-                          patchProject((project) => ({
-                            ...project,
-                            finish: {
-                              ...project.finish,
-                              saturate: value,
-                            },
-                          }))
-                        }
-                      />
-                      <SliderField
-                        label="Hue Rotate"
-                        min={-180}
-                        max={180}
-                        step={1}
-                        value={activeProjectView.finish.hueRotate}
-                        formatter={formatDegreeValue}
-                        onChange={(value) =>
-                          patchProject((project) => ({
-                            ...project,
-                            finish: {
-                              ...project.finish,
-                              hueRotate: value,
-                            },
-                          }))
-                        }
-                      />
-                      <SliderField
-                        label="Grayscale"
-                        min={0}
-                        max={1}
-                        step={0.01}
-                        value={activeProjectView.finish.grayscale}
-                        formatter={formatPercentValue}
-                        onChange={(value) =>
-                          patchProject((project) => ({
-                            ...project,
-                            finish: {
-                              ...project.finish,
-                              grayscale: value,
-                            },
-                          }))
-                        }
-                      />
-                      <SliderField
-                        label="Invert"
-                        min={0}
-                        max={1}
-                        step={0.01}
-                        value={activeProjectView.finish.invert}
-                        formatter={formatPercentValue}
-                        onChange={(value) =>
-                          patchProject((project) => ({
-                            ...project,
-                            finish: {
-                              ...project.finish,
-                              invert: value,
-                            },
-                          }))
-                        }
-                      />
-                    </div>
-                  </div>
-                  </div>
-                    </section>
-                  </CardContent>
-                </Card>
-              </section>
-
-              <PanelShell
-                title="Project Settings"
-                description="Canvas and export controls apply to the full composition."
-                sectionLabel="Project Settings"
-                cardClassName="border-border-subtle bg-surface-sunken/50 shadow-none"
-                contentClassName="overflow-y-auto space-y-4"
-              >
-                <div className="grid gap-6 md:grid-cols-2 md:items-start">
-                        <section
-                          aria-labelledby="project-canvas-heading"
-                          className="min-w-0 space-y-4"
-                        >
-                        <div
-                          id="project-canvas-heading"
-                          className="border-b border-border-subtle pb-1 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-text-muted"
-                        >
-                          Canvas
-                        </div>
-                        <SliderField
-                          label="Canvas W"
-                          min={1200}
-                          max={3840}
-                          step={10}
-                          value={activeProject.canvas.width}
-                          formatter={(value) => `${Math.round(value)} px`}
-                          onChange={(value) =>
-                            patchProject((project) => {
-                              const canvas = {
-                                ...project.canvas,
-                                width: Math.round(value),
-                              };
-                              return {
-                                ...project,
-                                canvas,
-                                export: {
-                                  ...project.export,
-                                  ...lockExportDimensionsToCanvas(
-                                    canvas,
-                                    project.export,
-                                    "width",
-                                  ),
-                                },
-                              };
-                            })
-                          }
-                        />
-                        <SliderField
-                          label="Canvas H"
-                          min={800}
-                          max={3200}
-                          step={10}
-                          value={activeProject.canvas.height}
-                          formatter={(value) => `${Math.round(value)} px`}
-                          onChange={(value) =>
-                            patchProject((project) => {
-                              const canvas = {
-                                ...project.canvas,
-                                height: Math.round(value),
-                              };
-                              return {
-                                ...project,
-                                canvas,
-                                export: {
-                                  ...project.export,
-                                  ...lockExportDimensionsToCanvas(
-                                    canvas,
-                                    project.export,
-                                    "width",
-                                  ),
-                                },
-                              };
-                            })
-                          }
-                        />
-                        <ControlBlock
-                          label="Canvas Background"
-                          value={`${Math.round(activeProject.canvas.backgroundAlpha * 100)}%`}
-                        >
-                          <SourceColorField
-                            id="canvas-background-color"
-                            label="Color"
-                            value={activeProject.canvas.background}
-                            onChange={(value) =>
-                              patchProject((project) => ({
-                                ...project,
-                                canvas: {
-                                  ...project.canvas,
-                                  background: value,
-                                },
-                              }))
-                            }
-                          />
-                          <div className="space-y-2">
-                            <div className="flex items-center justify-between text-xs text-text-muted">
-                              <span>Alpha</span>
-                              <span className="font-mono text-[10px] text-text-faint">
-                                {Math.round(
-                                  activeProject.canvas.backgroundAlpha * 100,
-                                )}
-                                %
-                              </span>
-                            </div>
-                            <Slider
-                              min={0}
-                              max={1}
-                              step={0.01}
-                              value={[activeProject.canvas.backgroundAlpha]}
-                              onValueChange={(next) =>
-                                patchProject((project) => ({
-                                  ...project,
-                                  canvas: {
-                                    ...project.canvas,
-                                    backgroundAlpha:
-                                      next[0] ?? project.canvas.backgroundAlpha,
-                                  },
-                                }))
-                              }
-                            />
-                          </div>
-                        </ControlBlock>
-                        </section>
-
-                        <section
-                          aria-labelledby="project-export-heading"
-                          className="min-w-0 space-y-4"
-                        >
-                        <div
-                          id="project-export-heading"
-                          className="border-b border-border-subtle pb-1 font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-text-muted"
-                        >
-                          Export
-                        </div>
-                        <ControlBlock label="Export Format">
-                          <Select
-                            value={activeProject.export.format}
-                            onValueChange={(value) =>
-                              patchProject((project) => ({
-                                ...project,
-                                export: {
-                                  ...project.export,
-                                  format: value as typeof project.export.format,
-                                },
-                              }))
-                            }
-                          >
-                            <SelectTrigger>
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="image/png">PNG</SelectItem>
-                              <SelectItem value="image/jpeg">JPEG</SelectItem>
-                              <SelectItem value="image/png-transparent">
-                                Transparent PNG
-                              </SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </ControlBlock>
-                        <SliderField
-                          label="Export W"
-                          min={1920}
-                          max={7680}
-                          step={16}
-                          value={activeProject.export.width}
-                          formatter={(value) => `${Math.round(value)} px`}
-                          onChange={(value) =>
-                            patchProject((project) => ({
-                              ...project,
-                              export: {
-                                ...project.export,
-                                ...lockExportDimensionsToCanvas(
-                                  project.canvas,
-                                  {
-                                    ...project.export,
-                                    width: Math.round(value),
-                                  },
-                                  "width",
-                                ),
-                              },
-                            }))
-                          }
-                        />
-                        <SliderField
-                          label="Export H"
-                          min={1080}
-                          max={7680}
-                          step={16}
-                          value={activeProject.export.height}
-                          formatter={(value) => `${Math.round(value)} px`}
-                          onChange={(value) =>
-                            patchProject((project) => ({
-                              ...project,
-                              export: {
-                                ...project.export,
-                                ...lockExportDimensionsToCanvas(
-                                  project.canvas,
-                                  {
-                                    ...project.export,
-                                    height: Math.round(value),
-                                  },
-                                  "height",
-                                ),
-                              },
-                            }))
-                          }
-                        />
-                        <SliderField
-                          label="Export Quality"
-                          min={0.7}
-                          max={1}
-                          step={0.01}
-                          value={activeProject.export.quality}
-                          onChange={(value) =>
-                            patchProject((project) => ({
-                              ...project,
-                              export: { ...project.export, quality: value },
-                            }))
-                          }
-                        />
-                        </section>
-                      </div>
-              </PanelShell>
-            </div>
-            )}
+            
+            <LeftSidebar
+              previewExpanded={previewExpanded}
+              projectAssets={projectAssets}
+              activeProject={activeProject}
+              activeProjectView={activeProjectView}
+              displayLayers={displayLayers}
+              selectedLayer={selectedLayer}
+              layerThumbnailUrls={layerThumbnailUrls}
+              layerSensors={layerSensors}
+              handleLayerDragEnd={handleLayerDragEnd}
+              openAddSourceDialog={openAddSourceDialog}
+              openEditSourceDialog={openEditSourceDialog}
+              handleRemoveSource={handleRemoveSource}
+              updateSourceWeight={updateSourceWeight}
+              toggleAssetEnabled={toggleAssetEnabled}
+              addLayer={addLayer}
+              selectLayer={selectLayer}
+              toggleLayerVisibility={toggleLayerVisibility}
+              deleteLayer={deleteLayer}
+            />
+            <CenterCanvas
+              previewExpanded={previewExpanded}
+              setPreviewExpanded={setPreviewExpanded}
+              canvasRef={canvasRef}
+              previewProject={previewProject}
+              activeProject={activeProject}
+              previewAssets={previewAssets}
+              setRenderState={setRenderState}
+              patchProject={patchProject}
+            />
+            <RightSidebar
+              previewExpanded={previewExpanded}
+              activeProjectView={activeProjectView}
+              patchProject={patchProject}
+              inspectorLayerName={inspectorLayerName}
+              isRectShapeMode={isRectShapeMode}
+              isWedgeShapeMode={isWedgeShapeMode}
+              isHollowShapeMode={isHollowShapeMode}
+              isGridFamily={isGridFamily}
+              isStripsFamily={isStripsFamily}
+              isBlocksFamily={isBlocksFamily}
+              isRadialFamily={isRadialFamily}
+              isOrganicFamily={isOrganicFamily}
+              isFlowFamily={isFlowFamily}
+              isThreeDFamily={isThreeDFamily}
+              isSymmetryActive={isSymmetryActive}
+              isRadialSymmetry={isRadialSymmetry}
+              isWeightedAssignment={isWeightedAssignment}
+              isPaletteAssignment={isPaletteAssignment}
+              isKaleidoscopeActive={isKaleidoscopeActive}
+              geometryOptions={geometryOptions}
+              geometryValue={geometryValue}
+            />
           </div>
         </div>
       </div>

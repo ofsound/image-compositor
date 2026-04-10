@@ -601,10 +601,6 @@ function resolveLayerAssets(
   layer: CompositorLayer,
   assets: SourceAsset[],
 ) {
-  if (layer.sourceIds.length === 0) {
-    return assets;
-  }
-
   return layer.sourceIds
     .map((sourceId) => assets.find((asset) => asset.id === sourceId))
     .filter((asset): asset is SourceAsset => Boolean(asset));

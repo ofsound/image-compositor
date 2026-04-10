@@ -5,12 +5,12 @@
   "routes": [
     {
       "pattern": "compositor.csstune.com",
-      "custom_domain": true
-    }
+      "custom_domain": true,
+    },
   ],
   "assets": {
-    "directory": "./dist",
-    "binding": "ASSETS"
+    "directory": "./dist/client",
+    "binding": "ASSETS",
   },
-  "main": "./src/cloudflare.ts"
+  "main": "./src/cloudflare.ts",
 }

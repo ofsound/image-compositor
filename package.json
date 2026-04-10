@@ -15,6 +15,7 @@
     "build:electron:app": "npm run build && npm run build:electron:main",
     "build:electron": "npm run build:electron:app && electron-builder --mac dir zip",
     "build:cf": "vite build",
+    "deploy:cf": "npm run build && wrangler deploy",
     "preview": "vite preview",
     "preview:cf": "wrangler dev",
     "test": "vitest run",

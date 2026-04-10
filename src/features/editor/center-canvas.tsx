@@ -1,0 +1,288 @@
+import { Maximize2, Minimize2 } from "lucide-react";
+
+import { PreviewStage } from "@/components/app/preview-stage";
+import type { PreviewRenderState } from "@/components/app/preview-stage";
+import { PanelShell } from "@/components/app/panel-shell";
+import { SourceColorField } from "@/components/app/source-color-field";
+import { Button } from "@/components/ui/button";
+import { Slider } from "@/components/ui/slider";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { lockExportDimensionsToCanvas } from "@/lib/export-sizing";
+import type { ProjectDocument, SourceAsset } from "@/types/project";
+import { SliderField } from "@/components/app/procedural-texture-tab";
+import { ControlBlock } from "@/components/app/procedural-texture-tab";
+
+interface CenterCanvasProps {
+  previewExpanded: boolean;
+  setPreviewExpanded: React.Dispatch<React.SetStateAction<boolean>>;
+  canvasRef: React.RefObject<HTMLCanvasElement | null>;
+  previewProject: ProjectDocument | null;
+  activeProject: ProjectDocument;
+  previewAssets: SourceAsset[];
+  setRenderState: React.Dispatch<React.SetStateAction<PreviewRenderState>>;
+  patchProject: (updater: (project: any) => any) => void;
+}
+
+export function CenterCanvas({
+  previewExpanded,
+  setPreviewExpanded,
+  canvasRef,
+  previewProject,
+  activeProject,
+  previewAssets,
+  setRenderState,
+  patchProject,
+}: CenterCanvasProps) {
+  const previewPanel = (
+    <PanelShell
+      title="Preview"
+      sectionLabel="Preview"
+      className="min-w-0 flex-1"
+      actions={
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon"
+          aria-label={previewExpanded ? "Restore layout" : "Expand preview"}
+          aria-pressed={previewExpanded}
+          title={previewExpanded ? "Restore layout" : "Expand preview"}
+          onClick={() => setPreviewExpanded((current) => !current)}
+        >
+          {previewExpanded ? (
+            <Minimize2 className="h-4 w-4" />
+          ) : (
+            <Maximize2 className="h-4 w-4" />
+          )}
+        </Button>
+      }
+      cardClassName="rounded-none border-0 bg-transparent shadow-none backdrop-blur-none"
+      contentClassName="flex min-h-0 items-center justify-center p-0"
+    >
+      <PreviewStage
+        canvasRef={canvasRef}
+        project={previewProject ?? activeProject}
+        assets={previewAssets}
+        onRenderState={setRenderState}
+      />
+    </PanelShell>
+  );
+
+  const projectSettingsPanel = (
+    <PanelShell
+      title="Project Settings"
+      sectionLabel="Project Settings"
+      className="shrink-0"
+      cardClassName="bg-surface-raised shadow-none"
+      contentClassName="max-h-[38vh] overflow-y-auto space-y-4 p-4 mt-2"
+    >
+      <div className="grid gap-6 md:grid-cols-2 md:items-start">
+        <section aria-label="Canvas settings" className="min-w-0 space-y-4">
+          <SliderField
+            label="Canvas W"
+            min={1200}
+            max={3840}
+            step={10}
+            value={activeProject.canvas.width}
+            formatter={(value) => `${Math.round(value)} px`}
+            onChange={(value) =>
+              patchProject((project) => {
+                const canvas = {
+                  ...project.canvas,
+                  width: Math.round(value),
+                };
+                return {
+                  ...project,
+                  canvas,
+                  export: {
+                    ...project.export,
+                    ...lockExportDimensionsToCanvas(
+                      canvas,
+                      project.export,
+                      "width"
+                    ),
+                  },
+                };
+              })
+            }
+          />
+          <SliderField
+            label="Canvas H"
+            min={800}
+            max={3200}
+            step={10}
+            value={activeProject.canvas.height}
+            formatter={(value) => `${Math.round(value)} px`}
+            onChange={(value) =>
+              patchProject((project) => {
+                const canvas = {
+                  ...project.canvas,
+                  height: Math.round(value),
+                };
+                return {
+                  ...project,
+                  canvas,
+                  export: {
+                    ...project.export,
+                    ...lockExportDimensionsToCanvas(
+                      canvas,
+                      project.export,
+                      "width"
+                    ),
+                  },
+                };
+              })
+            }
+          />
+          <ControlBlock
+            label="Canvas Background"
+            value={`${Math.round(activeProject.canvas.backgroundAlpha * 100)}%`}
+          >
+            <SourceColorField
+              id="canvas-background-color"
+              label="Color"
+              value={activeProject.canvas.background}
+              onChange={(value) =>
+                patchProject((project) => ({
+                  ...project,
+                  canvas: {
+                    ...project.canvas,
+                    background: value,
+                  },
+                }))
+              }
+            />
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-xs text-text-muted">
+                <span>Alpha</span>
+                <span className="font-mono text-[10px] text-text-faint">
+                  {Math.round(activeProject.canvas.backgroundAlpha * 100)}%
+                </span>
+              </div>
+              <Slider
+                min={0}
+                max={1}
+                step={0.01}
+                value={[activeProject.canvas.backgroundAlpha]}
+                onValueChange={(next) =>
+                  patchProject((project) => ({
+                    ...project,
+                    canvas: {
+                      ...project.canvas,
+                      backgroundAlpha: next[0] ?? project.canvas.backgroundAlpha,
+                    },
+                  }))
+                }
+              />
+            </div>
+          </ControlBlock>
+        </section>
+
+        <section aria-label="Export settings" className="min-w-0 space-y-4">
+          <ControlBlock label="Export Format">
+            <Select
+              value={activeProject.export.format}
+              onValueChange={(value) =>
+                patchProject((project) => ({
+                  ...project,
+                  export: {
+                    ...project.export,
+                    format: value as typeof project.export.format,
+                  },
+                }))
+              }
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="image/png">PNG</SelectItem>
+                <SelectItem value="image/jpeg">JPEG</SelectItem>
+                <SelectItem value="image/png-transparent">
+                  Transparent PNG
+                </SelectItem>
+              </SelectContent>
+            </Select>
+          </ControlBlock>
+          <SliderField
+            label="Export W"
+            min={1920}
+            max={7680}
+            step={16}
+            value={activeProject.export.width}
+            formatter={(value) => `${Math.round(value)} px`}
+            onChange={(value) =>
+              patchProject((project) => ({
+                ...project,
+                export: {
+                  ...project.export,
+                  ...lockExportDimensionsToCanvas(
+                    project.canvas,
+                    {
+                      ...project.export,
+                      width: Math.round(value),
+                    },
+                    "width"
+                  ),
+                },
+              }))
+            }
+          />
+          <SliderField
+            label="Export H"
+            min={1080}
+            max={7680}
+            step={16}
+            value={activeProject.export.height}
+            formatter={(value) => `${Math.round(value)} px`}
+            onChange={(value) =>
+              patchProject((project) => ({
+                ...project,
+                export: {
+                  ...project.export,
+                  ...lockExportDimensionsToCanvas(
+                    project.canvas,
+                    {
+                      ...project.export,
+                      height: Math.round(value),
+                    },
+                    "height"
+                  ),
+                },
+              }))
+            }
+          />
+          <SliderField
+            label="Export Quality"
+            min={0.7}
+            max={1}
+            step={0.01}
+            value={activeProject.export.quality}
+            onChange={(value) =>
+              patchProject((project) => ({
+                ...project,
+                export: { ...project.export, quality: value },
+              }))
+            }
+          />
+        </section>
+      </div>
+    </PanelShell>
+  );
+
+  if (previewExpanded) {
+    return previewPanel;
+  }
+
+  return (
+    <div className="flex min-h-0 flex-col gap-3">
+      {previewPanel}
+      {projectSettingsPanel}
+    </div>
+  );
+}

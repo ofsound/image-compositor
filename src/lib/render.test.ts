@@ -17,7 +17,12 @@ import { buildBitmapMap } from "@/lib/render";
 import type { SourceAsset } from "@/types/project";
 
 function createProjectView(title: string) {
-  return createProjectEditorView(createProjectDocument(title));
+  const project = createProjectEditorView(createProjectDocument(title));
+  project.sourceIds = [asset.id];
+  if (project.layers[0]) {
+    project.layers[0].sourceIds = [asset.id];
+  }
+  return project;
 }
 
 function createMockContext() {
@@ -286,6 +291,39 @@ describe("renderProjectToCanvas", () => {
       project.canvas.height,
     );
     expect(context.fillRect).not.toHaveBeenCalled();
+  });
+
+  it("keeps a layer blank when it has no enabled sources", async () => {
+    const project = createProjectView("Blank Layer");
+    project.layout.family = "grid";
+    project.layout.columns = 1;
+    project.layout.rows = 1;
+    project.layout.shapeMode = "rect";
+    project.sourceIds = [];
+    project.layers[0]!.sourceIds = [];
+
+    const context = createMockContext();
+    const canvas = document.createElement("canvas");
+    canvas.width = project.canvas.width;
+    canvas.height = project.canvas.height;
+    vi.spyOn(canvas, "getContext").mockReturnValue(context as never);
+
+    await renderProjectLayerToCanvas(
+      project,
+      project.layers[0]!,
+      [asset],
+      new Map([[asset.id, { asset, bitmap: {} as ImageBitmap }]]),
+      canvas,
+      { includeBackground: false },
+    );
+
+    expect(context.clearRect).toHaveBeenCalledWith(
+      0,
+      0,
+      project.canvas.width,
+      project.canvas.height,
+    );
+    expect(context.drawImage).not.toHaveBeenCalled();
   });
 
   it("preserves layer compositing and finish settings in isolated layer previews", async () => {

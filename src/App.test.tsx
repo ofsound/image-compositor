@@ -926,24 +926,25 @@ describe("App inspector grouping", () => {
     });
 
     expect(within(layerControls).getByText("Editing Layer 1")).toBeInTheDocument();
-    expect(within(layerControls).getByText("Layout")).toBeInTheDocument();
-    expect(within(layerControls).getByText("Mapping")).toBeInTheDocument();
-    expect(within(layerControls).getByText("Effects + Finish")).toBeInTheDocument();
+    expect(within(layerControls).getByText("Shape")).toBeInTheDocument();
+    expect(within(layerControls).getByText("Assignment")).toBeInTheDocument();
+    expect(within(layerControls).getByText("Motion")).toBeInTheDocument();
+    expect(within(layerControls).getByText("Layer Finish")).toBeInTheDocument();
     expect(
       within(layerControls).queryByText("Canvas Background"),
     ).not.toBeInTheDocument();
 
     expect(
-      within(projectSettings).getByText(
+      within(projectSettings).queryByText(
         "Canvas and export controls apply to the full composition.",
       ),
-    ).toBeInTheDocument();
-    expect(within(projectSettings).getByText("Canvas")).toBeInTheDocument();
-    expect(within(projectSettings).getByText("Export")).toBeInTheDocument();
+    ).not.toBeInTheDocument();
+    expect(within(projectSettings).queryByText("Canvas")).not.toBeInTheDocument();
+    expect(within(projectSettings).queryByText("Export")).not.toBeInTheDocument();
     expect(within(projectSettings).getByLabelText("Canvas W")).toBeInTheDocument();
     expect(within(projectSettings).getByText("Canvas Background")).toBeInTheDocument();
     expect(within(projectSettings).getByLabelText("Export W")).toBeInTheDocument();
-    expect(within(projectSettings).queryByText("Layout")).not.toBeInTheDocument();
+    expect(within(projectSettings).queryByText("Shape")).not.toBeInTheDocument();
   });
 
   it("renders sources, layers, and preview in main-grid order", () => {

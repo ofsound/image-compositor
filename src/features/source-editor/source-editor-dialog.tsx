@@ -34,6 +34,7 @@ import {
   getDefaultPerlinInput,
   getDefaultReactionInput,
   getDefaultWaveInput,
+  getSourceKindLabel,
   normalizeCellularInput,
   normalizeGradientInput,
   normalizePerlinInput,
@@ -49,6 +50,7 @@ import {
   formatPercentValue,
   formatSourceModeLabel,
 } from "@/lib/format-utils";
+import { waitForNextPaint } from "@/lib/utils";
 import type {
   GradientDirection,
   GradientMode,
@@ -116,6 +118,8 @@ interface SourceEditorDialogProps {
       | ReturnType<typeof normalizeReactionInput>
       | ReturnType<typeof normalizeWaveInput>,
   ) => Promise<void>;
+  busy: boolean;
+  status: string;
 }
 
 export function SourceEditorDialog({
@@ -133,6 +137,8 @@ export function SourceEditorDialog({
   onSubmitReaction,
   onSubmitWave,
   onUpdateGenerated,
+  busy,
+  status,
 }: SourceEditorDialogProps) {
   const editingSource = editingSourceId
     ? (projectAssets.find((asset) => asset.id === editingSourceId) ?? null)
@@ -197,6 +203,7 @@ export function SourceEditorDialog({
   const [waveSourceDirectionality, setWaveSourceDirectionality] = useState(0.6);
   const [waveSourceDistortion, setWaveSourceDistortion] = useState(0.2);
   const [waveSourceSeed, setWaveSourceSeed] = useState(() => createNoiseSeed());
+  const [isSubmittingGenerated, setIsSubmittingGenerated] = useState(false);
 
   const isLinearGradientMode = gradientSourceMode === "linear";
   const isRadialGradientMode = gradientSourceMode === "radial";
@@ -204,6 +211,14 @@ export function SourceEditorDialog({
   const showGeneratedSourcePreview =
     sourceDialogMode === "gradient" ||
     PROCEDURAL_SOURCE_KINDS.includes(sourceDialogMode);
+  const generatedSourceLabel = getSourceKindLabel(
+    sourceDialogMode === "image" ? "gradient" : sourceDialogMode,
+  ).toLowerCase();
+  const pendingMessage = isSubmittingGenerated
+    ? busy && status.trim().length > 0
+      ? status
+      : `${editingSource ? "Updating" : "Creating"} ${generatedSourceLabel} source…`
+    : null;
 
   const resetForms = () => {
     const defaultGradient = getDefaultGradientInput();
@@ -256,6 +271,7 @@ export function SourceEditorDialog({
     setWaveSourceDirectionality(defaultWave.directionality);
     setWaveSourceDistortion(defaultWave.distortion);
     setWaveSourceSeed(createNoiseSeed());
+    setIsSubmittingGenerated(false);
   };
 
   const loadEditingSource = (asset: SourceAsset) => {
@@ -319,7 +335,23 @@ export function SourceEditorDialog({
     uploadInputRef.current?.click();
   };
 
+  const submitWithPendingState = async (task: () => Promise<void>) => {
+    if (isSubmittingGenerated) return;
+
+    setIsSubmittingGenerated(true);
+    await waitForNextPaint();
+
+    try {
+      await task();
+      onOpenChange(false);
+    } finally {
+      setIsSubmittingGenerated(false);
+    }
+  };
+
   const submitGeneratedSource = async () => {
+    if (isSubmittingGenerated) return;
+
     if (sourceDialogMode === "image") {
       openImagePicker();
       return;
@@ -327,12 +359,13 @@ export function SourceEditorDialog({
 
     if (sourceDialogMode === "solid") {
       const input = normalizeSolidInput({ name: solidSourceName, color: solidSourceColor });
-      if (editingSource?.kind === "solid") {
-        await onUpdateGenerated(editingSource.id, input);
-      } else {
-        await onSubmitSolid(input);
-      }
-      onOpenChange(false);
+      await submitWithPendingState(async () => {
+        if (editingSource?.kind === "solid") {
+          await onUpdateGenerated(editingSource.id, input);
+        } else {
+          await onSubmitSolid(input);
+        }
+      });
       return;
     }
 
@@ -353,12 +386,13 @@ export function SourceEditorDialog({
         conicSpan: gradientSourceConicSpan,
         conicRepeat: gradientSourceConicRepeat,
       });
-      if (editingSource?.kind === "gradient") {
-        await onUpdateGenerated(editingSource.id, input);
-      } else {
-        await onSubmitGradient(input);
-      }
-      onOpenChange(false);
+      await submitWithPendingState(async () => {
+        if (editingSource?.kind === "gradient") {
+          await onUpdateGenerated(editingSource.id, input);
+        } else {
+          await onSubmitGradient(input);
+        }
+      });
       return;
     }
 
@@ -372,12 +406,13 @@ export function SourceEditorDialog({
         distortion: perlinSourceDistortion,
         seed: perlinSourceSeed,
       });
-      if (editingSource?.kind === "perlin") {
-        await onUpdateGenerated(editingSource.id, input);
-      } else {
-        await onSubmitPerlin(input);
-      }
-      onOpenChange(false);
+      await submitWithPendingState(async () => {
+        if (editingSource?.kind === "perlin") {
+          await onUpdateGenerated(editingSource.id, input);
+        } else {
+          await onSubmitPerlin(input);
+        }
+      });
       return;
     }
 
@@ -391,12 +426,13 @@ export function SourceEditorDialog({
         contrast: cellularSourceContrast,
         seed: cellularSourceSeed,
       });
-      if (editingSource?.kind === "cellular") {
-        await onUpdateGenerated(editingSource.id, input);
-      } else {
-        await onSubmitCellular(input);
-      }
-      onOpenChange(false);
+      await submitWithPendingState(async () => {
+        if (editingSource?.kind === "cellular") {
+          await onUpdateGenerated(editingSource.id, input);
+        } else {
+          await onSubmitCellular(input);
+        }
+      });
       return;
     }
 
@@ -410,12 +446,13 @@ export function SourceEditorDialog({
         distortion: reactionSourceDistortion,
         seed: reactionSourceSeed,
       });
-      if (editingSource?.kind === "reaction") {
-        await onUpdateGenerated(editingSource.id, input);
-      } else {
-        await onSubmitReaction(input);
-      }
-      onOpenChange(false);
+      await submitWithPendingState(async () => {
+        if (editingSource?.kind === "reaction") {
+          await onUpdateGenerated(editingSource.id, input);
+        } else {
+          await onSubmitReaction(input);
+        }
+      });
       return;
     }
 
@@ -428,12 +465,13 @@ export function SourceEditorDialog({
       distortion: waveSourceDistortion,
       seed: waveSourceSeed,
     });
-    if (editingSource?.kind === "waves") {
-      await onUpdateGenerated(editingSource.id, input);
-    } else {
-      await onSubmitWave(input);
-    }
-    onOpenChange(false);
+    await submitWithPendingState(async () => {
+      if (editingSource?.kind === "waves") {
+        await onUpdateGenerated(editingSource.id, input);
+      } else {
+        await onSubmitWave(input);
+      }
+    });
   };
 
   const gradientPreviewSource: GeneratedSourceInput = {
@@ -509,7 +547,10 @@ export function SourceEditorDialog({
     }),
   };
 
-  const closeDialog = () => onOpenChange(false);
+  const closeDialog = () => {
+    if (isSubmittingGenerated) return;
+    onOpenChange(false);
+  };
 
   useEffect(() => {
     if (!open) return;
@@ -525,9 +566,10 @@ export function SourceEditorDialog({
     <Dialog
       open={open}
       onOpenChange={(nextOpen) => {
+        if (isSubmittingGenerated && !nextOpen) return;
         onOpenChange(nextOpen);
         if (!nextOpen) {
-          // Reset when closing
+          setIsSubmittingGenerated(false);
         }
       }}
     >
@@ -558,7 +600,8 @@ export function SourceEditorDialog({
                 key={mode}
                 value={mode}
                 disabled={
-                  Boolean(editingSource) && editingSource?.kind !== mode
+                  isSubmittingGenerated ||
+                  (Boolean(editingSource) && editingSource?.kind !== mode)
                 }
               >
                 {formatSourceModeLabel(mode)}
@@ -581,36 +624,48 @@ export function SourceEditorDialog({
             </div>
           </TabsContent>
           <TabsContent value="solid" className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="solid-source-name">Name</Label>
-              <Input
-                id="solid-source-name"
-                placeholder="Solid #RRGGBB"
-                value={solidSourceName}
-                onChange={(event) => setSolidSourceName(event.target.value)}
+            <fieldset className="min-w-0 space-y-4 border-0 p-0" disabled={isSubmittingGenerated}>
+              <div className="space-y-2">
+                <Label htmlFor="solid-source-name">Name</Label>
+                <Input
+                  id="solid-source-name"
+                  placeholder="Solid #RRGGBB"
+                  value={solidSourceName}
+                  onChange={(event) => setSolidSourceName(event.target.value)}
+                />
+              </div>
+              <SourceColorField
+                id="solid-source-color"
+                label="Color"
+                value={solidSourceColor}
+                onChange={setSolidSourceColor}
               />
-            </div>
-            <SourceColorField
-              id="solid-source-color"
-              label="Color"
-              value={solidSourceColor}
-              onChange={setSolidSourceColor}
-            />
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={closeDialog}>
-                Cancel
-              </Button>
-              <Button onClick={() => void submitGeneratedSource()}>
-                {editingSource ? "Save source" : "Add source"}
-              </Button>
-            </div>
+              {pendingMessage ? (
+                <div
+                  className="rounded-md border border-sky-500/40 bg-sky-500/10 px-3 py-2 text-xs text-sky-100"
+                  role="status"
+                  aria-live="polite"
+                  data-testid="source-editor-submit-pending"
+                >
+                  {pendingMessage} This can take a few seconds on larger canvases.
+                </div>
+              ) : null}
+              <div className="flex justify-end gap-2">
+                <Button variant="outline" onClick={closeDialog} disabled={isSubmittingGenerated}>
+                  Cancel
+                </Button>
+                <Button onClick={() => void submitGeneratedSource()} disabled={isSubmittingGenerated}>
+                  {editingSource ? "Save source" : "Add source"}
+                </Button>
+              </div>
+            </fieldset>
           </TabsContent>
           <TabsContent value="gradient">
             <div
               data-testid="source-editor-preview-layout"
               className="grid gap-6 md:grid-cols-2 md:items-start"
             >
-              <div className="space-y-4">
+              <fieldset className="min-w-0 space-y-4 border-0 p-0" disabled={isSubmittingGenerated}>
                 <div className="space-y-2">
                   <Label htmlFor="gradient-source-name">Name</Label>
                   <Input
@@ -625,6 +680,7 @@ export function SourceEditorDialog({
                 <div className="space-y-2">
                   <Label>Mode</Label>
                   <Select
+                    disabled={isSubmittingGenerated}
                     value={gradientSourceMode}
                     onValueChange={(value) => {
                       if (!isGradientMode(value)) return;
@@ -668,6 +724,7 @@ export function SourceEditorDialog({
                     <Switch
                       id="gradient-source-via-enabled"
                       checked={gradientSourceViaEnabled}
+                      disabled={isSubmittingGenerated}
                       onCheckedChange={setGradientSourceViaEnabled}
                       aria-label="Enable midpoint color"
                     />
@@ -687,6 +744,7 @@ export function SourceEditorDialog({
                       max={1}
                       step={0.01}
                       value={gradientSourceViaPosition}
+                      disabled={isSubmittingGenerated}
                       formatter={formatPercentValue}
                       onChange={setGradientSourceViaPosition}
                     />
@@ -696,6 +754,7 @@ export function SourceEditorDialog({
                   <div className="space-y-2">
                     <Label>Direction</Label>
                     <Select
+                      disabled={isSubmittingGenerated}
                       value={gradientSourceDirection}
                       onValueChange={(value) => {
                         if (!isGradientDirection(value)) return;
@@ -723,6 +782,7 @@ export function SourceEditorDialog({
                       max={1}
                       step={0.01}
                       value={gradientSourceCenterX}
+                      disabled={isSubmittingGenerated}
                       formatter={formatPercentValue}
                       onChange={setGradientSourceCenterX}
                     />
@@ -732,6 +792,7 @@ export function SourceEditorDialog({
                       max={1}
                       step={0.01}
                       value={gradientSourceCenterY}
+                      disabled={isSubmittingGenerated}
                       formatter={formatPercentValue}
                       onChange={setGradientSourceCenterY}
                     />
@@ -745,6 +806,7 @@ export function SourceEditorDialog({
                       max={1}
                       step={0.01}
                       value={gradientSourceRadialRadius}
+                      disabled={isSubmittingGenerated}
                       formatter={formatPercentValue}
                       onChange={setGradientSourceRadialRadius}
                     />
@@ -754,6 +816,7 @@ export function SourceEditorDialog({
                       max={0.95}
                       step={0.01}
                       value={gradientSourceRadialInnerRadius}
+                      disabled={isSubmittingGenerated}
                       formatter={formatPercentValue}
                       onChange={setGradientSourceRadialInnerRadius}
                     />
@@ -767,6 +830,7 @@ export function SourceEditorDialog({
                       max={360}
                       step={1}
                       value={gradientSourceConicAngle}
+                      disabled={isSubmittingGenerated}
                       formatter={formatDegreeValue}
                       onChange={setGradientSourceConicAngle}
                     />
@@ -776,6 +840,7 @@ export function SourceEditorDialog({
                       max={360}
                       step={1}
                       value={gradientSourceConicSpan}
+                      disabled={isSubmittingGenerated}
                       formatter={formatDegreeValue}
                       onChange={setGradientSourceConicSpan}
                     />
@@ -792,6 +857,7 @@ export function SourceEditorDialog({
                         <Switch
                           id="gradient-source-conic-repeat"
                           checked={gradientSourceConicRepeat}
+                          disabled={isSubmittingGenerated}
                           onCheckedChange={setGradientSourceConicRepeat}
                           aria-label="Repeat span"
                         />
@@ -799,15 +865,25 @@ export function SourceEditorDialog({
                     </div>
                   </>
                 ) : null}
+                {pendingMessage ? (
+                  <div
+                    className="rounded-md border border-sky-500/40 bg-sky-500/10 px-3 py-2 text-xs text-sky-100"
+                    role="status"
+                    aria-live="polite"
+                    data-testid="source-editor-submit-pending"
+                  >
+                    {pendingMessage} This can take a few seconds on larger canvases.
+                  </div>
+                ) : null}
                 <div className="flex justify-end gap-2">
-                  <Button variant="outline" onClick={closeDialog}>
+                  <Button variant="outline" onClick={closeDialog} disabled={isSubmittingGenerated}>
                     Cancel
                   </Button>
-                  <Button onClick={() => void submitGeneratedSource()}>
+                  <Button onClick={() => void submitGeneratedSource()} disabled={isSubmittingGenerated}>
                     {editingSource ? "Save source" : "Add source"}
                   </Button>
                 </div>
-              </div>
+              </fieldset>
               <GeneratedSourcePreview
                 source={gradientPreviewSource}
                 canvasSize={canvasSize}
@@ -833,6 +909,8 @@ export function SourceEditorDialog({
             editingSource={editingSource}
             submitGeneratedSource={submitGeneratedSource}
             closeDialog={closeDialog}
+            submitDisabled={isSubmittingGenerated}
+            pendingMessage={sourceDialogMode === "perlin" ? pendingMessage : null}
           />
           <ProceduralTextureTab
             tabValue="cellular"
@@ -853,6 +931,8 @@ export function SourceEditorDialog({
             editingSource={editingSource}
             submitGeneratedSource={submitGeneratedSource}
             closeDialog={closeDialog}
+            submitDisabled={isSubmittingGenerated}
+            pendingMessage={sourceDialogMode === "cellular" ? pendingMessage : null}
           />
           <ProceduralTextureTab
             tabValue="reaction"
@@ -873,6 +953,8 @@ export function SourceEditorDialog({
             editingSource={editingSource}
             submitGeneratedSource={submitGeneratedSource}
             closeDialog={closeDialog}
+            submitDisabled={isSubmittingGenerated}
+            pendingMessage={sourceDialogMode === "reaction" ? pendingMessage : null}
           />
           <ProceduralTextureTab
             tabValue="waves"
@@ -893,6 +975,8 @@ export function SourceEditorDialog({
             editingSource={editingSource}
             submitGeneratedSource={submitGeneratedSource}
             closeDialog={closeDialog}
+            submitDisabled={isSubmittingGenerated}
+            pendingMessage={sourceDialogMode === "waves" ? pendingMessage : null}
           />
         </Tabs>
       </DialogContent>

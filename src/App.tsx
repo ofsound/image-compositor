@@ -657,6 +657,8 @@ function App() {
         onSubmitReaction={addReactionSource}
         onSubmitWave={addWaveSource}
         onUpdateGenerated={updateGeneratedSource}
+        busy={busy}
+        status={status}
       />
 
       <RenameDialog

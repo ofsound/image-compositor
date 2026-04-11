@@ -1274,6 +1274,39 @@ describe("App gradient sources", () => {
     );
   });
 
+  it("shows a processing message while a generated source is being created", async () => {
+    const user = userEvent.setup();
+    const state = createStoreState();
+    let resolveAddSource: (() => void) | undefined;
+    state.addPerlinSource.mockImplementation(
+      () =>
+        new Promise<undefined>((resolve) => {
+          resolveAddSource = () => resolve(undefined);
+        }),
+    );
+    mockStoreState(state);
+
+    render(<App />);
+
+    await user.click(screen.getAllByText("Add Source")[0]!);
+    await user.click(screen.getByRole("tab", { name: "Perlin" }));
+    const dialog = screen.getByRole("dialog");
+
+    await user.click(within(dialog).getByRole("button", { name: "Add source" }));
+
+    expect(await within(dialog).findByTestId("source-editor-submit-pending")).toHaveTextContent(
+      /Creating perlin source/i,
+    );
+    expect(within(dialog).getByRole("button", { name: "Add source" })).toBeDisabled();
+    expect(within(dialog).getByRole("button", { name: "Cancel" })).toBeDisabled();
+
+    resolveAddSource?.();
+
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+  });
+
   it("submits normalized cellular recipes", async () => {
     const user = userEvent.setup();
     const state = createStoreState();

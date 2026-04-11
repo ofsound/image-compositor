@@ -178,6 +178,8 @@ export function ProceduralTextureTab({
   editingSource,
   submitGeneratedSource,
   closeDialog,
+  submitDisabled = false,
+  pendingMessage = null,
 }: {
   tabValue: SourceKind;
   name: string;
@@ -192,6 +194,8 @@ export function ProceduralTextureTab({
   editingSource: SourceAsset | null;
   submitGeneratedSource: () => Promise<void>;
   closeDialog: () => void;
+  submitDisabled?: boolean;
+  pendingMessage?: string | null;
 }) {
   return (
     <TabsContent value={tabValue}>
@@ -199,7 +203,7 @@ export function ProceduralTextureTab({
         data-testid="source-editor-preview-layout"
         className="grid gap-6 md:grid-cols-2 md:items-start"
       >
-        <div className="space-y-4">
+        <fieldset className="min-w-0 space-y-4 border-0 p-0" disabled={submitDisabled}>
           <div className="space-y-2">
             <Label htmlFor={`${tabValue}-source-name`}>Name</Label>
             <Input
@@ -229,6 +233,7 @@ export function ProceduralTextureTab({
                 variant="outline"
                 size="sm"
                 onClick={regenerateSeed}
+                disabled={submitDisabled}
               >
                 <RefreshCw className="h-3.5 w-3.5" />
                 Regenerate
@@ -243,19 +248,30 @@ export function ProceduralTextureTab({
               max={1}
               step={0.01}
               value={field.value}
+              disabled={submitDisabled}
               formatter={formatPercentValue}
               onChange={field.onChange}
             />
           ))}
+          {pendingMessage ? (
+            <div
+              className="rounded-md border border-sky-500/40 bg-sky-500/10 px-3 py-2 text-xs text-sky-100"
+              role="status"
+              aria-live="polite"
+              data-testid="source-editor-submit-pending"
+            >
+              {pendingMessage} This can take a few seconds on larger canvases.
+            </div>
+          ) : null}
           <div className="flex justify-end gap-2">
-            <Button variant="outline" onClick={closeDialog}>
+            <Button variant="outline" onClick={closeDialog} disabled={submitDisabled}>
               Cancel
             </Button>
-            <Button onClick={() => void submitGeneratedSource()}>
+            <Button onClick={() => void submitGeneratedSource()} disabled={submitDisabled}>
               {editingSource ? "Save source" : "Add source"}
             </Button>
           </div>
-        </div>
+        </fieldset>
         <GeneratedSourcePreview
           source={previewSource}
           canvasSize={canvasSize}

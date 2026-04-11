@@ -34,3 +34,14 @@ export function formatBytes(value: number) {
 export function wait(ms: number) {
   return new Promise((resolve) => window.setTimeout(resolve, ms));
 }
+
+export function waitForNextPaint() {
+  return new Promise<void>((resolve) => {
+    if (typeof window.requestAnimationFrame !== "function") {
+      window.setTimeout(() => resolve(), 0);
+      return;
+    }
+
+    window.requestAnimationFrame(() => resolve());
+  });
+}

@@ -396,7 +396,7 @@ function createCustomizedLayerState(
   };
   customizedLayer.sourceMapping = {
     ...customizedLayer.sourceMapping,
-    strategy: "weighted",
+    strategy: "random",
     sourceWeights: { [sourceId]: 2.25 },
     cropDistribution: "center",
   };

@@ -824,7 +824,7 @@ describe("buildRenderSlices", () => {
     project.layout.randomness = 0;
     project.layout.gutter = 14;
     project.layout.symmetryMode = "none";
-    project.sourceMapping.strategy = "sequential";
+    project.sourceMapping.strategy = "round-robin";
     project.sourceMapping.cropDistribution = "distributed";
     project.sourceMapping.preserveAspect = false;
 
@@ -851,7 +851,7 @@ describe("buildRenderSlices", () => {
     project.layout.randomness = 0;
     project.layout.gutter = 0;
     project.layout.symmetryMode = "none";
-    project.sourceMapping.strategy = "sequential";
+    project.sourceMapping.strategy = "round-robin";
     project.sourceMapping.cropDistribution = "distributed";
     project.sourceMapping.preserveAspect = false;
 
@@ -862,6 +862,132 @@ describe("buildRenderSlices", () => {
     expect(slices.every((slice) => slice.imageRect !== null)).toBe(true);
   });
 
+  it("rotates the entire grid around the canvas center through the grid angle control", () => {
+    const project = createProjectView("Rotated Grid");
+    project.sourceIds = [assets[0]!.id];
+    project.layout.family = "grid";
+    project.layout.columns = 2;
+    project.layout.rows = 2;
+    project.layout.gutterHorizontal = 0;
+    project.layout.gutterVertical = 0;
+    project.layout.gridAngle = 45;
+    project.layout.symmetryMode = "none";
+    project.sourceMapping.strategy = "round-robin";
+
+    const baseline = buildRenderSlices(
+      {
+        ...project,
+        layout: {
+          ...project.layout,
+          gridAngle: 0,
+        },
+      },
+      [assets[0]!],
+    );
+    const rotated = buildRenderSlices(project, [assets[0]!]);
+    const canvasCenter = {
+      x: project.canvas.width / 2,
+      y: project.canvas.height / 2,
+    };
+    const angleRadians = Math.PI / 4;
+
+    expect(rotated).toHaveLength(baseline.length);
+    expect(rotated.every((slice) => slice.clipRect !== null)).toBe(true);
+    expect(rotated.every((slice) => slice.clipRotation)).toBe(true);
+
+    const baselineCenter = getSliceCenter(baseline[0]!);
+    const expectedCenter = {
+      x:
+        canvasCenter.x +
+        (baselineCenter.x - canvasCenter.x) * Math.cos(angleRadians) -
+        (baselineCenter.y - canvasCenter.y) * Math.sin(angleRadians),
+      y:
+        canvasCenter.y +
+        (baselineCenter.x - canvasCenter.x) * Math.sin(angleRadians) +
+        (baselineCenter.y - canvasCenter.y) * Math.cos(angleRadians),
+    };
+    const rotatedCenter = rotated
+      .map((slice) => getSliceCenter(slice))
+      .sort(
+        (a, b) =>
+          Math.hypot(a.x - expectedCenter.x, a.y - expectedCenter.y) -
+          Math.hypot(b.x - expectedCenter.x, b.y - expectedCenter.y),
+      )[0]!;
+
+    expect(rotatedCenter.x).toBeCloseTo(expectedCenter.x, 3);
+    expect(rotatedCenter.y).toBeCloseTo(expectedCenter.y, 3);
+    expect(rotated.some((slice) => Math.abs(slice.clipRotation - angleRadians) < 1e-6)).toBe(true);
+  });
+
+  it("rotates interlock grids around the canvas center while preserving alternating triangle headings", () => {
+    const project = createProjectView("Rotated Interlock Grid");
+    project.sourceIds = [assets[0]!.id];
+    project.layout.family = "grid";
+    project.layout.shapeMode = "interlock";
+    project.layout.columns = 4;
+    project.layout.rows = 3;
+    project.layout.gutterHorizontal = 0;
+    project.layout.gutterVertical = 0;
+    project.layout.gridAngle = 30;
+    project.layout.symmetryMode = "none";
+    project.compositing.overlap = 0;
+    project.effects.rotationJitter = 0;
+    project.sourceMapping.strategy = "round-robin";
+
+    const baseline = buildRenderSlices(
+      {
+        ...project,
+        layout: {
+          ...project.layout,
+          gridAngle: 0,
+        },
+      },
+      [assets[0]!],
+    );
+    const rotated = buildRenderSlices(project, [assets[0]!]);
+    const canvasCenter = {
+      x: project.canvas.width / 2,
+      y: project.canvas.height / 2,
+    };
+    const angleRadians = Math.PI / 6;
+    const baselineCenter = getSliceCenter(baseline[0]!);
+    const expectedCenter = {
+      x:
+        canvasCenter.x +
+        (baselineCenter.x - canvasCenter.x) * Math.cos(angleRadians) -
+        (baselineCenter.y - canvasCenter.y) * Math.sin(angleRadians),
+      y:
+        canvasCenter.y +
+        (baselineCenter.x - canvasCenter.x) * Math.sin(angleRadians) +
+        (baselineCenter.y - canvasCenter.y) * Math.cos(angleRadians),
+    };
+    const rotatedNearest = rotated
+      .slice()
+      .sort(
+        (a, b) =>
+          Math.hypot(
+            getSliceCenter(a).x - expectedCenter.x,
+            getSliceCenter(a).y - expectedCenter.y,
+          ) -
+          Math.hypot(
+            getSliceCenter(b).x - expectedCenter.x,
+            getSliceCenter(b).y - expectedCenter.y,
+          ),
+      )[0]!;
+
+    expect(rotated).toHaveLength(baseline.length);
+    expect(rotated.every((slice) => slice.shape === "interlock")).toBe(true);
+    expect(rotated.every((slice) => slice.clipRect !== null)).toBe(true);
+    expect(getSliceCenter(rotatedNearest).x).toBeCloseTo(expectedCenter.x, 3);
+    expect(getSliceCenter(rotatedNearest).y).toBeCloseTo(expectedCenter.y, 3);
+    expect(rotated.some((slice) => Math.abs(slice.clipRotation - angleRadians) < 1e-6)).toBe(true);
+    expect(
+      rotated.some(
+        (slice) => Math.abs(slice.clipRotation - (Math.PI + angleRadians)) < 1e-6,
+      ),
+    ).toBe(true);
+  });
+
   it("keeps multi-source distributed strips aligned to the full canvas without zoomed crops", () => {
     const project = createProjectView("Multi-source Strips");
     project.sourceIds = assets.map((asset) => asset.id);
@@ -870,7 +996,7 @@ describe("buildRenderSlices", () => {
     project.layout.randomness = 0;
     project.layout.gutter = 14;
     project.layout.symmetryMode = "none";
-    project.sourceMapping.strategy = "sequential";
+    project.sourceMapping.strategy = "round-robin";
     project.sourceMapping.cropDistribution = "distributed";
     project.sourceMapping.preserveAspect = false;
 
@@ -901,7 +1027,7 @@ describe("buildRenderSlices", () => {
       project.layout.randomness = 0;
       project.layout.gutter = 0;
       project.layout.symmetryMode = "none";
-      project.sourceMapping.strategy = "sequential";
+      project.sourceMapping.strategy = "round-robin";
       project.sourceMapping.cropDistribution = "distributed";
       project.sourceMapping.preserveAspect = false;
 
@@ -922,7 +1048,7 @@ describe("buildRenderSlices", () => {
     project.layout.randomness = 0;
     project.layout.gutter = 24;
     project.layout.symmetryMode = "none";
-    project.sourceMapping.strategy = "sequential";
+    project.sourceMapping.strategy = "round-robin";
     project.sourceMapping.cropDistribution = "distributed";
     project.sourceMapping.preserveAspect = false;
 
@@ -942,7 +1068,7 @@ describe("buildRenderSlices", () => {
     project.layout.randomness = 0;
     project.layout.gutter = 400;
     project.layout.symmetryMode = "none";
-    project.sourceMapping.strategy = "sequential";
+    project.sourceMapping.strategy = "round-robin";
     project.sourceMapping.cropDistribution = "distributed";
     project.sourceMapping.preserveAspect = false;
 
@@ -963,7 +1089,7 @@ describe("buildRenderSlices", () => {
     project.layout.randomness = 0;
     project.layout.gutter = 0;
     project.layout.symmetryMode = "none";
-    project.sourceMapping.strategy = "sequential";
+    project.sourceMapping.strategy = "round-robin";
     project.sourceMapping.cropDistribution = "distributed";
     project.sourceMapping.preserveAspect = false;
 
@@ -979,14 +1105,14 @@ describe("buildRenderSlices", () => {
     );
   });
 
-  it("keeps sequential assignment while distributing unique crops per asset", () => {
-    const project = createProjectView("Sequential Crops");
+  it("keeps round-robin assignment while distributing unique crops per asset", () => {
+    const project = createProjectView("Round Robin Crops");
     project.sourceIds = assets.map((asset) => asset.id);
     project.layout.family = "grid";
     project.layout.columns = 4;
     project.layout.rows = 2;
     project.layout.symmetryMode = "none";
-    project.sourceMapping.strategy = "sequential";
+    project.sourceMapping.strategy = "round-robin";
     project.sourceMapping.cropDistribution = "distributed";
     project.sourceMapping.preserveAspect = false;
 
@@ -1020,14 +1146,14 @@ describe("buildRenderSlices", () => {
     }
   });
 
-  it("biases sequential assignment toward higher manual source weights", () => {
-    const project = createProjectView("Sequential Source Mix");
+  it("biases round-robin assignment toward higher manual source weights", () => {
+    const project = createProjectView("Round Robin Source Mix");
     project.sourceIds = assets.map((asset) => asset.id);
     project.layout.family = "grid";
     project.layout.columns = 4;
     project.layout.rows = 2;
     project.layout.symmetryMode = "none";
-    project.sourceMapping.strategy = "sequential";
+    project.sourceMapping.strategy = "round-robin";
     project.sourceMapping.sourceWeights = {
       asset_a: 3,
       asset_b: 1,
@@ -1047,14 +1173,67 @@ describe("buildRenderSlices", () => {
     });
   });
 
-  it("keeps palette assignment while distributing unique crops per asset", () => {
-    const project = createProjectView("Palette Crops");
+  it("changes tone-map assignment when the luminance direction flips", () => {
+    const toneAssets: SourceAsset[] = [
+      {
+        ...assets[0]!,
+        id: "asset_dark",
+        name: "Dark",
+        luminance: 0.1,
+      },
+      {
+        ...assets[0]!,
+        id: "asset_mid",
+        name: "Mid",
+        luminance: 0.5,
+      },
+      {
+        ...assets[1]!,
+        id: "asset_light",
+        name: "Light",
+        luminance: 0.9,
+      },
+    ];
+    const project = createProjectView("Tone Map");
+    project.sourceIds = toneAssets.map((asset) => asset.id);
+    project.layout.family = "grid";
+    project.layout.columns = 3;
+    project.layout.rows = 1;
+    project.layout.symmetryMode = "none";
+    project.sourceMapping.strategy = "tone-map";
+
+    project.sourceMapping.luminanceSort = "ascending";
+    const ascendingSlices = buildRenderSlices(project, toneAssets);
+    const ascending = new Map(
+      ascendingSlices.map((slice) => [slice.id, slice.assetId]),
+    );
+
+    project.sourceMapping.luminanceSort = "descending";
+    const descendingSlices = buildRenderSlices(project, toneAssets);
+    const descending = new Map(
+      descendingSlices.map((slice) => [slice.id, slice.assetId]),
+    );
+
+    expect([
+      ascending.get("slice_0"),
+      ascending.get("slice_1"),
+      ascending.get("slice_2"),
+    ]).toEqual(["asset_dark", "asset_mid", "asset_light"]);
+    expect([
+      descending.get("slice_0"),
+      descending.get("slice_1"),
+      descending.get("slice_2"),
+    ]).toEqual(["asset_light", "asset_mid", "asset_dark"]);
+  });
+
+  it("keeps contrast assignment while distributing unique crops per asset", () => {
+    const project = createProjectView("Contrast Crops");
     project.sourceIds = assets.map((asset) => asset.id);
     project.layout.family = "grid";
     project.layout.columns = 3;
     project.layout.rows = 2;
     project.layout.symmetryMode = "none";
-    project.sourceMapping.strategy = "palette";
+    project.sourceMapping.strategy = "contrast";
     project.sourceMapping.cropDistribution = "distributed";
     project.sourceMapping.preserveAspect = false;
 
@@ -1095,14 +1274,63 @@ describe("buildRenderSlices", () => {
     expect(slices.every((slice) => slice.assetId === "asset_a")).toBe(true);
   });
 
-  it("preserves source order when palette emphasis is zero", () => {
-    const project = createProjectView("Palette Emphasis Source Order");
+  it("reduces immediate local duplicates under anti-repeat compared with random", () => {
+    const countAdjacentDuplicates = (sliceIds: string[], columns: number) => {
+      let duplicates = 0;
+      for (let index = 0; index < sliceIds.length; index += 1) {
+        const assetId = sliceIds[index]!;
+        if (index % columns !== 0 && sliceIds[index - 1] === assetId) {
+          duplicates += 1;
+        }
+        if (index >= columns && sliceIds[index - columns] === assetId) {
+          duplicates += 1;
+        }
+      }
+      return duplicates;
+    };
+
+    const project = createProjectView("Anti Repeat");
+    project.sourceIds = assets.map((asset) => asset.id);
+    project.layout.family = "grid";
+    project.layout.columns = 4;
+    project.layout.rows = 4;
+    project.layout.symmetryMode = "none";
+    project.activeSeed = 412_991;
+
+    project.sourceMapping.strategy = "random";
+    const randomAssignments = new Map(
+      buildRenderSlices(project, assets).map((slice) => [slice.id, slice.assetId]),
+    );
+
+    project.sourceMapping.strategy = "anti-repeat";
+    const antiRepeatAssignments = new Map(
+      buildRenderSlices(project, assets).map((slice) => [slice.id, slice.assetId]),
+    );
+
+    expect(
+      countAdjacentDuplicates(
+        Array.from({ length: 16 }, (_, index) => randomAssignments.get(`slice_${index}`) ?? ""),
+        4,
+      ),
+    ).toBeGreaterThan(
+      countAdjacentDuplicates(
+        Array.from(
+          { length: 16 },
+          (_, index) => antiRepeatAssignments.get(`slice_${index}`) ?? "",
+        ),
+        4,
+      ),
+    );
+  });
+
+  it("preserves source order when contrast strength is zero", () => {
+    const project = createProjectView("Contrast Strength Source Order");
     project.sourceIds = paletteBlendAssets.map((asset) => asset.id);
     project.layout.family = "grid";
     project.layout.columns = 3;
     project.layout.rows = 1;
     project.layout.symmetryMode = "none";
-    project.sourceMapping.strategy = "palette";
+    project.sourceMapping.strategy = "contrast";
     project.sourceMapping.paletteEmphasis = 0;
 
     const slices = buildRenderSlices(project, paletteBlendAssets);
@@ -1115,14 +1343,14 @@ describe("buildRenderSlices", () => {
     ]).toEqual(["asset_palette_mid", "asset_palette_low", "asset_palette_high"]);
   });
 
-  it("fully sorts by palette variation when palette emphasis is one", () => {
-    const project = createProjectView("Palette Emphasis Palette Order");
+  it("fully reorders by contrast when contrast strength is one", () => {
+    const project = createProjectView("Contrast Strength Order");
     project.sourceIds = paletteBlendAssets.map((asset) => asset.id);
     project.layout.family = "grid";
     project.layout.columns = 3;
     project.layout.rows = 1;
     project.layout.symmetryMode = "none";
-    project.sourceMapping.strategy = "palette";
+    project.sourceMapping.strategy = "contrast";
     project.sourceMapping.paletteEmphasis = 1;
 
     const slices = buildRenderSlices(project, paletteBlendAssets);
@@ -1135,14 +1363,14 @@ describe("buildRenderSlices", () => {
     ]).toEqual(["asset_palette_high", "asset_palette_mid", "asset_palette_low"]);
   });
 
-  it("interpolates palette order between the source and palette-ranked endpoints", () => {
-    const project = createProjectView("Palette Emphasis Intermediate");
+  it("interpolates contrast order between the source and contrast-ranked endpoints", () => {
+    const project = createProjectView("Contrast Strength Intermediate");
     project.sourceIds = paletteBlendAssets.map((asset) => asset.id);
     project.layout.family = "grid";
     project.layout.columns = 3;
     project.layout.rows = 1;
     project.layout.symmetryMode = "none";
-    project.sourceMapping.strategy = "palette";
+    project.sourceMapping.strategy = "contrast";
     project.sourceMapping.paletteEmphasis = 0.5;
 
     const slices = buildRenderSlices(project, paletteBlendAssets);
@@ -1155,14 +1383,14 @@ describe("buildRenderSlices", () => {
     ]).toEqual(["asset_palette_mid", "asset_palette_high", "asset_palette_low"]);
   });
 
-  it("keeps equal palette scores in source order", () => {
-    const project = createProjectView("Palette Emphasis Stable Ties");
+  it("keeps equal contrast scores in source order", () => {
+    const project = createProjectView("Contrast Strength Stable Ties");
     project.sourceIds = equalPaletteAssets.map((asset) => asset.id);
     project.layout.family = "grid";
     project.layout.columns = 3;
     project.layout.rows = 1;
     project.layout.symmetryMode = "none";
-    project.sourceMapping.strategy = "palette";
+    project.sourceMapping.strategy = "contrast";
     project.sourceMapping.paletteEmphasis = 1;
 
     const slices = buildRenderSlices(project, equalPaletteAssets);
@@ -1274,7 +1502,7 @@ describe("buildRenderSlices", () => {
     project.layout.randomness = 0;
     project.layout.gutter = 154;
     project.layout.symmetryMode = "none";
-    project.sourceMapping.strategy = "sequential";
+    project.sourceMapping.strategy = "round-robin";
     project.sourceMapping.cropDistribution = "distributed";
     project.sourceMapping.preserveAspect = false;
 

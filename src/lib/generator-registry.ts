@@ -47,6 +47,18 @@ interface LayoutCell extends RenderRect {
   depthValue?: number;
 }
 
+interface AssignmentTarget {
+  cell: LayoutCell;
+  index: number;
+  rngSeed: string;
+  tonePosition: number;
+}
+
+interface AssignedTarget extends AssignmentTarget {
+  asset: SourceAsset;
+  center: Point;
+}
+
 interface Point {
   x: number;
   y: number;
@@ -111,6 +123,18 @@ function getRectCenter(rect: RenderRect) {
   return {
     x: rect.x + rect.width / 2,
     y: rect.y + rect.height / 2,
+  };
+}
+
+function rotatePoint(point: Point, angle: number, center: Point) {
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  const x = point.x - center.x;
+  const y = point.y - center.y;
+
+  return {
+    x: center.x + x * cos - y * sin,
+    y: center.y + x * sin + y * cos,
   };
 }
 
@@ -656,7 +680,7 @@ function generateGrid(context: GeneratorContext) {
       }
     }
 
-    return cells;
+    return rotateGridCells(cells, context.project);
   }
 
   const columnWidth = innerWidth / layout.columns;
@@ -680,7 +704,47 @@ function generateGrid(context: GeneratorContext) {
     }
   }
 
-  return cells;
+  return rotateGridCells(cells, context.project);
+}
+
+function rotateGridCells(cells: LayoutCell[], project: LayerRenderProject) {
+  const angleRadians = degToRad(project.layout.gridAngle);
+  if (Math.abs(angleRadians) < 0.0001) {
+    return cells;
+  }
+
+  const canvasCenter = {
+    x: project.canvas.width / 2,
+    y: project.canvas.height / 2,
+  };
+
+  return cells.map((cell) => {
+    const baseRect = cell.clipRect ?? {
+      x: cell.x,
+      y: cell.y,
+      width: cell.width,
+      height: cell.height,
+    };
+    const rotatedCenter = rotatePoint(
+      getRectCenter(baseRect),
+      angleRadians,
+      canvasCenter,
+    );
+    const clipRect = {
+      x: rotatedCenter.x - baseRect.width / 2,
+      y: rotatedCenter.y - baseRect.height / 2,
+      width: baseRect.width,
+      height: baseRect.height,
+    };
+    const clipRotation = (cell.clipRotation ?? 0) + angleRadians;
+
+    return {
+      ...cell,
+      ...getRotatedBounds(clipRect, clipRotation),
+      clipRect,
+      clipRotation,
+    };
+  });
 }
 
 function generateStrips(context: GeneratorContext) {
@@ -2290,10 +2354,48 @@ function getNormalizedColorDistance(a: RgbColor, b: RgbColor) {
   return Math.sqrt((dr * dr + dg * dg + db * db) / (255 * 255 * 3));
 }
 
-function getPaletteVariationScore(asset: SourceAsset) {
+function rgbToHue(color: RgbColor) {
+  const r = color.r / 255;
+  const g = color.g / 255;
+  const b = color.b / 255;
+  const max = Math.max(r, g, b);
+  const min = Math.min(r, g, b);
+  const delta = max - min;
+
+  if (delta <= Number.EPSILON) {
+    return 0;
+  }
+
+  if (max === r) {
+    return (((g - b) / delta + (g < b ? 6 : 0)) * 60) % 360;
+  }
+  if (max === g) {
+    return (((b - r) / delta) + 2) * 60;
+  }
+
+  return (((r - g) / delta) + 4) * 60;
+}
+
+function getNormalizedHueDistance(a: number, b: number) {
+  const delta = Math.abs(a - b) % 360;
+  return Math.min(delta, 360 - delta) / 180;
+}
+
+function getAssetPaletteColors(asset: SourceAsset) {
   const palette = [...new Set(asset.palette)]
     .map(parseHexColor)
     .filter((color): color is RgbColor => color !== null);
+
+  if (palette.length > 0) {
+    return palette;
+  }
+
+  const averageColor = parseHexColor(asset.averageColor);
+  return averageColor ? [averageColor] : [];
+}
+
+function getPaletteVariationScore(asset: SourceAsset) {
+  const palette = getAssetPaletteColors(asset);
 
   if (palette.length === 0) {
     return 0;
@@ -2301,11 +2403,16 @@ function getPaletteVariationScore(asset: SourceAsset) {
 
   let distanceTotal = 0;
   let distancePairs = 0;
+  let hueTotal = 0;
   for (let index = 0; index < palette.length; index += 1) {
     for (let compareIndex = index + 1; compareIndex < palette.length; compareIndex += 1) {
       distanceTotal += getNormalizedColorDistance(
         palette[index]!,
         palette[compareIndex]!,
+      );
+      hueTotal += getNormalizedHueDistance(
+        rgbToHue(palette[index]!),
+        rgbToHue(palette[compareIndex]!),
       );
       distancePairs += 1;
     }
@@ -2313,8 +2420,9 @@ function getPaletteVariationScore(asset: SourceAsset) {
 
   const swatchScore = normalizeRank(palette.length - 1, 5);
   const variationScore = distancePairs === 0 ? 0 : distanceTotal / distancePairs;
+  const hueScore = distancePairs === 0 ? 0 : hueTotal / distancePairs;
 
-  return swatchScore * 0.35 + variationScore * 0.65;
+  return swatchScore * 0.2 + variationScore * 0.45 + hueScore * 0.35;
 }
 
 function getManualSourceWeights(
@@ -2378,95 +2486,336 @@ function buildSmoothWeightedCycle(assets: SourceAsset[], weights: number[]) {
   return cycle;
 }
 
+function buildOrderedWeightedCycle(
+  assets: SourceAsset[],
+  project: LayerRenderProject,
+) {
+  return buildSmoothWeightedCycle(assets, getManualSourceWeights(project, assets));
+}
+
 function pickOrderedWeightedAsset(
   assets: SourceAsset[],
   index: number,
   project: LayerRenderProject,
 ) {
-  const cycle = buildSmoothWeightedCycle(assets, getManualSourceWeights(project, assets));
+  const cycle = buildOrderedWeightedCycle(assets, project);
   return cycle[index % cycle.length]!;
 }
 
-function assetByStrategy(
-  strategy: SourceAssignmentStrategy,
+function getContrastScoreById(assets: SourceAsset[]) {
+  return new Map(assets.map((asset) => [asset.id, getPaletteVariationScore(asset)]));
+}
+
+function getAssetAverageColor(asset: SourceAsset) {
+  const palette = getAssetPaletteColors(asset);
+  if (palette.length === 0) {
+    return { r: 128, g: 128, b: 128 };
+  }
+
+  const total = palette.reduce(
+    (sum, color) => ({
+      r: sum.r + color.r,
+      g: sum.g + color.g,
+      b: sum.b + color.b,
+    }),
+    { r: 0, g: 0, b: 0 },
+  );
+
+  return {
+    r: total.r / palette.length,
+    g: total.g / palette.length,
+    b: total.b / palette.length,
+  };
+}
+
+function getAssetContrastDistance(a: SourceAsset, b: SourceAsset, contrastScoreById: Map<string, number>) {
+  const averageDistance = getNormalizedColorDistance(
+    getAssetAverageColor(a),
+    getAssetAverageColor(b),
+  );
+  const hueDistance = getNormalizedHueDistance(
+    rgbToHue(getAssetAverageColor(a)),
+    rgbToHue(getAssetAverageColor(b)),
+  );
+  const contrastDelta = Math.abs(
+    (contrastScoreById.get(a.id) ?? 0) - (contrastScoreById.get(b.id) ?? 0),
+  );
+
+  return averageDistance * 0.45 + hueDistance * 0.35 + contrastDelta * 0.2;
+}
+
+function buildBlendedOrder(
   assets: SourceAsset[],
-  index: number,
+  targetRankById: Map<string, number>,
+  emphasis: number,
+) {
+  const clampedEmphasis = clamp(emphasis, 0, 1);
+  const baseIndexById = new Map(assets.map((asset, assetIndex) => [asset.id, assetIndex]));
+
+  return [...assets].sort((a, b) => {
+    const baseRankA = normalizeRank(baseIndexById.get(a.id) ?? 0, assets.length);
+    const baseRankB = normalizeRank(baseIndexById.get(b.id) ?? 0, assets.length);
+    const targetRankA = normalizeRank(targetRankById.get(a.id) ?? 0, assets.length);
+    const targetRankB = normalizeRank(targetRankById.get(b.id) ?? 0, assets.length);
+    const blendedRankDifference =
+      lerp(baseRankA, targetRankA, clampedEmphasis) -
+      lerp(baseRankB, targetRankB, clampedEmphasis);
+
+    if (Math.abs(blendedRankDifference) > Number.EPSILON) {
+      return blendedRankDifference;
+    }
+
+    return (baseIndexById.get(a.id) ?? 0) - (baseIndexById.get(b.id) ?? 0);
+  });
+}
+
+function getContrastOrderedAssets(
+  assets: SourceAsset[],
+  emphasis: number,
+) {
+  if (assets.length <= 1) {
+    return buildBlendedOrder(
+      assets,
+      new Map(assets.map((asset, index) => [asset.id, index])),
+      emphasis,
+    );
+  }
+
+  const contrastScoreById = getContrastScoreById(assets);
+  const baseIndexById = new Map(assets.map((asset, assetIndex) => [asset.id, assetIndex]));
+  const ranked = [...assets].sort((a, b) => {
+    const scoreDifference =
+      (contrastScoreById.get(b.id) ?? 0) - (contrastScoreById.get(a.id) ?? 0);
+    if (Math.abs(scoreDifference) > Number.EPSILON) {
+      return scoreDifference;
+    }
+
+    return (baseIndexById.get(a.id) ?? 0) - (baseIndexById.get(b.id) ?? 0);
+  });
+
+  const contrastOrdered: SourceAsset[] = [ranked[0]!];
+  const remaining = ranked.slice(1);
+
+  while (remaining.length > 0) {
+    const previous = contrastOrdered.at(-1)!;
+    let nextIndex = 0;
+    let nextScore = -1;
+    for (let index = 0; index < remaining.length; index += 1) {
+      const candidate = remaining[index]!;
+      const score =
+        getAssetContrastDistance(previous, candidate, contrastScoreById) * 0.75 +
+        (contrastScoreById.get(candidate.id) ?? 0) * 0.25;
+      if (score > nextScore + Number.EPSILON) {
+        nextIndex = index;
+        nextScore = score;
+        continue;
+      }
+      if (Math.abs(score - nextScore) <= Number.EPSILON) {
+        const contrastDifference =
+          (contrastScoreById.get(candidate.id) ?? 0) -
+          (contrastScoreById.get(remaining[nextIndex]!.id) ?? 0);
+        if (contrastDifference > Number.EPSILON) {
+          nextIndex = index;
+          nextScore = score;
+          continue;
+        }
+        if (
+          Math.abs(contrastDifference) <= Number.EPSILON &&
+          (baseIndexById.get(candidate.id) ?? 0) <
+            (baseIndexById.get(remaining[nextIndex]!.id) ?? 0)
+        ) {
+          nextIndex = index;
+          nextScore = score;
+        }
+      }
+    }
+
+    contrastOrdered.push(remaining.splice(nextIndex, 1)[0]!);
+  }
+
+  return buildBlendedOrder(
+    assets,
+    new Map(contrastOrdered.map((asset, index) => [asset.id, index])),
+    emphasis,
+  );
+}
+
+function getCellTonePosition(project: LayerRenderProject, cell: LayoutCell) {
+  const center = getRectCenter(cell);
+  const inset = project.canvas.inset;
+  const usableWidth = Math.max(project.canvas.width - inset * 2, 1);
+  const usableHeight = Math.max(project.canvas.height - inset * 2, 1);
+
+  if (
+    project.layout.family === "grid" ||
+    project.layout.family === "blocks" ||
+    project.layout.family === "strips"
+  ) {
+    return clamp((center.x - inset) / usableWidth, 0, 1);
+  }
+
+  const canvasCenter = {
+    x: inset + usableWidth / 2,
+    y: inset + usableHeight / 2,
+  };
+  const maxDistance = Math.hypot(usableWidth / 2, usableHeight / 2) || 1;
+  return clamp(
+    Math.hypot(center.x - canvasCenter.x, center.y - canvasCenter.y) / maxDistance,
+    0,
+    1,
+  );
+}
+
+function pickMappedAssetByPosition(
+  assets: SourceAsset[],
+  position: number,
+  project: LayerRenderProject,
+) {
+  if (assets.length === 1) {
+    return assets[0]!;
+  }
+
+  const weights = getManualSourceWeights(project, assets).map((weight) =>
+    Math.max(0, weight),
+  );
+  const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
+  if (totalWeight <= 0) {
+    return assets[Math.round(clamp(position, 0, 1) * (assets.length - 1))]!;
+  }
+
+  let cursor = clamp(position, 0, 1) * totalWeight;
+  for (let index = 0; index < assets.length; index += 1) {
+    cursor -= weights[index] ?? 0;
+    if (cursor <= 0) {
+      return assets[index]!;
+    }
+  }
+
+  return assets.at(-1)!;
+}
+
+function findNearestAssignedTarget(
+  assignedTargets: AssignedTarget[],
+  currentCenter: Point,
+  matches: (candidate: Point) => boolean,
+) {
+  let nearest: AssignedTarget | null = null;
+  let nearestDistance = Number.POSITIVE_INFINITY;
+
+  for (const candidate of assignedTargets) {
+    if (!matches(candidate.center)) {
+      continue;
+    }
+
+    const distance = Math.hypot(
+      currentCenter.x - candidate.center.x,
+      currentCenter.y - candidate.center.y,
+    );
+    if (distance < nearestDistance) {
+      nearest = candidate;
+      nearestDistance = distance;
+    }
+  }
+
+  return nearest;
+}
+
+function pickAntiRepeatAsset(
+  target: AssignmentTarget,
+  assets: SourceAsset[],
+  assignedTargets: AssignedTarget[],
+  project: LayerRenderProject,
   rng: ReturnType<typeof mulberry32>,
+) {
+  const baseWeights = getManualSourceWeights(project, assets);
+  const center = getRectCenter(target.cell);
+  const leftNeighbor = findNearestAssignedTarget(
+    assignedTargets,
+    center,
+    (candidate) => candidate.x < center.x - 0.5,
+  );
+  const topNeighbor = findNearestAssignedTarget(
+    assignedTargets,
+    center,
+    (candidate) => candidate.y < center.y - 0.5,
+  );
+  const lastAssigned = assignedTargets.at(-1) ?? null;
+  const adjustedWeights = assets.map((asset, assetIndex) => {
+    let weight = baseWeights[assetIndex] ?? 0;
+    if (weight <= 0) {
+      return 0;
+    }
+
+    if (lastAssigned?.asset.id === asset.id) {
+      weight *= 0.05;
+    }
+    if (leftNeighbor?.asset.id === asset.id) {
+      weight *= 0.08;
+    }
+    if (topNeighbor?.asset.id === asset.id) {
+      weight *= 0.08;
+    }
+
+    return weight;
+  });
+
+  return pickRandomWeightedAsset(assets, adjustedWeights, rng);
+}
+
+function buildAssignedAssets(
+  strategy: SourceAssignmentStrategy,
+  targets: AssignmentTarget[],
+  assets: SourceAsset[],
   project: LayerRenderProject,
 ) {
   if (assets.length === 0) {
     throw new Error("No source assets available.");
   }
 
-  if (strategy === "sequential") {
-    return pickOrderedWeightedAsset(assets, index, project);
+  if (strategy === "round-robin") {
+    return targets.map((target) => pickOrderedWeightedAsset(assets, target.index, project));
   }
 
-  if (strategy === "luminance") {
+  if (strategy === "tone-map") {
     const ordered = [...assets].sort((a, b) =>
       project.sourceMapping.luminanceSort === "ascending"
         ? a.luminance - b.luminance
         : b.luminance - a.luminance,
     );
-    return pickOrderedWeightedAsset(ordered, index, project);
+    return targets.map((target) =>
+      pickMappedAssetByPosition(ordered, target.tonePosition, project),
+    );
   }
 
-  if (strategy === "palette") {
-    const baseIndexById = new Map(assets.map((asset, assetIndex) => [asset.id, assetIndex]));
-    const paletteScoreById = new Map(
-      assets.map((asset) => [asset.id, getPaletteVariationScore(asset)]),
+  if (strategy === "contrast") {
+    const ordered = getContrastOrderedAssets(
+      assets,
+      project.sourceMapping.paletteEmphasis,
     );
-    const paletteRanked = [...assets].sort((a, b) => {
-      const scoreDifference =
-        (paletteScoreById.get(b.id) ?? 0) - (paletteScoreById.get(a.id) ?? 0);
-      if (Math.abs(scoreDifference) > Number.EPSILON) {
-        return scoreDifference;
-      }
+    return targets.map((target) => pickOrderedWeightedAsset(ordered, target.index, project));
+  }
 
-      return (baseIndexById.get(a.id) ?? 0) - (baseIndexById.get(b.id) ?? 0);
+  if (strategy === "anti-repeat") {
+    const assignedTargets: AssignedTarget[] = [];
+    return targets.map((target) => {
+      const rng = mulberry32(hashToSeed(target.rngSeed));
+      const asset = pickAntiRepeatAsset(target, assets, assignedTargets, project, rng);
+      assignedTargets.push({
+        ...target,
+        asset,
+        center: getRectCenter(target.cell),
+      });
+      return asset;
     });
-    const paletteRankById = new Map(
-      paletteRanked.map((asset, assetIndex) => [asset.id, assetIndex]),
-    );
-    const emphasis = project.sourceMapping.paletteEmphasis;
-    const ordered = [...assets].sort((a, b) => {
-      const baseRankA = normalizeRank(baseIndexById.get(a.id) ?? 0, assets.length);
-      const baseRankB = normalizeRank(baseIndexById.get(b.id) ?? 0, assets.length);
-      const paletteRankA = normalizeRank(paletteRankById.get(a.id) ?? 0, assets.length);
-      const paletteRankB = normalizeRank(paletteRankById.get(b.id) ?? 0, assets.length);
-      const blendedRankDifference =
-        lerp(baseRankA, paletteRankA, emphasis) -
-        lerp(baseRankB, paletteRankB, emphasis);
-
-      if (Math.abs(blendedRankDifference) > Number.EPSILON) {
-        return blendedRankDifference;
-      }
-
-      return (baseIndexById.get(a.id) ?? 0) - (baseIndexById.get(b.id) ?? 0);
-    });
-    return pickOrderedWeightedAsset(ordered, index, project);
   }
 
-  if (strategy === "symmetry") {
-    return pickOrderedWeightedAsset(
-      assets.slice(0, Math.max(1, Math.ceil(assets.length / 2))),
-      index,
-      project,
-    );
-  }
-
-  if (strategy === "weighted") {
-    const weights = assets.map((asset, assetIndex) =>
-      clamp(
-        asset.palette.length * project.sourceMapping.sourceBias + (assetIndex + 1),
-        1,
-        100,
-      ) * getSourceWeight(project.sourceMapping.sourceWeights, asset.id),
-    );
-    return pickRandomWeightedAsset(assets, weights, rng);
-  }
-
-  return pickRandomWeightedAsset(assets, getManualSourceWeights(project, assets), rng);
+  return targets.map((target) =>
+    pickRandomWeightedAsset(
+      assets,
+      getManualSourceWeights(project, assets),
+      mulberry32(hashToSeed(target.rngSeed)),
+    ),
+  );
 }
 
 function reflectSlices(slices: RenderSlice[], project: LayerRenderProject) {
@@ -3058,43 +3407,38 @@ function createRenderSliceFromCell(
   };
 }
 
+function buildLayoutAssignmentTargets(
+  project: LayerRenderProject,
+  layoutCells: LayoutCell[],
+) {
+  return layoutCells.map<AssignmentTarget>((cell, index) => ({
+    cell,
+    index,
+    rngSeed: `${project.activeSeed}:layout:${index}`,
+    tonePosition: getCellTonePosition(project, cell),
+  }));
+}
+
 function buildDrawSlices(project: LayerRenderProject, assets: SourceAsset[]) {
   const densityUi = clamp(project.layout.density / DENSITY_UI_SCALE, 0.05, 1);
   const spacingPx = project.draw.brushSize * lerp(1.4, 0.18, densityUi);
-  const slices: RenderSlice[] = [];
+  const targets: AssignmentTarget[] = [];
   let stampIndex = 0;
 
   for (const stroke of project.draw.strokes) {
     const points = stroke.points;
     if (points.length === 0) continue;
 
+    const strokeCells: LayoutCell[] = [
+      {
+        x: points[0]!.x - project.draw.brushSize / 2,
+        y: points[0]!.y - project.draw.brushSize / 2,
+        width: project.draw.brushSize,
+        height: project.draw.brushSize,
+        shape: assignShape(stampIndex, project.layout.shapeMode, project.layout.family),
+      },
+    ];
     let previousPoint = points[0]!;
-    const seed = `${project.activeSeed}:${stroke.id}:0`;
-    const startRng = mulberry32(hashToSeed(seed));
-    const startAsset = assetByStrategy(
-      project.sourceMapping.strategy,
-      assets,
-      stampIndex,
-      startRng,
-      project,
-    );
-
-    slices.push(
-      createRenderSliceFromCell(
-        {
-          x: previousPoint.x - project.draw.brushSize / 2,
-          y: previousPoint.y - project.draw.brushSize / 2,
-          width: project.draw.brushSize,
-          height: project.draw.brushSize,
-          shape: assignShape(stampIndex, project.layout.shapeMode, project.layout.family),
-        },
-        stampIndex,
-        project,
-        startAsset,
-        startRng,
-      ),
-    );
-    stampIndex += 1;
 
     for (let pointIndex = 1; pointIndex < points.length; pointIndex += 1) {
       const nextPoint = points[pointIndex]!;
@@ -3105,40 +3449,48 @@ function buildDrawSlices(project: LayerRenderProject, assets: SourceAsset[]) {
         const t = step / stepCount;
         const x = lerp(previousPoint.x, nextPoint.x, t);
         const y = lerp(previousPoint.y, nextPoint.y, t);
-        const rng = mulberry32(hashToSeed(`${project.activeSeed}:${stroke.id}:${stampIndex}`));
-        const asset = assetByStrategy(
-          project.sourceMapping.strategy,
-          assets,
-          stampIndex,
-          rng,
-          project,
-        );
-
-        slices.push(
-          createRenderSliceFromCell(
-            {
-              x: x - project.draw.brushSize / 2,
-              y: y - project.draw.brushSize / 2,
-              width: project.draw.brushSize,
-              height: project.draw.brushSize,
-              shape: assignShape(
-                stampIndex,
-                project.layout.shapeMode,
-                project.layout.family,
-              ),
-            },
-            stampIndex,
-            project,
-            asset,
-            rng,
+        strokeCells.push({
+          x: x - project.draw.brushSize / 2,
+          y: y - project.draw.brushSize / 2,
+          width: project.draw.brushSize,
+          height: project.draw.brushSize,
+          shape: assignShape(
+            stampIndex + strokeCells.length - 1,
+            project.layout.shapeMode,
+            project.layout.family,
           ),
-        );
-        stampIndex += 1;
+        });
       }
 
       previousPoint = nextPoint;
     }
+
+    for (let localIndex = 0; localIndex < strokeCells.length; localIndex += 1) {
+      targets.push({
+        cell: strokeCells[localIndex]!,
+        index: stampIndex,
+        rngSeed: `${project.activeSeed}:${stroke.id}:${localIndex}`,
+        tonePosition: normalizeRank(localIndex, strokeCells.length),
+      });
+      stampIndex += 1;
+    }
   }
+
+  const assignedAssets = buildAssignedAssets(
+    project.sourceMapping.strategy,
+    targets,
+    assets,
+    project,
+  );
+  const slices = targets.map((target, index) =>
+    createRenderSliceFromCell(
+      target.cell,
+      target.index,
+      project,
+      assignedAssets[index]!,
+      mulberry32(hashToSeed(target.rngSeed)),
+    ),
+  );
 
   return assignDistributedCrops(slices.sort((a, b) => a.depth - b.depth), project, assets);
 }
@@ -3158,14 +3510,20 @@ export function buildRenderSlices(
   }
 
   const layoutCells = layoutRegistry[project.layout.family]({ project, assets });
-  const rng = mulberry32(project.activeSeed);
-  const slices = layoutCells.map<RenderSlice>((cell, index) =>
+  const targets = buildLayoutAssignmentTargets(project, layoutCells);
+  const assignedAssets = buildAssignedAssets(
+    project.sourceMapping.strategy,
+    targets,
+    assets,
+    project,
+  );
+  const slices = targets.map<RenderSlice>((target, index) =>
     createRenderSliceFromCell(
-      cell,
-      index,
+      target.cell,
+      target.index,
       project,
-      assetByStrategy(project.sourceMapping.strategy, assets, index, rng, project),
-      rng,
+      assignedAssets[index]!,
+      mulberry32(hashToSeed(target.rngSeed)),
     ),
   );
 

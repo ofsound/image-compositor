@@ -48,11 +48,10 @@ export type GradientDirection =
   | "diagonal-up";
 export type SourceAssignmentStrategy =
   | "random"
-  | "weighted"
-  | "sequential"
-  | "luminance"
-  | "palette"
-  | "symmetry";
+  | "round-robin"
+  | "tone-map"
+  | "contrast"
+  | "anti-repeat";
 export type ExportFormat = "image/png" | "image/jpeg" | "image/png-transparent";
 export type BlendMode =
   | "source-over"
@@ -194,6 +193,7 @@ export interface LayoutSettings {
   rectCornerRadius: number;
   density: number;
   stripAngle: number;
+  gridAngle: number;
   columns: number;
   rows: number;
   gutter: number;
@@ -268,7 +268,6 @@ export interface LayoutSettings {
 
 export interface SourceMappingSettings {
   strategy: SourceAssignmentStrategy;
-  sourceBias: number;
   sourceWeights: Record<string, number>;
   preserveAspect: boolean;
   cropDistribution: CropDistribution;

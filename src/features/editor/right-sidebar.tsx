@@ -69,8 +69,8 @@ interface RightSidebarProps {
   isFractalFamily: boolean;
   isSymmetryActive: boolean;
   isRadialSymmetry: boolean;
-  isWeightedAssignment: boolean;
-  isPaletteAssignment: boolean;
+  isToneMapAssignment: boolean;
+  isContrastAssignment: boolean;
   isKaleidoscopeActive: boolean;
   showGeometryControls: boolean;
   geometryOptions: GeometryShape[];
@@ -98,8 +98,8 @@ export function RightSidebar({
   isFractalFamily,
   isSymmetryActive,
   isRadialSymmetry,
-  isWeightedAssignment,
-  isPaletteAssignment,
+  isToneMapAssignment,
+  isContrastAssignment,
   isKaleidoscopeActive,
   showGeometryControls,
   geometryOptions,
@@ -393,6 +393,23 @@ export function RightSidebar({
                             layout: {
                               ...project.layout,
                               gutterVertical: value,
+                            },
+                          }))
+                        }
+                      />
+                      <SliderField
+                        label="Grid Angle"
+                        min={0}
+                        max={180}
+                        step={1}
+                        value={activeProjectView.layout.gridAngle}
+                        formatter={(value) => `${Math.round(value)}°`}
+                        onChange={(value) =>
+                          patchProject((project) => ({
+                            ...project,
+                            layout: {
+                              ...project.layout,
+                              gridAngle: value,
                             },
                           }))
                         }
@@ -1723,29 +1740,44 @@ export function RightSidebar({
                         </SelectContent>
                       </Select>
                     </ControlBlock>
-                    {isWeightedAssignment ? (
-                      <SliderField
+                    {isToneMapAssignment ? (
+                      <ControlBlock
+                        label="Tone Direction"
                         className="sm:col-span-2"
-                        label="Source Bias"
-                        min={0}
-                        max={1}
-                        step={0.01}
-                        value={activeProjectView.sourceMapping.sourceBias}
-                        onChange={(value) =>
-                          patchProject((project) => ({
-                            ...project,
-                            sourceMapping: {
-                              ...project.sourceMapping,
-                              sourceBias: value,
-                            },
-                          }))
-                        }
-                      />
+                      >
+                        <Select
+                          value={activeProjectView.sourceMapping.luminanceSort}
+                          onValueChange={(value) => {
+                            if (
+                              value !== "ascending" &&
+                              value !== "descending"
+                            ) {
+                              return;
+                            }
+
+                            patchProject((project) => ({
+                              ...project,
+                              sourceMapping: {
+                                ...project.sourceMapping,
+                                luminanceSort: value,
+                              },
+                            }));
+                          }}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="ascending">Dark to Light</SelectItem>
+                            <SelectItem value="descending">Light to Dark</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </ControlBlock>
                     ) : null}
-                    {isPaletteAssignment ? (
+                    {isContrastAssignment ? (
                       <SliderField
                         className="sm:col-span-2"
-                        label="Palette Emphasis"
+                        label="Contrast Strength"
                         min={0}
                         max={1}
                         step={0.01}
@@ -2359,23 +2391,6 @@ export function RightSidebar({
                           finish: {
                             ...project.finish,
                             noiseMonochrome: value,
-                          },
-                        }))
-                      }
-                    />
-                    <SliderField
-                      label="Grayscale"
-                      min={0}
-                      max={1}
-                      step={0.01}
-                      value={activeProjectView.finish.grayscale}
-                      formatter={formatPercentValue}
-                      onChange={(value) =>
-                        patchProject((project) => ({
-                          ...project,
-                          finish: {
-                            ...project.finish,
-                            grayscale: value,
                           },
                         }))
                       }

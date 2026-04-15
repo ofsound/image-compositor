@@ -36,6 +36,7 @@ describe("createProjectDocument", () => {
     expect(project.sourceIds).toEqual([]);
     expect(project.sourceMapping.cropDistribution).toBe("distributed");
     expect(project.sourceMapping.sourceWeights).toEqual({});
+    expect(project.layout.gridAngle).toBe(0);
     expect(project.layout.blockDepth).toBe(3);
     expect(project.layout.blockSplitRandomness).toBe(0.5);
     expect(project.layout.blockMinSize).toBe(140);
@@ -124,7 +125,6 @@ describe("createProjectDocument", () => {
       ...project,
       sourceMapping: {
         strategy: project.sourceMapping.strategy,
-        sourceBias: project.sourceMapping.sourceBias,
         preserveAspect: project.sourceMapping.preserveAspect,
         cropZoom: project.sourceMapping.cropZoom,
         luminanceSort: project.sourceMapping.luminanceSort,
@@ -133,6 +133,30 @@ describe("createProjectDocument", () => {
     } as unknown as ProjectDocument;
 
     expect(normalizeProjectView(legacyProject).sourceMapping.cropDistribution).toBe("center");
+  });
+
+  it("maps legacy assignment strategies to the consolidated set", () => {
+    const project = createProjectView("Legacy Strategies");
+    const legacyStrategies = {
+      weighted: "random",
+      sequential: "round-robin",
+      luminance: "tone-map",
+      palette: "contrast",
+      symmetry: "anti-repeat",
+    } as const;
+
+    for (const [legacyStrategy, nextStrategy] of Object.entries(legacyStrategies)) {
+      const legacyProject = {
+        ...project,
+        sourceMapping: {
+          ...project.sourceMapping,
+          strategy: legacyStrategy,
+          sourceBias: 0.5,
+        },
+      } as unknown as ProjectDocument;
+
+      expect(normalizeProjectView(legacyProject).sourceMapping.strategy).toBe(nextStrategy);
+    }
   });
 
   it("normalizes draw settings and filters invalid stroke points", () => {
@@ -565,6 +589,41 @@ describe("createProjectDocument", () => {
     expect(normalizeProjectView(legacyProject).layout.stripAngle).toBe(0);
   });
 
+  it("normalizes legacy projects without grid angle to zero degrees", () => {
+    const project = createProjectView("Legacy Grid Angle");
+    const legacyProject = {
+      ...project,
+      layout: {
+        family: project.layout.family,
+        shapeMode: project.layout.shapeMode,
+        rectCornerRadius: project.layout.rectCornerRadius,
+        density: project.layout.density,
+        stripAngle: project.layout.stripAngle,
+        columns: project.layout.columns,
+        rows: project.layout.rows,
+        gutter: project.layout.gutter,
+        gutterHorizontal: project.layout.gutterHorizontal,
+        gutterVertical: project.layout.gutterVertical,
+        blockDepth: project.layout.blockDepth,
+        blockSplitRandomness: project.layout.blockSplitRandomness,
+        blockMinSize: project.layout.blockMinSize,
+        blockSplitBias: project.layout.blockSplitBias,
+        stripOrientation: project.layout.stripOrientation,
+        radialSegments: project.layout.radialSegments,
+        radialRings: project.layout.radialRings,
+        symmetryMode: project.layout.symmetryMode,
+        symmetryCopies: project.layout.symmetryCopies,
+        hidePercentage: project.layout.hidePercentage,
+        letterbox: project.layout.letterbox,
+        wedgeAngle: project.layout.wedgeAngle,
+        wedgeJitter: project.layout.wedgeJitter,
+        randomness: project.layout.randomness,
+      },
+    } as unknown as ProjectDocument;
+
+    expect(normalizeProjectView(legacyProject).layout.gridAngle).toBe(0);
+  });
+
   it("normalizes legacy projects without wedge controls to defaults", () => {
     const project = createProjectView("Legacy Wedge");
     const legacyProject = {
@@ -706,7 +765,6 @@ describe("createProjectDocument", () => {
         layout: structuredClone(project.layout),
         sourceMapping: {
           strategy: project.sourceMapping.strategy,
-          sourceBias: project.sourceMapping.sourceBias,
           preserveAspect: project.sourceMapping.preserveAspect,
           cropZoom: project.sourceMapping.cropZoom,
           luminanceSort: project.sourceMapping.luminanceSort,
@@ -965,6 +1023,56 @@ describe("createProjectDocument", () => {
     } as unknown as ProjectVersion;
 
     expect(getSnapshotLayer(normalizeProjectVersion(legacyVersion).snapshot).layout.stripAngle).toBe(0);
+  });
+
+  it("normalizes legacy version snapshots without grid angle to zero degrees", () => {
+    const project = createProjectView("Legacy Grid Angle Version");
+    const legacyVersion = {
+      id: "version_legacy_grid_angle",
+      projectId: project.id,
+      label: "Legacy Grid Angle Snapshot",
+      createdAt: new Date().toISOString(),
+      thumbnailPath: null,
+      snapshot: {
+        sourceIds: project.sourceIds,
+        canvas: structuredClone(project.canvas),
+        layout: {
+          family: project.layout.family,
+          shapeMode: project.layout.shapeMode,
+          rectCornerRadius: project.layout.rectCornerRadius,
+          density: project.layout.density,
+          stripAngle: project.layout.stripAngle,
+          columns: project.layout.columns,
+          rows: project.layout.rows,
+          gutter: project.layout.gutter,
+          gutterHorizontal: project.layout.gutterHorizontal,
+          gutterVertical: project.layout.gutterVertical,
+          blockDepth: project.layout.blockDepth,
+          blockSplitRandomness: project.layout.blockSplitRandomness,
+          blockMinSize: project.layout.blockMinSize,
+          blockSplitBias: project.layout.blockSplitBias,
+          stripOrientation: project.layout.stripOrientation,
+          radialSegments: project.layout.radialSegments,
+          radialRings: project.layout.radialRings,
+          symmetryMode: project.layout.symmetryMode,
+          symmetryCopies: project.layout.symmetryCopies,
+          hidePercentage: project.layout.hidePercentage,
+          letterbox: project.layout.letterbox,
+          wedgeAngle: project.layout.wedgeAngle,
+          wedgeJitter: project.layout.wedgeJitter,
+          randomness: project.layout.randomness,
+        },
+        sourceMapping: structuredClone(project.sourceMapping),
+        effects: structuredClone(project.effects),
+        compositing: structuredClone(project.compositing),
+        export: structuredClone(project.export),
+        activeSeed: project.activeSeed,
+        presets: structuredClone(project.presets),
+        passes: structuredClone(project.passes),
+      },
+    } as unknown as ProjectVersion;
+
+    expect(getSnapshotLayer(normalizeProjectVersion(legacyVersion).snapshot).layout.gridAngle).toBe(0);
   });
 
   it("normalizes legacy version snapshots without block controls to defaults", () => {

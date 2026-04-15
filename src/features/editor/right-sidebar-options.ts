@@ -55,11 +55,10 @@ export const SYMMETRY_MODE_OPTIONS: ProjectEditorView["layout"]["symmetryMode"][
 
 export const SOURCE_ASSIGNMENT_OPTIONS: SourceAssignmentStrategy[] = [
   "random",
-  "weighted",
-  "sequential",
-  "luminance",
-  "palette",
-  "symmetry",
+  "round-robin",
+  "tone-map",
+  "contrast",
+  "anti-repeat",
 ];
 
 export const CROP_DISTRIBUTION_OPTIONS: CropDistribution[] = [

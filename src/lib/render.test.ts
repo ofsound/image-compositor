@@ -1637,7 +1637,7 @@ describe("renderProjectToCanvas", () => {
     project.effects.distortion = 0;
     project.effects.sharpen = 0;
     project.effects.kaleidoscopeSegments = 1;
-    project.sourceMapping.strategy = "sequential";
+    project.sourceMapping.strategy = "round-robin";
     project.sourceMapping.preserveAspect = false;
     project.sourceMapping.cropDistribution = "distributed";
 
@@ -1684,7 +1684,7 @@ describe("renderProjectToCanvas", () => {
     project.effects.distortion = 0;
     project.effects.sharpen = 0;
     project.effects.kaleidoscopeSegments = 1;
-    project.sourceMapping.strategy = "sequential";
+    project.sourceMapping.strategy = "round-robin";
     project.sourceMapping.preserveAspect = false;
     project.sourceMapping.cropDistribution = "distributed";
 
@@ -1732,7 +1732,7 @@ describe("renderProjectToCanvas", () => {
     project.effects.distortion = 0;
     project.effects.sharpen = 0;
     project.effects.kaleidoscopeSegments = 1;
-    project.sourceMapping.strategy = "sequential";
+    project.sourceMapping.strategy = "round-robin";
     project.sourceMapping.preserveAspect = false;
     project.sourceMapping.cropDistribution = "distributed";
 

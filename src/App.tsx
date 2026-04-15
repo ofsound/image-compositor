@@ -401,10 +401,10 @@ function App() {
     activeProjectView.layout.shapeMode === "mixed";
   const isSymmetryActive = activeProjectView.layout.symmetryMode !== "none";
   const isRadialSymmetry = activeProjectView.layout.symmetryMode === "radial";
-  const isWeightedAssignment =
-    activeProjectView.sourceMapping.strategy === "weighted";
-  const isPaletteAssignment =
-    activeProjectView.sourceMapping.strategy === "palette";
+  const isToneMapAssignment =
+    activeProjectView.sourceMapping.strategy === "tone-map";
+  const isContrastAssignment =
+    activeProjectView.sourceMapping.strategy === "contrast";
   const isKaleidoscopeActive =
     activeProjectView.effects.kaleidoscopeSegments > 1;
   const geometryOptions = getGeometryOptions(activeProjectView.layout.family);
@@ -749,8 +749,8 @@ function App() {
               isFractalFamily={isFractalFamily}
               isSymmetryActive={isSymmetryActive}
               isRadialSymmetry={isRadialSymmetry}
-              isWeightedAssignment={isWeightedAssignment}
-              isPaletteAssignment={isPaletteAssignment}
+              isToneMapAssignment={isToneMapAssignment}
+              isContrastAssignment={isContrastAssignment}
               isKaleidoscopeActive={isKaleidoscopeActive}
               showGeometryControls={showGeometryControls}
               geometryOptions={geometryOptions}

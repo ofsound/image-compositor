@@ -104,11 +104,10 @@ function createStoreState(overrides?: {
   sourceImportProgress?: { processed: number; total: number } | null;
   strategy?:
     | "random"
-    | "weighted"
-    | "sequential"
-    | "luminance"
-    | "palette"
-    | "symmetry";
+    | "round-robin"
+    | "tone-map"
+    | "contrast"
+    | "anti-repeat";
   fractalVariant?:
     | "sierpinski-triangle"
     | "sierpinski-carpet"
@@ -603,6 +602,7 @@ describe("App conditional sliders", () => {
     });
 
     expectSliderEnabled("Corner Radius");
+    expectSliderEnabled("Grid Angle");
     expectSliderHidden("Strips Angle");
     expectSliderHidden("Wedge Angle");
     expectSliderHidden("Wedge Jitter");
@@ -629,8 +629,8 @@ describe("App conditional sliders", () => {
     expectSliderHidden("Clone Drift");
     expectSliderEnabled("Hide Percentage");
     expectSliderEnabled("Letterbox");
-    expectSliderHidden("Source Bias");
-    expectSliderHidden("Palette Emphasis");
+    expect(screen.queryByText("Tone Direction")).not.toBeInTheDocument();
+    expectSliderHidden("Contrast Strength");
     expectSliderHidden("Distribution");
     expect(screen.queryByLabelText("Structure")).not.toBeInTheDocument();
     expectSliderHidden("Depth");
@@ -653,6 +653,7 @@ describe("App conditional sliders", () => {
     });
 
     expectSliderEnabled("Corner Radius");
+    expectSliderHidden("Grid Angle");
     expectSliderEnabled("Strips Angle");
     expectSliderHidden("Wedge Angle");
     expectSliderHidden("Wedge Jitter");
@@ -728,15 +729,16 @@ describe("App conditional sliders", () => {
     expect(nextProject.layout.organicVariation).toBe(1);
   });
 
-  it("hides unrelated layout sliders for blocks layouts and shows weighted and radial controls when active", () => {
+  it("hides unrelated layout sliders for blocks layouts and shows tone-map and radial controls when active", () => {
     renderApp({
       family: "blocks",
       shapeMode: "rect",
       symmetryMode: "radial",
-      strategy: "weighted",
+      strategy: "tone-map",
     });
 
     expectSliderEnabled("Corner Radius");
+    expectSliderHidden("Grid Angle");
     expectSliderHidden("Strips Angle");
     expectSliderHidden("Wedge Angle");
     expectSliderHidden("Wedge Jitter");
@@ -763,21 +765,22 @@ describe("App conditional sliders", () => {
     expectSliderEnabled("Clone Drift");
     expectSliderEnabled("Hide Percentage");
     expectSliderEnabled("Letterbox");
-    expectSliderEnabled("Source Bias");
-    expectSliderHidden("Palette Emphasis");
+    expect(screen.getByText("Tone Direction")).toBeInTheDocument();
+    expectSliderHidden("Contrast Strength");
     expectSliderHidden("Distribution");
     expect(screen.queryByLabelText("Structure")).not.toBeInTheDocument();
   });
 
-  it("enables palette emphasis only for palette assignment", () => {
+  it("enables contrast strength only for contrast assignment", () => {
     renderApp({
       family: "radial",
       shapeMode: "rect",
       symmetryMode: "quad",
-      strategy: "palette",
+      strategy: "contrast",
     });
 
     expectSliderEnabled("Corner Radius");
+    expectSliderHidden("Grid Angle");
     expectSliderHidden("Strips Angle");
     expectSliderHidden("Wedge Angle");
     expectSliderHidden("Wedge Jitter");
@@ -800,10 +803,30 @@ describe("App conditional sliders", () => {
     expectSliderEnabled("Clone Drift");
     expectSliderEnabled("Hide Percentage");
     expectSliderEnabled("Letterbox");
-    expectSliderHidden("Source Bias");
-    expectSliderEnabled("Palette Emphasis");
+    expect(screen.queryByText("Tone Direction")).not.toBeInTheDocument();
+    expectSliderEnabled("Contrast Strength");
     expectSliderHidden("Distribution");
     expect(screen.queryByLabelText("Structure")).not.toBeInTheDocument();
+  });
+
+  it("lists only the consolidated assignment modes", async () => {
+    const user = userEvent.setup();
+    renderApp();
+
+    const assignmentTrigger = screen.getByText("anti-repeat").closest("button");
+    expect(assignmentTrigger).not.toBeNull();
+    await user.click(assignmentTrigger!);
+
+    expect(screen.getByText("random")).toBeInTheDocument();
+    expect(screen.getByText("round-robin")).toBeInTheDocument();
+    expect(screen.getByText("tone-map")).toBeInTheDocument();
+    expect(screen.getByText("contrast")).toBeInTheDocument();
+    expect(screen.getAllByText("anti-repeat").length).toBeGreaterThan(0);
+    expect(screen.queryByText("weighted")).not.toBeInTheDocument();
+    expect(screen.queryByText("sequential")).not.toBeInTheDocument();
+    expect(screen.queryByText("luminance")).not.toBeInTheDocument();
+    expect(screen.queryByText("palette")).not.toBeInTheDocument();
+    expect(screen.queryByText("symmetry")).not.toBeInTheDocument();
   });
 
   it("shows the corner radius slider only for rect shape mode", () => {
@@ -898,6 +921,7 @@ describe("App conditional sliders", () => {
     });
 
     expectSliderHidden("Corner Radius");
+    expectSliderHidden("Grid Angle");
     expectSliderHidden("Strips Angle");
     expectSliderHidden("Columns");
     expectSliderHidden("Rows");

@@ -102,7 +102,6 @@ const bundle: ImportedProjectBundle = {
     },
     sourceMapping: {
       strategy: "random",
-      sourceBias: 0.5,
       sourceWeights: {
         asset_original: 2.25,
       },
@@ -232,7 +231,6 @@ const bundle: ImportedProjectBundle = {
         },
         sourceMapping: {
           strategy: "random",
-          sourceBias: 0.5,
           sourceWeights: {
             asset_original: 2.25,
           },
@@ -321,6 +319,25 @@ const bundle: ImportedProjectBundle = {
     "versions/version_original.webp": new Blob(["thumb"]),
   },
 };
+
+describe("serializeProjectDocument", () => {
+  it("drops legacy source bias and remaps legacy assignment strategies", () => {
+    const legacyProject = normalizeProjectDocument({
+      ...serializeProjectDocument(bundle.projectDoc),
+      sourceMapping: {
+        ...getProjectView(bundle.projectDoc).sourceMapping,
+        strategy: "weighted",
+        sourceBias: 0.5,
+      },
+    } as Parameters<typeof normalizeProjectDocument>[0]);
+
+    const serialized = serializeProjectDocument(legacyProject);
+
+    expect(getProjectView(serialized).sourceMapping.strategy).toBe("random");
+    expect(getProjectView(serialized).sourceMapping).not.toHaveProperty("sourceBias");
+    expect(serialized.layers[0]?.sourceMapping).not.toHaveProperty("sourceBias");
+  });
+});
 
 describe("createImportCopy", () => {
   it("remaps project, asset, version, and blob identifiers", () => {
@@ -505,7 +522,6 @@ describe("loadProjectBundle", () => {
         ...bundle.projectDoc,
         sourceMapping: {
           strategy: "random",
-          sourceBias: 0.5,
           preserveAspect: true,
           cropZoom: 1,
           luminanceSort: "ascending",
@@ -522,7 +538,6 @@ describe("loadProjectBundle", () => {
             ...bundle.versionDocs[0]?.snapshot,
             sourceMapping: {
               strategy: "random",
-              sourceBias: 0.5,
               preserveAspect: true,
               cropZoom: 1,
               luminanceSort: "ascending",

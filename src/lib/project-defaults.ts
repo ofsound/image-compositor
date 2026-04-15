@@ -14,6 +14,7 @@ import type {
   ProjectSnapshot,
   ProjectVersion,
   RenderPass,
+  SourceAssignmentStrategy,
   SourceMappingSettings,
 } from "@/types/project";
 import { makeId } from "@/lib/id";
@@ -33,7 +34,10 @@ type LegacyProjectLike = {
   canvas?: Partial<CanvasSettings> & { inset?: number };
   sourceIds?: string[];
   layout?: Partial<LayoutSettings>;
-  sourceMapping?: Partial<SourceMappingSettings>;
+  sourceMapping?: Partial<SourceMappingSettings> & {
+    strategy?: SourceAssignmentStrategy | "weighted" | "sequential" | "luminance" | "palette" | "symmetry";
+    sourceBias?: number;
+  };
   effects?: Partial<EffectSettings>;
   compositing?: LegacyCompositingSettings;
   finish?: Partial<FinishSettings>;
@@ -120,6 +124,7 @@ export const DEFAULT_LAYOUT: LayoutSettings = {
   rectCornerRadius: 0,
   density: 0.68,
   stripAngle: 0,
+  gridAngle: 0,
   columns: 8,
   rows: 8,
   gutter: 14,
@@ -196,8 +201,7 @@ function normalizeStripAngle(layout: Partial<LayoutSettings> | undefined) {
 }
 
 export const DEFAULT_SOURCE_MAPPING: SourceMappingSettings = {
-  strategy: "palette",
-  sourceBias: 0.62,
+  strategy: "anti-repeat",
   sourceWeights: {},
   preserveAspect: true,
   cropDistribution: "distributed",
@@ -205,6 +209,27 @@ export const DEFAULT_SOURCE_MAPPING: SourceMappingSettings = {
   luminanceSort: "descending",
   paletteEmphasis: 0.72,
 };
+
+function normalizeSourceAssignmentStrategy(
+  value: SourceAssignmentStrategy | "weighted" | "sequential" | "luminance" | "palette" | "symmetry" | undefined,
+): SourceAssignmentStrategy {
+  if (value === "weighted") return "random";
+  if (value === "sequential") return "round-robin";
+  if (value === "luminance") return "tone-map";
+  if (value === "palette") return "contrast";
+  if (value === "symmetry") return "anti-repeat";
+  if (
+    value === "random" ||
+    value === "round-robin" ||
+    value === "tone-map" ||
+    value === "contrast" ||
+    value === "anti-repeat"
+  ) {
+    return value;
+  }
+
+  return DEFAULT_SOURCE_MAPPING.strategy;
+}
 
 export const DEFAULT_EFFECTS: EffectSettings = {
   blur: 0,
@@ -342,6 +367,7 @@ export function normalizeLayoutSettings(
       layout?.rectCornerRadius ?? DEFAULT_LAYOUT.rectCornerRadius,
     density: layout?.density ?? DEFAULT_LAYOUT.density,
     stripAngle: normalizeStripAngle(layout),
+    gridAngle: layout?.gridAngle ?? DEFAULT_LAYOUT.gridAngle,
     columns: layout?.columns ?? DEFAULT_LAYOUT.columns,
     rows: layout?.rows ?? DEFAULT_LAYOUT.rows,
     gutter: layout?.gutter ?? DEFAULT_LAYOUT.gutter,
@@ -512,12 +538,16 @@ export function normalizeLayoutSettings(
 }
 
 export function normalizeSourceMapping(
-  sourceMapping: Partial<SourceMappingSettings> | undefined,
+  sourceMapping:
+    | (Partial<SourceMappingSettings> & {
+        strategy?: SourceAssignmentStrategy | "weighted" | "sequential" | "luminance" | "palette" | "symmetry";
+        sourceBias?: number;
+      })
+    | undefined,
   fallbackCropDistribution: CropDistribution = "center",
 ): SourceMappingSettings {
   return {
-    strategy: sourceMapping?.strategy ?? DEFAULT_SOURCE_MAPPING.strategy,
-    sourceBias: sourceMapping?.sourceBias ?? DEFAULT_SOURCE_MAPPING.sourceBias,
+    strategy: normalizeSourceAssignmentStrategy(sourceMapping?.strategy),
     sourceWeights: normalizeSourceWeights(sourceMapping?.sourceWeights),
     preserveAspect:
       sourceMapping?.preserveAspect ?? DEFAULT_SOURCE_MAPPING.preserveAspect,

@@ -33,7 +33,7 @@ interface GeneratorContext {
 }
 
 type ConcreteGeometryShape = Exclude<GeometryShape, "mixed">;
-type MixedCycleShape = Exclude<GeometryShape, "mixed" | "interlock" | "blob">;
+type MixedCycleShape = Exclude<GeometryShape, "mixed" | "interlock" | "blob" | "text">;
 
 interface LayoutCell extends RenderRect {
   shape: ConcreteGeometryShape;
@@ -3347,6 +3347,54 @@ function createRenderSliceFromCell(
           1 + overlapSize / Math.max(cell.width, cell.height, 1),
         )
       : null;
+  if (cell.shape === "text") {
+    const rotationNoise = (rng.next() - 0.5) * project.effects.rotationJitter;
+    const scaleNoise = 1 + (rng.next() - 0.5) * project.effects.scaleJitter;
+    const displacement = project.effects.displacement * (rng.next() - 0.5);
+    const fogAmount =
+      project.layout.family === "3d" && cell.depthValue !== undefined
+        ? lerp(0, 0.22, (1 - cell.depthValue) ** 1.35)
+        : 0;
+
+    return {
+      id: `slice_${index}`,
+      shape: "text",
+      assetId: asset.id,
+      rect: quadPoints
+        ? getBoundsForPoints(quadPoints)
+        : {
+            x: cell.x,
+            y: cell.y,
+            width: cell.width,
+            height: cell.height,
+          },
+      clipRect: null,
+      clipPathPoints: null,
+      quadPoints,
+      clipRotation: cell.clipRotation ?? 0,
+      imageRect: null,
+      rotation: (cell.rotation ?? 0) + (rotationNoise * Math.PI) / 180,
+      rotationX: cell.rotationX ?? 0,
+      rotationY: cell.rotationY ?? 0,
+      scale: scaleNoise,
+      opacity:
+        project.layout.family === "3d" && cell.depthValue !== undefined
+          ? project.compositing.opacity * lerp(0.72, 1, cell.depthValue)
+          : project.compositing.opacity,
+      blendMode: project.compositing.blendMode,
+      clipInset: project.compositing.feather,
+      displacementOffset: {
+        x: displacement,
+        y: displacement * (rng.next() - 0.5),
+      },
+      distortion: project.effects.distortion * rng.next(),
+      sourceCrop: null,
+      wedgeSweepRadians: null,
+      mirrorAxis: "none",
+      depth: cell.depthValue ?? rng.next(),
+      fogAmount,
+    };
+  }
   const clipRect =
     project.layout.family === "strips" && baseClipRect
       ? expandStripClipRect(baseClipRect, overlapSize)
@@ -3405,6 +3453,22 @@ function createRenderSliceFromCell(
     depth: cell.depthValue ?? rng.next(),
     fogAmount,
   };
+}
+
+function mapTextGeometryCells(
+  layoutCells: LayoutCell[],
+  project: LayerRenderProject,
+) {
+  if (project.layout.shapeMode !== "text") {
+    return layoutCells;
+  }
+
+  return layoutCells.map<LayoutCell>((cell) => ({
+    ...cell,
+    shape: "text",
+    clipRect: undefined,
+    clipPathPoints: undefined,
+  }));
 }
 
 function buildLayoutAssignmentTargets(
@@ -3513,7 +3577,10 @@ export function buildRenderSlices(
     return [];
   }
 
-  const layoutCells = layoutRegistry[project.layout.family]({ project, assets });
+  const layoutCells = mapTextGeometryCells(
+    layoutRegistry[project.layout.family]({ project, assets }),
+    project,
+  );
   const targets = buildLayoutAssignmentTargets(project, layoutCells);
   const assignedAssets = buildAssignedAssets(
     project.sourceMapping.strategy,

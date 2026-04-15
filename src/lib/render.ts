@@ -3,6 +3,7 @@ import type {
   KaleidoscopeMirrorMode,
   LayerRenderProject,
   ProjectDocument,
+  RenderRect,
   RenderSlice,
   SourceAsset,
 } from "@/types/project";
@@ -65,8 +66,11 @@ function getWordsLines(text: string) {
   return lines.some((line) => line.trim().length > 0) ? lines : [];
 }
 
-function getWordsFont(project: LayerRenderProject, fontSize: number) {
-  return `${WORDS_FONT_WEIGHT[project.words.fontFamily]} ${fontSize}px ${WORDS_FONT_STACK[project.words.fontFamily]}`;
+function getWordsFont(
+  fontFamily: LayerRenderProject["words"]["fontFamily"],
+  fontSize: number,
+) {
+  return `${WORDS_FONT_WEIGHT[fontFamily]} ${fontSize}px ${WORDS_FONT_STACK[fontFamily]}`;
 }
 
 function createWordsMeasurementContext() {
@@ -83,9 +87,9 @@ function getWordsContentRect(project: LayerRenderProject) {
 }
 
 function resolveWordsFontSize(
-  project: LayerRenderProject,
+  words: LayerRenderProject["words"],
   lines: string[],
-  rect: ReturnType<typeof getWordsContentRect>,
+  rect: RenderRect,
 ) {
   const measureContext = createWordsMeasurementContext();
   const maxFontSize = Math.max(
@@ -99,7 +103,7 @@ function resolveWordsFontSize(
   );
 
   for (let fontSize = maxFontSize; fontSize >= WORDS_MIN_FONT_SIZE; fontSize -= 2) {
-    measureContext.font = getWordsFont(project, fontSize);
+    measureContext.font = getWordsFont(words.fontFamily, fontSize);
     const widestLine = Math.max(
       ...lines.map((line) => measureContext.measureText(line || " ").width),
     );
@@ -113,25 +117,27 @@ function resolveWordsFontSize(
   return WORDS_MIN_FONT_SIZE;
 }
 
-function createWordsTextCanvas(
-  project: LayerRenderProject,
+function createTextCanvas(
+  words: LayerRenderProject["words"],
   fillStyle: string,
+  canvasRect: RenderRect,
+  contentRect: RenderRect,
 ) {
-  const lines = getWordsLines(project.words.text);
+  const lines = getWordsLines(words.text);
   if (lines.length === 0) {
     return null;
   }
 
-  const rect = getWordsContentRect(project);
-  const fontSize = resolveWordsFontSize(project, lines, rect);
+  const fontSize = resolveWordsFontSize(words, lines, contentRect);
   const lineHeight = fontSize * WORDS_LINE_HEIGHT;
   const totalHeight = lineHeight * lines.length;
-  const centerX = rect.x + rect.width / 2;
-  const startY = rect.y + rect.height / 2 - totalHeight / 2 + lineHeight / 2;
-  const canvas = createRenderCanvas(project.canvas.width, project.canvas.height);
+  const centerX = contentRect.x + contentRect.width / 2;
+  const startY =
+    contentRect.y + contentRect.height / 2 - totalHeight / 2 + lineHeight / 2;
+  const canvas = createRenderCanvas(canvasRect.width, canvasRect.height);
   const context = getRenderContext(canvas);
 
-  context.font = getWordsFont(project, fontSize);
+  context.font = getWordsFont(words.fontFamily, fontSize);
   context.textAlign = "center";
   context.textBaseline = "middle";
   context.fillStyle = fillStyle;
@@ -141,6 +147,23 @@ function createWordsTextCanvas(
   });
 
   return canvas;
+}
+
+function createWordsTextCanvas(
+  project: LayerRenderProject,
+  fillStyle: string,
+) {
+  return createTextCanvas(
+    project.words,
+    fillStyle,
+    {
+      x: 0,
+      y: 0,
+      width: project.canvas.width,
+      height: project.canvas.height,
+    },
+    getWordsContentRect(project),
+  );
 }
 
 function orderWordsAssets(
@@ -215,6 +238,74 @@ function createWordsImageFillCanvas(
   fillContext.drawImage(maskCanvas, 0, 0);
 
   return fillCanvas;
+}
+
+function applySliceFogOverlay(
+  context: RenderContext,
+  project: LayerRenderProject,
+  fogAmount: number,
+  rect: RenderRect,
+) {
+  if (fogAmount <= 0) {
+    return;
+  }
+
+  context.fillStyle = withAlpha(
+    project.canvas.background,
+    Math.min(0.36, fogAmount),
+  );
+  context.fillRect(rect.x, rect.y, rect.width, rect.height);
+}
+
+function renderTextSliceSurface(
+  slice: RenderSlice,
+  bitmap: ImageBitmap,
+  asset: SourceAsset,
+  project: LayerRenderProject,
+) {
+  const targetRect = slice.imageRect ?? slice.rect;
+  const width = Math.max(1, Math.ceil(targetRect.width));
+  const height = Math.max(1, Math.ceil(targetRect.height));
+  const surface = createRenderCanvas(width, height);
+  const surfaceContext = getRenderContext(surface);
+  const { sourceX, sourceY, sourceWidth, sourceHeight } = getSourceRect(
+    slice,
+    asset,
+    project,
+  );
+  const maskCanvas = createTextCanvas(
+    project.words,
+    "#ffffff",
+    { x: 0, y: 0, width, height },
+    { x: 0, y: 0, width, height },
+  );
+
+  if (!maskCanvas) {
+    return surface;
+  }
+
+  surfaceContext.drawImage(
+    bitmap,
+    sourceX,
+    sourceY,
+    sourceWidth,
+    sourceHeight,
+    0,
+    0,
+    width,
+    height,
+  );
+  surfaceContext.globalCompositeOperation = "destination-in";
+  surfaceContext.drawImage(maskCanvas, 0, 0);
+  surfaceContext.globalCompositeOperation = "source-over";
+  applySliceFogOverlay(
+    surfaceContext,
+    project,
+    slice.fogAmount,
+    { x: 0, y: 0, width, height },
+  );
+
+  return surface;
 }
 
 function drawWordsCanvas(
@@ -515,6 +606,10 @@ function renderSliceSurface(
   asset: SourceAsset,
   project: LayerRenderProject,
 ) {
+  if (slice.shape === "text") {
+    return renderTextSliceSurface(slice, bitmap, asset, project);
+  }
+
   const width = Math.max(1, Math.ceil(slice.rect.width));
   const height = Math.max(1, Math.ceil(slice.rect.height));
   const surface = createRenderCanvas(width, height);
@@ -555,13 +650,12 @@ function renderSliceSurface(
     width,
     height,
   );
-  if (slice.fogAmount > 0) {
-    surfaceContext.fillStyle = withAlpha(
-      project.canvas.background,
-      Math.min(0.36, slice.fogAmount),
-    );
-    surfaceContext.fillRect(0, 0, width, height);
-  }
+  applySliceFogOverlay(
+    surfaceContext,
+    project,
+    slice.fogAmount,
+    { x: 0, y: 0, width, height },
+  );
   surfaceContext.restore();
 
   return surface;
@@ -869,6 +963,27 @@ async function drawSlice(
     return;
   }
 
+  if (slice.shape === "text") {
+    const surface = renderTextSliceSurface(slice, bitmap, asset, project);
+
+    context.save();
+    context.translate(centerX, centerY);
+    context.rotate(slice.rotation + slice.clipRotation);
+    context.scale(scaleX, scaleY);
+    context.translate(-centerX, -centerY);
+    context.drawImage(
+      surface,
+      x + slice.displacementOffset.x,
+      y + slice.displacementOffset.y,
+      width * (1 + slice.distortion),
+      height * (1 + slice.distortion),
+    );
+    context.restore();
+
+    context.restore();
+    return;
+  }
+
   context.save();
   clipSliceToInsetArea(context, slice, project);
   context.translate(centerX, centerY);
@@ -891,18 +1006,17 @@ async function drawSlice(
     width * (1 + slice.distortion),
     height * (1 + slice.distortion),
   );
-  if (slice.fogAmount > 0) {
-    context.fillStyle = withAlpha(
-      project.canvas.background,
-      Math.min(0.36, slice.fogAmount),
-    );
-    context.fillRect(
-      x + slice.displacementOffset.x,
-      y + slice.displacementOffset.y,
-      width * (1 + slice.distortion),
-      height * (1 + slice.distortion),
-    );
-  }
+  applySliceFogOverlay(
+    context,
+    project,
+    slice.fogAmount,
+    {
+      x: x + slice.displacementOffset.x,
+      y: y + slice.displacementOffset.y,
+      width: width * (1 + slice.distortion),
+      height: height * (1 + slice.distortion),
+    },
+  );
   context.restore();
 
   context.restore();

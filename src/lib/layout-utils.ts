@@ -25,15 +25,19 @@ export function isPatternDrivenFamily(family: LayoutFamily) {
 }
 
 export function getGeometryOptions(family: LayoutFamily): GeometryShape[] {
-  if (family === "fractal" || family === "words") {
+  if (family === "words") {
     return ["rect"];
   }
 
+  if (family === "fractal") {
+    return ["rect", "text"];
+  }
+
   return family === "grid"
-    ? ["mixed", "rect", "triangle", "interlock", "ring", "arc", "wedge"]
+    ? ["mixed", "rect", "triangle", "interlock", "ring", "arc", "wedge", "text"]
     : family === "organic"
-      ? ["blob", "rect", "mixed", "ring", "arc", "wedge"]
-      : ["mixed", "rect", "triangle", "ring", "arc", "wedge"];
+      ? ["blob", "rect", "mixed", "ring", "arc", "wedge", "text"]
+      : ["mixed", "rect", "triangle", "ring", "arc", "wedge", "text"];
 }
 
 export function coerceShapeModeForFamily(

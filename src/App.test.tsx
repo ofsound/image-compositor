@@ -97,6 +97,7 @@ function createStoreState(overrides?: {
     | "ring"
     | "arc"
     | "wedge"
+    | "text"
     | "mixed";
   symmetryMode?: "none" | "mirror-x" | "mirror-y" | "quad" | "radial";
   density?: number;
@@ -884,9 +885,12 @@ describe("App conditional sliders", () => {
     expect(getGeometryOptions("organic")).toContain("blob");
     expect(getGeometryOptions("organic")).toContain("arc");
     expect(getGeometryOptions("organic")).toContain("rect");
+    expect(getGeometryOptions("organic")).toContain("text");
     expect(getGeometryOptions("flow")).toContain("arc");
+    expect(getGeometryOptions("flow")).toContain("text");
     expect(getGeometryOptions("3d")).not.toContain("interlock");
-    expect(getGeometryOptions("fractal")).toEqual(["rect"]);
+    expect(getGeometryOptions("3d")).toContain("text");
+    expect(getGeometryOptions("fractal")).toEqual(["rect", "text"]);
   });
 
   it("coerces interlock back to triangle when leaving grid", () => {
@@ -897,6 +901,7 @@ describe("App conditional sliders", () => {
     expect(coerceShapeModeForFamily("grid", "blob")).toBe("rect");
     expect(coerceShapeModeForFamily("3d", "blob")).toBe("rect");
     expect(coerceShapeModeForFamily("flow", "arc")).toBe("arc");
+    expect(coerceShapeModeForFamily("fractal", "text")).toBe("text");
   });
 
   it("shows the flow controls only for the flow family", () => {
@@ -937,6 +942,35 @@ describe("App conditional sliders", () => {
     expectSliderHidden("Grid Angle");
     expectSliderHidden("Density");
     expect(screen.queryByText("Brush")).not.toBeInTheDocument();
+  });
+
+  it("shows shared text controls for text geometry while hiding words-only controls", () => {
+    renderApp({
+      family: "grid",
+      shapeMode: "text",
+    });
+
+    expect(screen.getByLabelText("Words Text")).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Font" })).toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "Render Mode" })).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Text Color")).not.toBeInTheDocument();
+    expectSliderHidden("Corner Radius");
+    expectSliderHidden("Wedge Angle");
+    expectSliderHidden("Hollow Ratio");
+  });
+
+  it("shows geometry controls for fractal including text", async () => {
+    const user = userEvent.setup();
+    renderApp({
+      family: "fractal",
+    });
+
+    const layerControls = screen.getByLabelText("Layer Controls");
+    const [, geometryTrigger] = within(layerControls).getAllByRole("combobox");
+    expect(geometryTrigger).toHaveTextContent("rect");
+
+    await user.click(geometryTrigger);
+    expect(await screen.findByRole("option", { name: "text" })).toBeInTheDocument();
   });
 
   it("commits words mode, font, text, and color changes through project updates", async () => {

@@ -6,6 +6,7 @@ export type GeometryShape =
   | "ring"
   | "arc"
   | "wedge"
+  | "text"
   | "mixed";
 export type LayoutFamily =
   | "grid"

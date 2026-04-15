@@ -60,6 +60,7 @@ interface RightSidebarProps {
   hasDrawStrokes: boolean;
   inspectorLayerName: string;
   isDrawFamily: boolean;
+  isTextShapeMode: boolean;
   isRectShapeMode: boolean;
   isWedgeShapeMode: boolean;
   isHollowShapeMode: boolean;
@@ -90,6 +91,7 @@ export function RightSidebar({
   hasDrawStrokes,
   inspectorLayerName,
   isDrawFamily,
+  isTextShapeMode,
   isRectShapeMode,
   isWedgeShapeMode,
   isHollowShapeMode,
@@ -211,7 +213,7 @@ export function RightSidebar({
                         </Select>
                       </ControlBlock>
                     ) : null}
-                    {!isWordsFamily && isRectShapeMode ? (
+                    {!isWordsFamily && !isTextShapeMode && isRectShapeMode ? (
                       <SliderField
                         className="sm:col-span-2"
                         label="Corner Radius"
@@ -231,7 +233,7 @@ export function RightSidebar({
                         }
                       />
                     ) : null}
-                    {!isWordsFamily && isWedgeShapeMode ? (
+                    {!isWordsFamily && !isTextShapeMode && isWedgeShapeMode ? (
                       <>
                         <SliderField
                           label="Wedge Angle"
@@ -269,7 +271,7 @@ export function RightSidebar({
                         />
                       </>
                     ) : null}
-                    {!isWordsFamily && isHollowShapeMode ? (
+                    {!isWordsFamily && !isTextShapeMode && isHollowShapeMode ? (
                       <SliderField
                         className="sm:col-span-2"
                         label="Hollow Ratio"
@@ -332,35 +334,37 @@ export function RightSidebar({
                   </InspectorGroup>
                 ) : null}
 
-                {isWordsFamily ? (
-                  <InspectorGroup title="Words">
+                {isWordsFamily || isTextShapeMode ? (
+                  <InspectorGroup title={isWordsFamily ? "Words" : "Text"}>
                     <InspectorFieldGrid className="sm:grid-cols-2">
-                      <ControlBlock label="Render Mode">
-                        <Select
-                          value={activeProjectView.words.mode}
-                          onValueChange={(value) => {
-                            if (!isOptionValue(WORDS_MODE_OPTIONS, value)) return;
-                            patchProject((project) => ({
-                              ...project,
-                              words: {
-                                ...project.words,
-                                mode: value,
-                              },
-                            }));
-                          }}
-                        >
-                          <SelectTrigger aria-label="Render Mode">
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {WORDS_MODE_OPTIONS.map((option) => (
-                              <SelectItem key={option.value} value={option.value}>
-                                {option.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                      </ControlBlock>
+                      {isWordsFamily ? (
+                        <ControlBlock label="Render Mode">
+                          <Select
+                            value={activeProjectView.words.mode}
+                            onValueChange={(value) => {
+                              if (!isOptionValue(WORDS_MODE_OPTIONS, value)) return;
+                              patchProject((project) => ({
+                                ...project,
+                                words: {
+                                  ...project.words,
+                                  mode: value,
+                                },
+                              }));
+                            }}
+                          >
+                            <SelectTrigger aria-label="Render Mode">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {WORDS_MODE_OPTIONS.map((option) => (
+                                <SelectItem key={option.value} value={option.value}>
+                                  {option.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </ControlBlock>
+                      ) : null}
                       <ControlBlock label="Font">
                         <Select
                           value={activeProjectView.words.fontFamily}
@@ -405,22 +409,24 @@ export function RightSidebar({
                         />
                       </ControlBlock>
                       {activeProjectView.words.mode === "plain-text" ? (
-                        <div className="sm:col-span-2">
-                          <SourceColorField
-                            id="words-text-color"
-                            label="Text Color"
-                            value={activeProjectView.words.textColor}
-                            onChange={(value) =>
-                              patchProject((project) => ({
-                                ...project,
-                                words: {
-                                  ...project.words,
-                                  textColor: value,
-                                },
-                              }))
-                            }
-                          />
-                        </div>
+                        isWordsFamily ? (
+                          <div className="sm:col-span-2">
+                            <SourceColorField
+                              id="words-text-color"
+                              label="Text Color"
+                              value={activeProjectView.words.textColor}
+                              onChange={(value) =>
+                                patchProject((project) => ({
+                                  ...project,
+                                  words: {
+                                    ...project.words,
+                                    textColor: value,
+                                  },
+                                }))
+                              }
+                            />
+                          </div>
+                        ) : null
                       ) : null}
                     </InspectorFieldGrid>
                   </InspectorGroup>

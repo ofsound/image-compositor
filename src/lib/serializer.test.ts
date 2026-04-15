@@ -722,4 +722,65 @@ describe("loadProjectBundle", () => {
     expect(loadedVersionLayer.words.fontFamily).toBe("cormorant-garamond");
     expect(loadedVersionLayer.words.text).toBe("HELLO\nWORLD");
   });
+
+  it("preserves text geometry and shared words settings in version 4 bundles", async () => {
+    const zip = new JSZip();
+    const textGeometryProject = normalizeProjectDocument({
+      ...serializeProjectDocument(bundle.projectDoc),
+      layers: serializeProjectDocument(bundle.projectDoc).layers.map((layer, index) =>
+        index === 0
+          ? {
+            ...layer,
+            layout: {
+              ...layer.layout,
+              family: "grid",
+              shapeMode: "text",
+            },
+            words: {
+              mode: "plain-text",
+              fontFamily: "jetbrains-mono",
+              text: "TILED\nPHRASE",
+              textColor: "#113355",
+            },
+          }
+          : layer,
+      ),
+    } as Parameters<typeof normalizeProjectDocument>[0]);
+    const textGeometryVersion = {
+      ...bundle.versionDocs[0]!,
+      snapshot: normalizeProjectSnapshot({
+        ...bundle.versionDocs[0]!.snapshot,
+        layers: textGeometryProject.layers,
+        selectedLayerId: textGeometryProject.selectedLayerId,
+      }),
+    };
+
+    zip.file(
+      "manifest.json",
+      JSON.stringify({
+        ...bundle.manifest,
+        version: 4,
+      }),
+    );
+    zip.file("project.json", JSON.stringify(serializeProjectDocument(textGeometryProject)));
+    zip.file("versions.json", JSON.stringify([textGeometryVersion]));
+    zip.file("assets.json", JSON.stringify(bundle.assetDocs));
+    for (const [path, blob] of Object.entries(bundle.assetBlobs)) {
+      zip.file(path, blob);
+    }
+    for (const [path, blob] of Object.entries(bundle.versionBlobs)) {
+      zip.file(path, blob);
+    }
+
+    const loaded = await loadProjectBundle(await zip.generateAsync({ type: "blob" }));
+    const loadedLayer = getProjectView(loaded.projectDoc).layers[0]!;
+    const loadedVersionLayer = getVersionSnapshotLayer(loaded.versionDocs[0]!.snapshot);
+
+    expect(loadedLayer.layout.family).toBe("grid");
+    expect(loadedLayer.layout.shapeMode).toBe("text");
+    expect(loadedLayer.words.fontFamily).toBe("jetbrains-mono");
+    expect(loadedLayer.words.text).toBe("TILED\nPHRASE");
+    expect(loadedVersionLayer.layout.shapeMode).toBe("text");
+    expect(loadedVersionLayer.words.textColor).toBe("#113355");
+  });
 });

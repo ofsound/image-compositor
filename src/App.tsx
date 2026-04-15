@@ -72,7 +72,6 @@ import {
 import {
   coerceShapeModeForFamily,
   getGeometryOptions,
-  isPatternDrivenFamily,
 } from "@/lib/layout-utils";
 import { readBlob } from "@/lib/opfs";
 import { toggleSourceId } from "@/lib/source-selection";

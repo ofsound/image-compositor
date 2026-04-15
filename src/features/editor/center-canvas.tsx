@@ -1,5 +1,6 @@
 import { Maximize2, Minimize2 } from "lucide-react";
 
+import { EditableSliderValue } from "@/components/app/editable-slider-value";
 import { PreviewStage } from "@/components/app/preview-stage";
 import type { PreviewRenderState } from "@/components/app/preview-stage";
 import { PanelShell } from "@/components/app/panel-shell";
@@ -14,6 +15,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { lockExportDimensionsToCanvas } from "@/lib/export-sizing";
+import {
+  formatPercentValue,
+  normalizeSliderInputValue,
+  parsePercentInputValue,
+} from "@/lib/format-utils";
 import type { ProjectEditorView } from "@/lib/project-editor-view";
 import type { DrawStroke, ProjectDocument, SourceAsset } from "@/types/project";
 import { SliderField } from "@/components/app/procedural-texture-tab";
@@ -187,9 +193,30 @@ export function CenterCanvas({
             <div className="space-y-2">
               <div className="flex items-center justify-between text-xs text-text-muted">
                 <span>Alpha</span>
-                <span className="font-mono text-[10px] text-text-faint">
-                  {Math.round(activeProject.canvas.backgroundAlpha * 100)}%
-                </span>
+                <EditableSliderValue
+                  value={formatPercentValue(activeProject.canvas.backgroundAlpha)}
+                  inputLabel="Background alpha"
+                  onCommit={(nextText) => {
+                    const parsedValue = parsePercentInputValue(nextText);
+                    if (parsedValue === null) {
+                      return;
+                    }
+
+                    patchProject((project) => ({
+                      ...project,
+                      canvas: {
+                        ...project.canvas,
+                        backgroundAlpha: normalizeSliderInputValue({
+                          value: parsedValue,
+                          min: 0,
+                          max: 1,
+                          step: 0.01,
+                        }),
+                      },
+                    }));
+                  }}
+                  className="text-text-faint"
+                />
               </div>
               <Slider
                 min={0}

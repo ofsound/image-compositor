@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { makeId } from "@/lib/id";
 import { getSourceContentSignature } from "@/lib/assets";
@@ -76,12 +76,6 @@ export function PreviewStage({
   const overlayCanvasRef = useRef<HTMLCanvasElement>(null);
   const pointerStrokeRef = useRef<DrawStroke | null>(null);
   const [draftStroke, setDraftStroke] = useState<DrawStroke | null>(null);
-  const [overlayFrame, setOverlayFrame] = useState({
-    left: 0,
-    top: 0,
-    width: 0,
-    height: 0,
-  });
   const assetSignature = assets.map(getSourceContentSignature).join("|");
 
   useEffect(() => {
@@ -100,7 +94,7 @@ export function PreviewStage({
       onRenderState?.({
         ready: true,
         lastRenderedPreview: {
-          project: structuredClone(project),
+          project,
           assetIds: assets.map((asset) => asset.id),
         },
       });
@@ -157,34 +151,6 @@ export function PreviewStage({
     setDraftStroke(null);
   }, [drawEnabled]);
 
-  useLayoutEffect(() => {
-    const previewCanvas = canvasRef.current;
-    if (!previewCanvas) return;
-
-    const updateOverlayFrame = () => {
-      setOverlayFrame({
-        left: previewCanvas.offsetLeft,
-        top: previewCanvas.offsetTop,
-        width: previewCanvas.clientWidth,
-        height: previewCanvas.clientHeight,
-      });
-    };
-
-    updateOverlayFrame();
-
-    const resizeObserver = new ResizeObserver(() => {
-      updateOverlayFrame();
-    });
-    resizeObserver.observe(previewCanvas);
-
-    window.addEventListener("resize", updateOverlayFrame);
-
-    return () => {
-      resizeObserver.disconnect();
-      window.removeEventListener("resize", updateOverlayFrame);
-    };
-  }, [canvasRef, project.canvas.height, project.canvas.width]);
-
   const finalizeStroke = async (
     event: React.PointerEvent<HTMLCanvasElement>,
   ) => {
@@ -226,12 +192,8 @@ export function PreviewStage({
           ref={overlayCanvasRef}
           width={project.canvas.width}
           height={project.canvas.height}
-          className="absolute rounded-md"
+          className="absolute inset-0 h-full w-full rounded-md"
           style={{
-            left: overlayFrame.left,
-            top: overlayFrame.top,
-            width: overlayFrame.width,
-            height: overlayFrame.height,
             cursor: drawEnabled ? "crosshair" : "default",
             pointerEvents: drawEnabled ? "auto" : "none",
             touchAction: "none",

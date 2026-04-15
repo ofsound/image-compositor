@@ -370,6 +370,8 @@ function clonePreparedAssetRecords(entries: PreparedAssetRecord[]) {
   return entries.map((entry) => clonePreparedAssetRecord(entry));
 }
 
+const INTERACTIVE_PROJECT_FLUSH_DELAY_MS = 160;
+
 async function persistAddedAssetsForProject(
   project: ProjectDocument,
   preparedAssets: PreparedAssetRecord[],
@@ -458,6 +460,87 @@ async function syncWorkspace(
 
 export const useAppStore = create<AppState>((set, get) => {
   const commandRunner = createWorkspaceCommandRunner<AppState>(set, get);
+  interface PendingProjectCommit {
+    before: ProjectSnapshot | null;
+    projectId: string;
+    recordHistory: boolean;
+    timeoutId: ReturnType<typeof setTimeout>;
+  }
+  const pendingProjectCommits = new Map<string, PendingProjectCommit>();
+
+  function patchProjectHistory(
+    updatedProject: ProjectDocument,
+    before: ProjectSnapshot | null,
+    after?: ProjectSnapshot | null,
+    options?: { recordHistory?: boolean },
+  ) {
+    set((state) => {
+      const historyByProject =
+        options?.recordHistory === false || before === null
+          ? state.historyByProject
+          : patchHistory(state.historyByProject, updatedProject.id, (history) => ({
+              past: [
+                ...history.past,
+                {
+                  kind: "project-change",
+                  projectId: updatedProject.id,
+                  before,
+                  after: after ?? createProjectSnapshot(updatedProject),
+                } satisfies ProjectChangeHistoryEntry,
+              ],
+              future: [],
+            }));
+
+      return {
+        projects: upsertProject(state.projects, updatedProject),
+        historyByProject,
+        status: "Draft saved locally.",
+        ...getHistoryFlags(historyByProject, state.activeProjectId),
+      };
+    });
+  }
+
+  function getPendingProjectFlushErrorStatus(error: unknown) {
+    return error instanceof Error
+      ? `Could not save pending project edits: ${error.message}`
+      : "Could not save pending project edits.";
+  }
+
+  async function flushPendingProjectCommit(key: string) {
+    const pendingCommit = pendingProjectCommits.get(key);
+    if (!pendingCommit) return;
+
+    pendingProjectCommits.delete(key);
+    clearTimeout(pendingCommit.timeoutId);
+
+    const currentProject = get().projects.find(
+      (project) => project.id === pendingCommit.projectId,
+    );
+    if (!currentProject) return;
+
+    const after = pendingCommit.before
+      ? createProjectSnapshot(currentProject)
+      : null;
+    if (pendingCommit.before && after && snapshotsEqual(pendingCommit.before, after)) {
+      set((state) => getHistoryFlags(state.historyByProject, state.activeProjectId));
+      return;
+    }
+
+    await putProjectDocument(currentProject);
+    patchProjectHistory(
+      currentProject,
+      pendingCommit.before,
+      after,
+      { recordHistory: pendingCommit.recordHistory },
+    );
+  }
+
+  async function flushPendingProjectCommits() {
+    const keys = [...pendingProjectCommits.keys()];
+    for (const key of keys) {
+      await flushPendingProjectCommit(key);
+    }
+  }
 
   async function runWorkspaceAction(
     task: () => Promise<void>,
@@ -467,11 +550,20 @@ export const useAppStore = create<AppState>((set, get) => {
       queue?: boolean;
       key?: string;
       getErrorStatus?: (error: unknown) => string;
+      skipPendingProjectFlush?: boolean;
     },
   ) {
+    let didFlushPendingProjects = false;
     try {
+      if (!options?.skipPendingProjectFlush) {
+        await flushPendingProjectCommits();
+        didFlushPendingProjects = true;
+      }
       await commandRunner.run(task, options);
-    } catch {
+    } catch (error) {
+      if (!options?.skipPendingProjectFlush && !didFlushPendingProjects) {
+        set({ status: getPendingProjectFlushErrorStatus(error) });
+      }
       // Status updates are handled by per-action getErrorStatus handlers.
     }
   }
@@ -1059,6 +1151,50 @@ export const useAppStore = create<AppState>((set, get) => {
         const project = getActiveProject(get());
         if (!project) return;
 
+        if (options?.queueKey) {
+          const pendingCommit = pendingProjectCommits.get(options.queueKey);
+          const draftProject = normalizeProjectDocument({
+            ...createProjectMutationBase(project),
+            updatedAt: new Date().toISOString(),
+          });
+          const updatedProject = normalizeProjectDocument(
+            syncLegacyProjectFieldsToSelectedLayer(
+              updater(draftProject),
+            ),
+          );
+
+          if (pendingCommit) {
+            clearTimeout(pendingCommit.timeoutId);
+          }
+
+          set((state) => {
+            const flags = getHistoryFlags(state.historyByProject, state.activeProjectId);
+            return {
+              projects: upsertProject(state.projects, updatedProject),
+              canUndo:
+                flags.canUndo ||
+                pendingCommit?.before !== null ||
+                options.recordHistory !== false,
+              canRedo: false,
+            };
+          });
+
+          pendingProjectCommits.set(options.queueKey, {
+            before:
+              pendingCommit?.before ??
+              (options.recordHistory === false ? null : createProjectSnapshot(project)),
+            projectId: updatedProject.id,
+            recordHistory:
+              (pendingCommit?.recordHistory ?? false) || options.recordHistory !== false,
+            timeoutId: setTimeout(() => {
+              void flushPendingProjectCommit(options.queueKey!).catch((error) => {
+                set({ status: getPendingProjectFlushErrorStatus(error) });
+              });
+            }, INTERACTIVE_PROJECT_FLUSH_DELAY_MS),
+          });
+          return;
+        }
+
         const before = createProjectSnapshot(project);
         const draftProject = normalizeProjectDocument({
           ...createProjectMutationBase(project),
@@ -1076,33 +1212,11 @@ export const useAppStore = create<AppState>((set, get) => {
         }
 
         await putProjectDocument(updatedProject);
-        set((state) => {
-          const historyByProject =
-            options?.recordHistory === false
-              ? state.historyByProject
-              : patchHistory(state.historyByProject, updatedProject.id, (history) => ({
-                  past: [
-                    ...history.past,
-                    {
-                      kind: "project-change",
-                      projectId: updatedProject.id,
-                      before,
-                      after,
-                    } satisfies ProjectChangeHistoryEntry,
-                  ],
-                  future: [],
-                }));
-
-          return {
-            projects: upsertProject(state.projects, updatedProject),
-            historyByProject,
-            status: "Draft saved locally.",
-            ...getHistoryFlags(historyByProject, state.activeProjectId),
-          };
-        });
+        patchProjectHistory(updatedProject, before, after, options);
       },
       {
         key: options?.queueKey,
+        skipPendingProjectFlush: Boolean(options?.queueKey),
         getErrorStatus: (error) =>
           error instanceof Error
             ? `Could not update project: ${error.message}`

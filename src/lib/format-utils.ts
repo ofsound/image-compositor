@@ -45,6 +45,96 @@ export function formatGradientModeLabel(mode: GradientMode) {
   return mode[0]!.toUpperCase() + mode.slice(1);
 }
 
+export function parseNumericInputValue(text: string) {
+  const normalized = text.trim();
+  if (!normalized) return null;
+  if (!/^[+-]?(?:\d+\.?\d*|\.\d+)$/.test(normalized)) return null;
+
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function extractNumericInputValue(text: string) {
+  const match = text.trim().match(/[+-]?(?:\d+\.?\d*|\.\d+)/);
+  if (!match) return null;
+
+  const parsed = Number(match[0]);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+export function parsePercentInputValue(text: string) {
+  const normalized = text.trim();
+  if (!normalized) return null;
+
+  const parsed = extractNumericInputValue(normalized);
+  if (parsed === null) return null;
+  if (normalized.includes("%")) return parsed / 100;
+  if (Math.abs(parsed) <= 1 && normalized.includes(".")) return parsed;
+  return parsed / 100;
+}
+
+export function parseDegreeInputValue(text: string) {
+  return extractNumericInputValue(text);
+}
+
+export function parsePixelInputValue(text: string) {
+  return extractNumericInputValue(text);
+}
+
+export function parseSegmentInputValue(text: string) {
+  return extractNumericInputValue(text);
+}
+
+export function parseMultiplierInputValue(text: string) {
+  return extractNumericInputValue(text);
+}
+
+export function parseFormattedSliderInputValue(text: string) {
+  const normalized = text.trim();
+  if (!normalized) return null;
+  if (normalized.includes("%")) return parsePercentInputValue(normalized);
+  if (normalized.includes("°")) return parseDegreeInputValue(normalized);
+  if (normalized.toLowerCase().includes("px")) return parsePixelInputValue(normalized);
+  if (normalized.toLowerCase().includes("seg")) return parseSegmentInputValue(normalized);
+  if (normalized.toLowerCase().endsWith("x")) return parseMultiplierInputValue(normalized);
+  return parseNumericInputValue(normalized);
+}
+
+function getDecimalPlaces(value: number) {
+  if (!Number.isFinite(value)) return 0;
+
+  const serialized = value.toString().toLowerCase();
+  if (serialized.includes("e-")) {
+    const [, exponent = "0"] = serialized.split("e-");
+    return Number.parseInt(exponent, 10);
+  }
+
+  const [, fraction = ""] = serialized.split(".");
+  return fraction.length;
+}
+
+export function normalizeSliderInputValue({
+  value,
+  min,
+  max,
+  step,
+}: {
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+}) {
+  const clampedValue = Math.min(max, Math.max(min, value));
+  const snappedValue = min + Math.round((clampedValue - min) / step) * step;
+  const precision = Math.max(
+    getDecimalPlaces(min),
+    getDecimalPlaces(max),
+    getDecimalPlaces(step),
+  );
+  const roundedValue = Number(snappedValue.toFixed(precision));
+  return Math.min(max, Math.max(min, roundedValue));
+}
+
 export function createNoiseSeed() {
   return Math.floor(Math.random() * 0xffffffff);
 }

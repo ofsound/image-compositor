@@ -37,11 +37,19 @@ export function wait(ms: number) {
 
 export function waitForNextPaint() {
   return new Promise<void>((resolve) => {
+    let settled = false;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      resolve();
+    };
+
+    window.setTimeout(finish, 0);
+
     if (typeof window.requestAnimationFrame !== "function") {
-      window.setTimeout(() => resolve(), 0);
       return;
     }
 
-    window.requestAnimationFrame(() => resolve());
+    window.requestAnimationFrame(() => finish());
   });
 }

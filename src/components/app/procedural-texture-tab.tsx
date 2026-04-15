@@ -1,21 +1,23 @@
 import { useEffect, useRef, useState } from "react";
 import { RefreshCw } from "lucide-react";
 
+import { EditableSliderValue } from "@/components/app/editable-slider-value";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { TabsContent } from "@/components/ui/tabs";
 import { renderGeneratedSourceToCanvas, type GeneratedSourceInput } from "@/lib/assets";
+import {
+  formatPercentValue,
+  normalizeSliderInputValue,
+  parseFormattedSliderInputValue,
+} from "@/lib/format-utils";
 import { cn } from "@/lib/utils";
 import type { ProjectDocument, SourceAsset, SourceKind } from "@/types/project";
 import { SourceColorField } from "./source-color-field";
 
 const GENERATED_SOURCE_PREVIEW_MAX_DIMENSION = 640;
-
-export function formatPercentValue(value: number) {
-  return `${Math.round(value * 100)}%`;
-}
 
 export function GeneratedSourcePreview({
   source,
@@ -80,7 +82,7 @@ export function ControlBlock({
   className,
 }: {
   label: string;
-  value?: string;
+  value?: React.ReactNode;
   children: React.ReactNode;
   className?: string;
 }) {
@@ -88,9 +90,7 @@ export function ControlBlock({
     <div className={cn("space-y-2", className)}>
       <div className="flex items-center justify-between gap-3">
         <Label>{label}</Label>
-        {value ? (
-          <span className="font-mono text-[10px] text-text-muted">{value}</span>
-        ) : null}
+        {value ? value : null}
       </div>
       {children}
     </div>
@@ -107,6 +107,7 @@ export function SliderField({
   onChange,
   className,
   formatter = (next) => next.toFixed(2),
+  parseInput,
 }: {
   label: string;
   min: number;
@@ -117,6 +118,7 @@ export function SliderField({
   onChange: (value: number) => void;
   className?: string;
   formatter?: (value: number) => string;
+  parseInput?: (value: string) => number | null;
 }) {
   const [draftValue, setDraftValue] = useState<number | null>(null);
   const lastEmittedValueRef = useRef<number | null>(null);
@@ -127,11 +129,43 @@ export function SliderField({
   }, [value]);
 
   const displayValue = draftValue ?? value;
+  const displayLabel = formatter(displayValue);
+  const sliderInputParser = parseInput ?? parseFormattedSliderInputValue;
+  const canEditValue = !disabled && sliderInputParser(displayLabel) !== null;
+
+  const commitValueText = (nextText: string) => {
+    const parsedValue = sliderInputParser(nextText);
+    if (parsedValue === null) {
+      return;
+    }
+
+    const normalizedValue = normalizeSliderInputValue({
+      value: parsedValue,
+      min,
+      max,
+      step,
+    });
+
+    setDraftValue(normalizedValue);
+    if (lastEmittedValueRef.current === normalizedValue) {
+      return;
+    }
+
+    lastEmittedValueRef.current = normalizedValue;
+    onChange(normalizedValue);
+  };
 
   return (
     <ControlBlock
       label={label}
-      value={formatter(displayValue)}
+      value={
+        <EditableSliderValue
+          value={displayLabel}
+          inputLabel={`${label} value`}
+          disabled={!canEditValue}
+          onCommit={canEditValue ? commitValueText : undefined}
+        />
+      }
       className={className}
     >
       <Slider

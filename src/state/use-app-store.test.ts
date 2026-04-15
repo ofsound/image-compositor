@@ -479,6 +479,68 @@ describe("useAppStore history", () => {
     expect(after.layout.columns).toBe(initialColumns + 3);
   });
 
+  it("batches queued editor updates into one persisted history entry", async () => {
+    vi.useFakeTimers();
+    const initialProject = getActiveProjectView()!;
+
+    try {
+      await useAppStore.getState().updateProject(
+        (project) => ({
+          ...project,
+          layers: project.layers.map((layer, index) =>
+            index === 0
+              ? {
+                  ...layer,
+                  layout: {
+                    ...layer.layout,
+                    columns: initialProject.layout.columns + 1,
+                  },
+                }
+              : layer,
+          ),
+        }),
+        { queueKey: "ui-editor-update" },
+      );
+      await useAppStore.getState().updateProject(
+        (project) => ({
+          ...project,
+          layers: project.layers.map((layer, index) =>
+            index === 0
+              ? {
+                  ...layer,
+                  layout: {
+                    ...layer.layout,
+                    columns: initialProject.layout.columns + 3,
+                  },
+                }
+              : layer,
+          ),
+        }),
+        { queueKey: "ui-editor-update" },
+      );
+
+      expect(getActiveProjectView()?.layout.columns).toBe(
+        initialProject.layout.columns + 3,
+      );
+      expect(putProjectDocument).not.toHaveBeenCalled();
+      expect(useAppStore.getState().canUndo).toBe(true);
+
+      await vi.advanceTimersByTimeAsync(160);
+
+      expect(putProjectDocument).toHaveBeenCalledTimes(1);
+      expect(useAppStore.getState().canUndo).toBe(true);
+
+      await useAppStore.getState().undo();
+
+      expect(getActiveProjectView()?.layout.columns).toBe(
+        initialProject.layout.columns,
+      );
+      expect(useAppStore.getState().canRedo).toBe(true);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("clears redo history after a divergent project edit", async () => {
     const initialProject = getActiveProjectView()!;
 

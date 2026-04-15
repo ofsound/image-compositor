@@ -18,7 +18,7 @@ import {
 import { hashToSeed } from "@/lib/rng";
 import { clamp } from "@/lib/utils";
 
-interface AssetBitmapEntry {
+export interface AssetBitmapEntry {
   asset: SourceAsset;
   bitmap: ImageBitmap;
 }
@@ -52,6 +52,12 @@ async function loadBitmap(blob: Blob) {
     bitmapCache.set(blob, createImageBitmap(blob));
   }
   return bitmapCache.get(blob)!;
+}
+
+export function disposeBitmapMap(bitmaps: Map<string, AssetBitmapEntry>) {
+  for (const entry of bitmaps.values()) {
+    entry.bitmap.close();
+  }
 }
 
 function drawShapePath(

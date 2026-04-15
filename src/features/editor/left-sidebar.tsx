@@ -2,6 +2,7 @@ import { closestCenter, DndContext, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import { ImagePlus, Plus } from "lucide-react";
 
+import { EditableSliderValue } from "@/components/app/editable-slider-value";
 import { PanelShell } from "@/components/app/panel-shell";
 import { SortableLayerRow } from "@/components/app/sortable-layer-row";
 import { SourceAssetCard } from "@/components/app/source-asset-card";
@@ -9,7 +10,11 @@ import { SourceThumbnail } from "@/components/app/source-thumbnail";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { getSourceContentSignature } from "@/lib/assets";
-import { formatSourceWeightValue } from "@/lib/format-utils";
+import {
+  formatSourceWeightValue,
+  normalizeSliderInputValue,
+  parseMultiplierInputValue,
+} from "@/lib/format-utils";
 import type { ProjectEditorView } from "@/lib/project-editor-view";
 import { getSourceWeight } from "@/lib/source-weights";
 import type { ProjectDocument, SourceAsset, SourceKind } from "@/types/project";
@@ -100,7 +105,26 @@ export function LeftSidebar({
                       <div className="space-y-1.5">
                         <div className="flex items-center justify-between gap-2 font-mono text-[10px] uppercase tracking-[0.08em] text-text-muted">
                           <span>Mix</span>
-                          <span>{formatSourceWeightValue(mixWeight)}</span>
+                          <EditableSliderValue
+                            value={formatSourceWeightValue(mixWeight)}
+                            inputLabel={`${asset.name} mix weight`}
+                            onCommit={(nextText) => {
+                              const parsedValue = parseMultiplierInputValue(nextText);
+                              if (parsedValue === null) {
+                                return;
+                              }
+
+                              updateSourceWeight(
+                                asset.id,
+                                normalizeSliderInputValue({
+                                  value: parsedValue,
+                                  min: 0,
+                                  max: 4,
+                                  step: 0.05,
+                                }),
+                              );
+                            }}
+                          />
                         </div>
                         <Slider
                           aria-label={`${asset.name} mix weight`}

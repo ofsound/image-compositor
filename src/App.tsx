@@ -13,6 +13,7 @@ import {
   startTransition,
   useDeferredValue,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -212,32 +213,46 @@ function App() {
   }, [previewExpanded]);
 
   // Project derivations
-  const activeProjects = projects.filter(
-    (project) => project.deletedAt === null,
+  const activeProjects = useMemo(
+    () => projects.filter((project) => project.deletedAt === null),
+    [projects],
   );
-  const trashedProjects = projects.filter(
-    (project) => project.deletedAt !== null,
+  const trashedProjects = useMemo(
+    () => projects.filter((project) => project.deletedAt !== null),
+    [projects],
   );
-  const activeProject =
-    activeProjects.find((project) => project.id === activeProjectId) ?? null;
+  const activeProject = useMemo(
+    () => activeProjects.find((project) => project.id === activeProjectId) ?? null,
+    [activeProjectId, activeProjects],
+  );
   const deferredProject = useDeferredValue(activeProject);
   const previewProject = deferredProject ?? activeProject;
-  const deferredProjectAssets = previewProject
-    ? assets.filter((asset) => asset.projectId === previewProject.id)
-    : [];
-  const previewAssets = previewProject
-    ? Array.from(
-        new Set(
-          previewProject.layers
-            .filter((layer) => layer.visible)
-            .flatMap((layer) => layer.sourceIds),
-        ),
-      )
-        .map((sourceId) =>
-          deferredProjectAssets.find((asset) => asset.id === sourceId),
-        )
-        .filter((asset): asset is SourceAsset => Boolean(asset))
-    : [];
+  const deferredProjectAssets = useMemo(
+    () =>
+      previewProject
+        ? assets.filter((asset) => asset.projectId === previewProject.id)
+        : [],
+    [assets, previewProject],
+  );
+  const previewAssets = useMemo(() => {
+    if (!previewProject) {
+      return [];
+    }
+
+    const assetLookup = new Map(
+      deferredProjectAssets.map((asset) => [asset.id, asset]),
+    );
+
+    return Array.from(
+      new Set(
+        previewProject.layers
+          .filter((layer) => layer.visible)
+          .flatMap((layer) => layer.sourceIds),
+      ),
+    )
+      .map((sourceId) => assetLookup.get(sourceId))
+      .filter((asset): asset is SourceAsset => Boolean(asset));
+  }, [deferredProjectAssets, previewProject]);
 
   useEffect(() => {
     if (!activeProject) return;
@@ -249,28 +264,45 @@ function App() {
     setPreviewExpanded(false);
   }, [activeProject?.id]);
 
-  const activeProjectView = activeProject
-    ? createProjectEditorView(activeProject)
-    : null;
-  const projectAssets = activeProject
-    ? assets.filter((asset) => asset.projectId === activeProject.id)
-    : [];
-  const selectedLayer = activeProject
-    ? (activeProject.layers.find(
+  const activeProjectView = useMemo(
+    () => (activeProject ? createProjectEditorView(activeProject) : null),
+    [activeProject],
+  );
+  const projectAssets = useMemo(
+    () =>
+      activeProject
+        ? assets.filter((asset) => asset.projectId === activeProject.id)
+        : [],
+    [activeProject, assets],
+  );
+  const selectedLayer = useMemo(() => {
+    if (!activeProject) {
+      return null;
+    }
+
+    return (
+      activeProject.layers.find(
         (layer) => layer.id === activeProject.selectedLayerId,
       ) ??
       activeProject.layers.at(-1) ??
-      null)
-    : null;
-  const displayLayers = activeProject
-    ? [...activeProject.layers].reverse()
-    : [];
-  const activeVersions = activeProject
-    ? versions.filter((version) => version.projectId === activeProject.id)
-    : [];
-  const previewAssetSignature = previewAssets
-    .map((asset) => asset.id)
-    .join("|");
+      null
+    );
+  }, [activeProject]);
+  const displayLayers = useMemo(
+    () => (activeProject ? [...activeProject.layers].reverse() : []),
+    [activeProject],
+  );
+  const activeVersions = useMemo(
+    () =>
+      activeProject
+        ? versions.filter((version) => version.projectId === activeProject.id)
+        : [],
+    [activeProject, versions],
+  );
+  const previewAssetSignature = useMemo(
+    () => previewAssets.map((asset) => asset.id).join("|"),
+    [previewAssets],
+  );
 
   useEffect(() => {
     setRenderState({

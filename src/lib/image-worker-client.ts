@@ -19,6 +19,13 @@ function getWorker() {
   return worker;
 }
 
+function resetWorker(activeWorker?: Worker) {
+  if (!worker) return;
+  if (activeWorker && worker !== activeWorker) return;
+  worker.terminate();
+  worker = null;
+}
+
 export function processImageFile(file: File) {
   if (isHeicType(file)) {
     return processImageFileOnMainThread(file);
@@ -27,14 +34,42 @@ export function processImageFile(file: File) {
   const activeWorker = getWorker();
   const requestId = crypto.randomUUID();
 
-  const workerPromise = new Promise<ProcessedAssetPayload>((resolve, reject) => {
-    const onMessage = (event: MessageEvent) => {
-      if (event.data?.requestId !== requestId) return;
+  return new Promise<ProcessedAssetPayload>((resolve, reject) => {
+    let settled = false;
+    const timeoutId = window.setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resetWorker(activeWorker);
+      void processImageFileOnMainThread(file).then(resolve, reject);
+    }, 4_000);
+
+    const cleanup = () => {
+      window.clearTimeout(timeoutId);
       activeWorker.removeEventListener("message", onMessage);
       activeWorker.removeEventListener("error", onError);
+    };
+
+    const fallBackToMainThread = (error?: unknown) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resetWorker(activeWorker);
+      void processImageFileOnMainThread(file).then(resolve, (fallbackError) => {
+        reject(fallbackError instanceof Error ? fallbackError : error);
+      });
+    };
+
+    const onMessage = (event: MessageEvent) => {
+      if (event.data?.requestId !== requestId || settled) return;
+      settled = true;
+      cleanup();
 
       if (event.data.error) {
-        reject(new Error(event.data.error));
+        resetWorker(activeWorker);
+        void processImageFileOnMainThread(file).then(resolve, () => {
+          reject(new Error(event.data.error));
+        });
         return;
       }
 
@@ -42,23 +77,13 @@ export function processImageFile(file: File) {
     };
 
     const onError = (error: ErrorEvent) => {
-      activeWorker.removeEventListener("message", onMessage);
-      activeWorker.removeEventListener("error", onError);
-      reject(error.error ?? new Error("Image processing failed."));
+      fallBackToMainThread(error.error ?? new Error("Image processing failed."));
     };
 
     activeWorker.addEventListener("message", onMessage);
     activeWorker.addEventListener("error", onError);
     activeWorker.postMessage({ requestId, file });
   });
-
-  const timeoutPromise = new Promise<ProcessedAssetPayload>((_, reject) => {
-    window.setTimeout(() => reject(new Error("Image worker timed out.")), 4_000);
-  });
-
-  return Promise.race([workerPromise, timeoutPromise]).catch(() =>
-    processImageFileOnMainThread(file),
-  );
 }
 
 async function renderScaledBlob(

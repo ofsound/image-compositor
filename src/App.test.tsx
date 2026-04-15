@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as assetLib from "@/lib/assets";
 import { createProjectDocument, getSelectedLayer } from "@/lib/project-defaults";
 import { createProjectEditorView } from "@/lib/project-editor-view";
-import { renderLayerThumbnailUrls } from "@/lib/render-service";
+import { renderLayerThumbnailUrl } from "@/lib/render-service";
 import App from "@/App";
 import {
   coerceShapeModeForFamily,
@@ -39,10 +39,16 @@ vi.mock("@/lib/render", () => ({
 vi.mock("@/lib/render-service", () => ({
   loadNormalizedAssetBitmapMap: vi.fn(async () => new Map()),
   renderProjectPreview: vi.fn(async () => undefined),
-  renderLayerThumbnailUrls: vi.fn(async (project: { layers: { id: string }[] }) =>
-    Object.fromEntries(
-      project.layers.map((layer, index) => [layer.id, `blob:layer-thumb-${index + 1}`]),
-    ),
+  getLayerThumbnailSignature: vi.fn(
+    (project: { canvas: { width: number }; }, layer: { layout: { columns: number }; sourceIds: string[] }) =>
+      JSON.stringify({
+        width: project.canvas.width,
+        columns: layer.layout.columns,
+        sourceIds: layer.sourceIds,
+      }),
+  ),
+  renderLayerThumbnailUrl: vi.fn(async (_project: unknown, layer: { id: string }) =>
+    `blob:${layer.id}:${Date.now()}`,
   ),
 }));
 
@@ -61,7 +67,7 @@ vi.mock("@/state/app-store-hooks", () => ({
 
 const mockedUseWorkspaceState = vi.mocked(useWorkspaceState);
 const mockedUseWorkspaceActions = vi.mocked(useWorkspaceActions);
-const mockedRenderLayerThumbnailUrls = vi.mocked(renderLayerThumbnailUrls);
+const mockedRenderLayerThumbnailUrl = vi.mocked(renderLayerThumbnailUrl);
 const renderGeneratedSourceToCanvasSpy = vi.mocked(
   assetLib.renderGeneratedSourceToCanvas,
 );
@@ -371,12 +377,9 @@ describe("App layer thumbnails", () => {
   const revokeObjectUrlSpy = vi.fn();
 
   beforeEach(() => {
-    mockedRenderLayerThumbnailUrls.mockReset();
-    mockedRenderLayerThumbnailUrls.mockImplementation(
-      async (project) =>
-        Object.fromEntries(
-          project.layers.map((layer, index) => [layer.id, `blob:layer-thumb-${index + 1}`]),
-        ),
+    mockedRenderLayerThumbnailUrl.mockReset();
+    mockedRenderLayerThumbnailUrl.mockImplementation(
+      async (_project, layer) => `blob:${layer.id}:${mockedRenderLayerThumbnailUrl.mock.calls.length}`,
     );
     revokeObjectUrlSpy.mockClear();
     Object.defineProperty(globalThis.URL, "revokeObjectURL", {
@@ -386,8 +389,8 @@ describe("App layer thumbnails", () => {
   });
 
   it("renders layer thumbnail placeholders before thumbnails resolve", () => {
-    mockedRenderLayerThumbnailUrls.mockImplementationOnce(
-      () => new Promise<Record<string, string>>(() => undefined),
+    mockedRenderLayerThumbnailUrl.mockImplementationOnce(
+      () => new Promise<string | null>(() => undefined),
     );
     const state = createStoreState({
       assets: [createImageAsset("project_placeholder")],
@@ -422,7 +425,7 @@ describe("App layer thumbnails", () => {
       expect(screen.getByTestId("layer-thumbnail-layer_two")).toBeInTheDocument();
     });
 
-    expect(mockedRenderLayerThumbnailUrls).toHaveBeenCalled();
+    expect(mockedRenderLayerThumbnailUrl).toHaveBeenCalled();
   });
 
   it("refreshes thumbnails and revokes replaced object urls when the project changes", async () => {
@@ -450,18 +453,12 @@ describe("App layer thumbnails", () => {
     refreshedState.projects[0]!.layers[0]!.name = "Updated Layer";
     refreshedState.projects[0]!.layers[0]!.sourceIds = [refreshedState.assets[0]!.id];
 
-    mockedRenderLayerThumbnailUrls
-      .mockResolvedValueOnce({
-        [initialState.projects[0]!.layers[0]!.id]: "blob:layer-thumb-1",
-      })
-      .mockResolvedValueOnce({
-        [refreshedState.projects[0]!.layers[0]!.id]: "blob:layer-thumb-2",
-      });
+    refreshedState.projects[0]!.layers[0]!.layout.columns += 1;
     mockStoreState(refreshedState);
     rerender(<App />);
 
     await waitFor(() =>
-      expect(revokeObjectUrlSpy).toHaveBeenCalledWith("blob:layer-thumb-1"),
+      expect(revokeObjectUrlSpy).toHaveBeenCalledWith(`blob:${initialState.projects[0]!.layers[0]!.id}:1`),
     );
   });
 
@@ -475,12 +472,12 @@ describe("App layer thumbnails", () => {
     const { unmount } = render(<App />);
 
     await waitFor(() =>
-      expect(mockedRenderLayerThumbnailUrls).toHaveBeenCalled(),
+      expect(mockedRenderLayerThumbnailUrl).toHaveBeenCalled(),
     );
 
     unmount();
 
-    expect(revokeObjectUrlSpy).toHaveBeenCalledWith("blob:layer-thumb-1");
+    expect(revokeObjectUrlSpy).toHaveBeenCalledWith(`blob:${state.projects[0]!.layers[0]!.id}:1`);
   });
 });
 

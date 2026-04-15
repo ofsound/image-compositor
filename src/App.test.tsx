@@ -53,7 +53,11 @@ vi.mock("@/lib/render-service", () => ({
 }));
 
 vi.mock("@/components/app/preview-stage", () => ({
-  PreviewStage: () => <div data-testid="preview-stage" />,
+  PreviewStage: ({
+    canvasRef,
+  }: {
+    canvasRef?: { current: HTMLCanvasElement | null };
+  }) => <canvas ref={canvasRef ?? undefined} data-testid="preview-stage" />,
 }));
 
 vi.mock("@/components/app/theme-toggle", () => ({
@@ -512,6 +516,75 @@ describe("App layer thumbnails", () => {
     unmount();
 
     expect(revokeObjectUrlSpy).toHaveBeenCalledWith(`blob:${state.projects[0]!.layers[0]!.id}:1`);
+  });
+});
+
+describe("App save version flow", () => {
+  it("opens the save dialog and submits a trimmed version label", async () => {
+    const state = createStoreState();
+    mockStoreState(state);
+
+    const user = userEvent.setup();
+    const timeSpy = vi
+      .spyOn(Date.prototype, "toLocaleTimeString")
+      .mockReturnValue("10:15:30 AM");
+    const thumbnail = new Blob(["thumbnail"], { type: "image/webp" });
+    const originalToBlob = HTMLCanvasElement.prototype.toBlob;
+
+    Object.defineProperty(HTMLCanvasElement.prototype, "toBlob", {
+      configurable: true,
+      value: vi.fn((callback: BlobCallback) => callback(thumbnail)),
+    });
+
+    try {
+      render(<App />);
+
+      await user.click(screen.getByRole("button", { name: /^Save$/ }));
+
+      const input = screen.getByLabelText("Version label");
+      expect(input).toHaveValue("Snapshot 10:15:30 AM");
+
+      await user.clear(input);
+      await user.type(input, "  Final Snapshot  ");
+      await user.click(screen.getByRole("button", { name: "Save version" }));
+
+      await waitFor(() =>
+        expect(state.saveVersion).toHaveBeenCalledWith("Final Snapshot", thumbnail),
+      );
+      expect(
+        screen.queryByRole("dialog", { name: "Save version" }),
+      ).not.toBeInTheDocument();
+    } finally {
+      timeSpy.mockRestore();
+      if (originalToBlob) {
+        Object.defineProperty(HTMLCanvasElement.prototype, "toBlob", {
+          configurable: true,
+          value: originalToBlob,
+        });
+      } else {
+        Reflect.deleteProperty(HTMLCanvasElement.prototype, "toBlob");
+      }
+    }
+  });
+
+  it("closes the save dialog on cancel without saving", async () => {
+    const state = createStoreState();
+    mockStoreState(state);
+
+    const user = userEvent.setup();
+    render(<App />);
+
+    await user.click(screen.getByRole("button", { name: /^Save$/ }));
+    expect(screen.getByRole("dialog", { name: "Save version" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("dialog", { name: "Save version" }),
+      ).not.toBeInTheDocument(),
+    );
+    expect(state.saveVersion).not.toHaveBeenCalled();
   });
 });
 

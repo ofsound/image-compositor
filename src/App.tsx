@@ -51,6 +51,7 @@ import { TrashDialog } from "@/features/project-management/trash-dialog";
 import { ManageProjectsDialog } from "@/features/project-management/manage-projects-dialog";
 import { ImportConflictDialog } from "@/features/project-management/import-conflict-dialog";
 import { OpenProjectConflictDialog } from "@/features/project-management/open-project-conflict-dialog";
+import { SaveVersionDialog } from "@/features/project-management/save-version-dialog";
 import { VersionsDialog } from "@/features/project-management/versions-dialog";
 
 import { Button } from "@/components/ui/button";
@@ -103,6 +104,10 @@ function isEditableTarget(target: EventTarget | null) {
   );
 }
 
+function getDefaultVersionLabel() {
+  return `Snapshot ${new Date().toLocaleTimeString()}`;
+}
+
 function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const uploadInputRef = useRef<HTMLInputElement>(null);
@@ -120,10 +125,12 @@ function App() {
   const [trashDialogOpen, setTrashDialogOpen] = useState(false);
   const [importConflictOpen, setImportConflictOpen] = useState(false);
   const [openProjectConflictOpen, setOpenProjectConflictOpen] = useState(false);
+  const [saveVersionDialogOpen, setSaveVersionDialogOpen] = useState(false);
 
   // Dialog form values
   const [renameValue, setRenameValue] = useState("");
   const [duplicateValue, setDuplicateValue] = useState("");
+  const [saveVersionValue, setSaveVersionValue] = useState("");
   const [pendingImportInspection, setPendingImportInspection] =
     useState<BundleImportInspection | null>(null);
   const [pendingOpenConflict, setPendingOpenConflict] = useState<{
@@ -467,14 +474,17 @@ function App() {
     );
   };
 
-  const openSaveVersion = async () => {
-    const label = window.prompt(
-      "Version label",
-      `Snapshot ${new Date().toLocaleTimeString()}`,
-    );
+  const openSaveVersionDialog = () => {
+    setSaveVersionValue(getDefaultVersionLabel());
+    setSaveVersionDialogOpen(true);
+  };
+
+  const submitSaveVersion = async () => {
+    const label = saveVersionValue.trim();
     if (!label) return;
     const thumbnail = await captureThumbnail();
     await saveVersion(label, thumbnail);
+    setSaveVersionDialogOpen(false);
   };
 
   const submitRename = async () => {
@@ -660,7 +670,7 @@ function App() {
             <Button variant="secondary" size="sm" onClick={() => void randomizeSeed()}>
               <Sparkles className="h-3.5 w-3.5" /> Randomize
             </Button>
-            <Button variant="secondary" size="sm" onClick={() => void openSaveVersion()}>
+            <Button variant="secondary" size="sm" onClick={openSaveVersionDialog}>
               <Save className="h-3.5 w-3.5" /> Save
             </Button>
             <Button
@@ -787,6 +797,14 @@ function App() {
         value={duplicateValue}
         onChange={setDuplicateValue}
         onSubmit={submitDuplicate}
+      />
+
+      <SaveVersionDialog
+        open={saveVersionDialogOpen}
+        onOpenChange={setSaveVersionDialogOpen}
+        value={saveVersionValue}
+        onChange={setSaveVersionValue}
+        onSubmit={submitSaveVersion}
       />
 
       <TrashDialog

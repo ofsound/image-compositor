@@ -10,5 +10,5 @@
     "noEmit": false,
     "tsBuildInfoFile": "./tsconfig.electron.tsbuildinfo"
   },
-  "include": ["electron/**/*.ts", "src/types/project.ts"]
+  "include": ["electron/**/*.ts", "electron/**/*.cts", "src/types/project.ts"]
 }

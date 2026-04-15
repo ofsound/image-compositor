@@ -16,10 +16,12 @@ import type { ProjectDocument } from "../src/types/project.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rendererDistPath = path.resolve(__dirname, "../../dist/client");
-const preloadPath = path.resolve(__dirname, "preload.js");
+const preloadPath = path.resolve(__dirname, "preload.cjs");
 const devServerUrl = process.env.ELECTRON_RENDERER_URL?.trim() || null;
 const ALLOWED_EXTERNAL_PROTOCOLS = new Set(["https:", "http:", "mailto:"]);
 const disableRendererSandbox = process.env.ELECTRON_DISABLE_RENDERER_SANDBOX === "1";
+const disableSingleInstanceLock =
+  process.env.ELECTRON_DISABLE_SINGLE_INSTANCE_LOCK === "1";
 const PROJECT_REPOSITORY_DIR = "project-library";
 
 interface WindowState {
@@ -388,7 +390,7 @@ async function updateProjectMetadata(
 
 applyUserDataOverride();
 
-if (app.isPackaged) {
+if (app.isPackaged && !disableSingleInstanceLock) {
   const gotSingleInstanceLock = app.requestSingleInstanceLock();
   if (!gotSingleInstanceLock) {
     app.quit();

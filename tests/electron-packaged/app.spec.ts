@@ -23,13 +23,30 @@ function resolvePackagedExecutablePath() {
   return executablePath;
 }
 
-test("packaged mac app boots with the app protocol", async () => {
+test("packaged mac app boots with the app protocol", async ({}, testInfo) => {
   const executablePath = resolvePackagedExecutablePath();
-  const app = await electron.launch({ executablePath });
-  const page = await app.firstWindow();
+  const app = await electron.launch({
+    executablePath,
+    env: {
+      ...process.env,
+      IMAGE_GRID_USER_DATA_DIR: testInfo.outputDir,
+      ELECTRON_DISABLE_SINGLE_INSTANCE_LOCK: "1",
+    },
+  });
+  try {
+    const page = await app.firstWindow();
 
-  await expect(page.getByRole("button", { name: "Add Source" }).first()).toBeVisible();
-  await expect.poll(async () => page.url()).toContain("app://-/");
-
-  await app.close();
+    await expect(page.getByRole("button", { name: "Add Source" }).first()).toBeVisible();
+    await expect.poll(async () => page.url()).toContain("app://-/");
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () =>
+            typeof (window as Window & { compositorElectron?: unknown }).compositorElectron,
+        ),
+      )
+      .toBe("object");
+  } finally {
+    await app.close();
+  }
 });

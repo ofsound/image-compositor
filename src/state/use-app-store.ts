@@ -16,6 +16,13 @@ import {
 } from "@/lib/assets";
 import { db } from "@/lib/db";
 import { downloadBlob } from "@/lib/download";
+import {
+  captureCanonicalProjectPayload,
+  fromCanonicalProjectPayload,
+  getElectronApi,
+  isElectronWorkspace,
+  toCanonicalProjectPayload,
+} from "@/lib/electron-workspace";
 import { processImageFile } from "@/lib/image-worker-client";
 import { makeId } from "@/lib/id";
 import {
@@ -46,6 +53,7 @@ import {
   persistAssetUpdatesAtomically,
   putProjectDocument,
   putProjectVersion,
+  replaceWorkspaceWithImportedProjectBundle,
 } from "@/lib/workspace-storage";
 import { createWorkspaceCommandRunner } from "@/state/workspace-command-runner";
 import type {
@@ -63,6 +71,10 @@ import type {
   SourceAsset,
   WaveSourceAsset,
 } from "@/types/project";
+import type {
+  OpenProjectResult,
+  ProjectSummary,
+} from "../../electron/contract";
 
 type BundleImportResolution = "replace" | "copy";
 type SourceImportProgress = { processed: number; total: number };
@@ -116,6 +128,7 @@ interface AppState {
   status: string;
   sourceImportProgress: SourceImportProgress | null;
   projects: ProjectDocument[];
+  projectSummaries: ProjectSummary[];
   assets: SourceAsset[];
   versions: ProjectVersion[];
   activeProjectId: string | null;
@@ -127,10 +140,13 @@ interface AppState {
   createProject: () => Promise<void>;
   renameProject: (projectId: string, title: string) => Promise<void>;
   duplicateProject: (projectId: string, title: string) => Promise<void>;
+  duplicateProjectInNewWindow: (projectId: string, title: string) => Promise<void>;
+  openProjectInNewWindow: (projectId: string) => Promise<OpenProjectResult | null>;
+  focusProjectWindow: (projectId: string) => Promise<boolean>;
   trashProject: (projectId: string) => Promise<void>;
   restoreProject: (projectId: string) => Promise<void>;
   purgeProject: (projectId: string) => Promise<void>;
-  setActiveProject: (projectId: string) => Promise<void>;
+  setActiveProject: (projectId: string) => Promise<OpenProjectResult | null>;
   selectLayer: (layerId: string) => Promise<void>;
   addLayer: () => Promise<void>;
   deleteLayer: (layerId: string) => Promise<void>;
@@ -207,8 +223,8 @@ function getActiveProject(state: Pick<AppState, "projects" | "activeProjectId">)
   );
 }
 
-function getNextProjectTitle(projects: ProjectDocument[]) {
-  return `Study ${getLiveProjects(projects).length + 1}`;
+function getNextProjectTitle(projects: Array<Pick<ProjectSummary, "deletedAt">>) {
+  return `Study ${projects.filter((project) => project.deletedAt === null).length + 1}`;
 }
 
 function formatGeneratedSourceKind(kind: Exclude<SourceAsset["kind"], "image">) {
@@ -427,6 +443,15 @@ async function loadWorkspaceSnapshot(preferredActiveProjectId?: string | null) {
 
   return {
     projects,
+    projectSummaries: projects.map((project) => ({
+      id: project.id,
+      title: project.title,
+      createdAt: project.createdAt,
+      updatedAt: project.updatedAt,
+      deletedAt: project.deletedAt,
+      locked: false,
+      lockedByCurrentWindow: false,
+    })),
     assets,
     versions,
     activeProjectId,
@@ -458,8 +483,18 @@ async function syncWorkspace(
   );
 }
 
+async function replaceWorkspaceWithCanonicalPayload(
+  payload: Awaited<ReturnType<typeof toCanonicalProjectPayload>>,
+) {
+  await replaceWorkspaceWithImportedProjectBundle(
+    fromCanonicalProjectPayload(payload),
+  );
+}
+
 export const useAppStore = create<AppState>((set, get) => {
   const commandRunner = createWorkspaceCommandRunner<AppState>(set, get);
+  const electronApi = getElectronApi();
+  const useElectron = isElectronWorkspace();
   interface PendingProjectCommit {
     before: ProjectSnapshot | null;
     projectId: string;
@@ -467,6 +502,97 @@ export const useAppStore = create<AppState>((set, get) => {
     timeoutId: ReturnType<typeof setTimeout>;
   }
   const pendingProjectCommits = new Map<string, PendingProjectCommit>();
+
+  async function applyElectronBootstrap(
+    bootstrap: Awaited<ReturnType<NonNullable<typeof electronApi>["bootstrapWindow"]>>,
+    status: string,
+  ) {
+    if (!bootstrap.workspace) {
+      set(
+        withHistoryFlags(
+          {
+            ready: true,
+            busy: false,
+            status,
+            projects: [],
+            projectSummaries: bootstrap.projectSummaries,
+            assets: [],
+            versions: [],
+            activeProjectId: null,
+          },
+          get().historyByProject,
+          null,
+        ),
+      );
+      return;
+    }
+
+    await replaceWorkspaceWithCanonicalPayload(bootstrap.workspace);
+    const project = normalizeProjectDocument(bootstrap.workspace.projectDoc);
+    const assets = sortAssetsByCreated(
+      bootstrap.workspace.assetDocs.map((asset) => structuredClone(asset)),
+    );
+    const versions = sortVersionsByCreated(
+      bootstrap.workspace.versionDocs.map((version) =>
+        normalizeProjectVersion(structuredClone(version)),
+      ),
+    );
+
+    set(
+      withHistoryFlags(
+        {
+          ready: true,
+          busy: false,
+          status,
+          projects: [project],
+          projectSummaries: bootstrap.projectSummaries,
+          assets,
+          versions,
+          activeProjectId: project.id,
+          historyByProject: {},
+        },
+        {},
+        project.id,
+      ),
+    );
+  }
+
+  async function refreshElectronProjectSummaries() {
+    if (!electronApi) {
+      return;
+    }
+
+    const projectSummaries = await electronApi.listProjects();
+    set({ projectSummaries });
+  }
+
+  async function syncElectronProjectDocument(projectDoc: ProjectDocument) {
+    if (!electronApi) {
+      return;
+    }
+
+    const projectSummaries = await electronApi.saveProjectDocument(projectDoc);
+    set({ projectSummaries });
+  }
+
+  async function syncElectronActiveProjectBundle(projectOverride?: ProjectDocument) {
+    if (!electronApi) {
+      return;
+    }
+
+    const project = projectOverride ?? getActiveProject(get());
+    if (!project) {
+      return;
+    }
+
+    const payload = await captureCanonicalProjectPayload({
+      project,
+      versions: get().versions.filter((version) => version.projectId === project.id),
+      assets: get().assets.filter((asset) => asset.projectId === project.id),
+    });
+    const projectSummaries = await electronApi.saveProjectBundle(payload);
+    set({ projectSummaries });
+  }
 
   function patchProjectHistory(
     updatedProject: ProjectDocument,
@@ -527,6 +653,9 @@ export const useAppStore = create<AppState>((set, get) => {
     }
 
     await putProjectDocument(currentProject);
+    if (useElectron) {
+      await syncElectronProjectDocument(currentProject);
+    }
     patchProjectHistory(
       currentProject,
       pendingCommit.before,
@@ -627,6 +756,10 @@ export const useAppStore = create<AppState>((set, get) => {
             ...getHistoryFlags(historyByProject, state.activeProjectId),
           };
         });
+
+        if (useElectron) {
+          await syncElectronActiveProjectBundle(nextProject);
+        }
       },
       {
         busy: true,
@@ -645,6 +778,7 @@ export const useAppStore = create<AppState>((set, get) => {
   status: "Booting workspace…",
   sourceImportProgress: null,
   projects: [],
+  projectSummaries: [],
   assets: [],
   versions: [],
   activeProjectId: null,
@@ -655,6 +789,31 @@ export const useAppStore = create<AppState>((set, get) => {
   async bootstrap() {
     await runWorkspaceAction(
       async () => {
+        if (electronApi) {
+          const bootstrap = await electronApi.bootstrapWindow();
+          if (!bootstrap.workspace && bootstrap.projectSummaries.length === 0) {
+            const project = createProjectDocument("Launch Study");
+            const result = await electronApi.checkoutProject({
+              payload: await captureCanonicalProjectPayload({
+                project,
+                versions: [],
+                assets: [],
+              }),
+              target: "current",
+            });
+
+            if (result.kind !== "opened" || !result.bootstrap) {
+              throw new Error("Could not create the initial project.");
+            }
+
+            await applyElectronBootstrap(result.bootstrap, "Ready.");
+            return;
+          }
+
+          await applyElectronBootstrap(bootstrap, "Ready.");
+          return;
+        }
+
         await syncWorkspace(set, {
           busy: false,
           historyByProject: get().historyByProject,
@@ -680,6 +839,25 @@ export const useAppStore = create<AppState>((set, get) => {
   async createProject() {
     await runWorkspaceAction(
       async () => {
+        if (electronApi) {
+          const project = createProjectDocument(getNextProjectTitle(get().projectSummaries));
+          const result = await electronApi.checkoutProject({
+            payload: await captureCanonicalProjectPayload({
+              project,
+              versions: [],
+              assets: [],
+            }),
+            target: "current",
+          });
+
+          if (result.kind !== "opened" || !result.bootstrap) {
+            throw new Error("Could not create project.");
+          }
+
+          await applyElectronBootstrap(result.bootstrap, "Created a new project.");
+          return;
+        }
+
         const project = createProjectDocument(getNextProjectTitle(get().projects));
         await Promise.all([
           putProjectDocument(project),
@@ -703,6 +881,32 @@ export const useAppStore = create<AppState>((set, get) => {
   async renameProject(projectId, title) {
     await runWorkspaceAction(
       async () => {
+        if (electronApi) {
+          const nextTitle = title.trim() || "Untitled Composition";
+          const activeProject = getActiveProject(get());
+          if (activeProject?.id === projectId) {
+            const updatedProject = {
+              ...activeProject,
+              title: nextTitle,
+              updatedAt: new Date().toISOString(),
+            };
+            await putProjectDocument(updatedProject);
+            await syncElectronProjectDocument(updatedProject);
+            set((state) => ({
+              projects: upsertProject(state.projects, updatedProject),
+              status: "Project renamed.",
+              ...getHistoryFlags(state.historyByProject, state.activeProjectId),
+            }));
+          } else {
+            const projectSummaries = await electronApi.renameProject({
+              projectId,
+              title: nextTitle,
+            });
+            set({ projectSummaries, status: "Project renamed." });
+          }
+          return;
+        }
+
         const nextTitle = title.trim() || "Untitled Composition";
         const project = get().projects.find((entry) => entry.id === projectId);
         if (!project) return;
@@ -731,6 +935,22 @@ export const useAppStore = create<AppState>((set, get) => {
   async duplicateProject(projectId, title) {
     await runWorkspaceAction(
       async () => {
+        if (electronApi) {
+          const result = await electronApi.duplicateProject({
+            projectId,
+            title: title.trim() || undefined,
+            target: "current",
+          });
+
+          if (result.bootstrap) {
+            await applyElectronBootstrap(result.bootstrap, "Project duplicated.");
+          } else {
+            await refreshElectronProjectSummaries();
+            set({ status: "Project duplicated." });
+          }
+          return;
+        }
+
         const sourceProject = get().projects.find(
           (entry) => entry.id === projectId && entry.deletedAt === null,
         );
@@ -800,9 +1020,42 @@ export const useAppStore = create<AppState>((set, get) => {
     );
   },
 
+  async duplicateProjectInNewWindow(projectId, title) {
+    if (!electronApi) {
+      await get().duplicateProject(projectId, title);
+      return;
+    }
+
+    await runWorkspaceAction(
+      async () => {
+        await electronApi.duplicateProject({
+          projectId,
+          title: title.trim() || undefined,
+          target: "new",
+        });
+        await refreshElectronProjectSummaries();
+        set({ status: "Project duplicated in a new window." });
+      },
+      {
+        busy: true,
+        startStatus: "Duplicating project…",
+        getErrorStatus: (error) =>
+          error instanceof Error
+            ? `Could not duplicate project: ${error.message}`
+            : "Could not duplicate project.",
+      },
+    );
+  },
+
   async trashProject(projectId) {
     await runWorkspaceAction(
       async () => {
+        if (electronApi) {
+          const projectSummaries = await electronApi.trashProject(projectId);
+          set({ projectSummaries, status: "Project moved to trash." });
+          return;
+        }
+
         const project = get().projects.find(
           (entry) => entry.id === projectId && entry.deletedAt === null,
         );
@@ -833,6 +1086,12 @@ export const useAppStore = create<AppState>((set, get) => {
   async restoreProject(projectId) {
     await runWorkspaceAction(
       async () => {
+        if (electronApi) {
+          const projectSummaries = await electronApi.restoreProject(projectId);
+          set({ projectSummaries, status: "Project restored." });
+          return;
+        }
+
         const project = get().projects.find((entry) => entry.id === projectId);
         if (!project) return;
 
@@ -860,6 +1119,12 @@ export const useAppStore = create<AppState>((set, get) => {
   async purgeProject(projectId) {
     await runWorkspaceAction(
       async () => {
+        if (electronApi) {
+          const projectSummaries = await electronApi.purgeProject(projectId);
+          set({ projectSummaries, status: "Project deleted permanently." });
+          return;
+        }
+
         await deleteProjectDataAtomically(projectId);
         const historyByProject = clearProjectHistory(
           get().historyByProject,
@@ -892,8 +1157,22 @@ export const useAppStore = create<AppState>((set, get) => {
   },
 
   async setActiveProject(projectId) {
+    let result: OpenProjectResult | null = null;
     await runWorkspaceAction(
       async () => {
+        if (electronApi) {
+          result = await electronApi.openProject({
+            projectId,
+            target: "current",
+          });
+          if (result.kind === "opened" && result.bootstrap) {
+            await applyElectronBootstrap(result.bootstrap, "Project loaded.");
+          } else if (result.kind === "already-open") {
+            set({ status: `"${result.title}" is already open in another window.` });
+          }
+          return;
+        }
+
         const project = get().projects.find(
           (entry) => entry.id === projectId && entry.deletedAt === null,
         );
@@ -914,6 +1193,44 @@ export const useAppStore = create<AppState>((set, get) => {
             : "Could not load project.",
       },
     );
+    return result;
+  },
+
+  async openProjectInNewWindow(projectId) {
+    if (!electronApi) {
+      return null;
+    }
+
+    let result: OpenProjectResult | null = null;
+    await runWorkspaceAction(
+      async () => {
+        result = await electronApi.openProject({
+          projectId,
+          target: "new",
+        });
+        if (result.kind === "opened") {
+          await refreshElectronProjectSummaries();
+          set({ status: "Opened in a new window." });
+        } else {
+          set({ status: `"${result.title}" is already open in another window.` });
+        }
+      },
+      {
+        getErrorStatus: (error) =>
+          error instanceof Error
+            ? `Could not open project in new window: ${error.message}`
+            : "Could not open project in new window.",
+      },
+    );
+    return result;
+  },
+
+  async focusProjectWindow(projectId) {
+    if (!electronApi) {
+      return false;
+    }
+
+    return electronApi.focusProjectWindow(projectId);
   },
 
   async selectLayer(layerId) {
@@ -929,6 +1246,9 @@ export const useAppStore = create<AppState>((set, get) => {
           updatedAt: new Date().toISOString(),
         });
         await putProjectDocument(updatedProject);
+        if (useElectron) {
+          await syncElectronProjectDocument(updatedProject);
+        }
 
         set((state) => ({
           projects: upsertProject(state.projects, updatedProject),
@@ -1212,6 +1532,9 @@ export const useAppStore = create<AppState>((set, get) => {
         }
 
         await putProjectDocument(updatedProject);
+        if (useElectron) {
+          await syncElectronProjectDocument(updatedProject);
+        }
         patchProjectHistory(updatedProject, before, after, options);
       },
       {
@@ -1278,6 +1601,10 @@ export const useAppStore = create<AppState>((set, get) => {
             ...getHistoryFlags(historyByProject, state.activeProjectId),
           };
         });
+
+        if (useElectron) {
+          await syncElectronActiveProjectBundle(nextProject);
+        }
       },
       {
         busy: true,
@@ -1388,6 +1715,10 @@ export const useAppStore = create<AppState>((set, get) => {
             ...getHistoryFlags(historyByProject, state.activeProjectId),
           };
         });
+
+        if (useElectron) {
+          await syncElectronActiveProjectBundle(nextProject);
+        }
       },
       {
         busy: true,
@@ -1454,6 +1785,10 @@ export const useAppStore = create<AppState>((set, get) => {
             ...getHistoryFlags(historyByProject, state.activeProjectId),
           };
         });
+
+        if (useElectron) {
+          await syncElectronActiveProjectBundle(updatedProject);
+        }
       },
       {
         busy: true,
@@ -1517,6 +1852,10 @@ export const useAppStore = create<AppState>((set, get) => {
           ),
           status: "Saved a named version.",
         }));
+
+        if (useElectron) {
+          await syncElectronActiveProjectBundle(updatedProject);
+        }
       },
       {
         getErrorStatus: (error) =>
@@ -1558,6 +1897,10 @@ export const useAppStore = create<AppState>((set, get) => {
             state.activeProjectId,
           );
         });
+
+        if (useElectron) {
+          await syncElectronProjectDocument(updatedProject);
+        }
       },
       {
         getErrorStatus: (error) =>
@@ -1624,24 +1967,38 @@ export const useAppStore = create<AppState>((set, get) => {
     await runWorkspaceAction(
       async () => {
         const bundle = await loadProjectBundle(file);
-        const conflictProject = normalizeProjectDocument(
-          (await db.projects.get(bundle.projectDoc.id)) ?? bundle.projectDoc,
-        );
+        let conflictProject: ProjectDocument | null = null;
+
+        if (electronApi) {
+          const summary = get().projectSummaries.find(
+            (project) => project.id === bundle.projectDoc.id,
+          );
+          if (summary) {
+            conflictProject = {
+              ...bundle.projectDoc,
+              title: summary.title,
+              deletedAt: summary.deletedAt,
+              createdAt: summary.createdAt,
+              updatedAt: summary.updatedAt,
+            };
+          }
+        } else {
+          const storedProject = await db.projects.get(bundle.projectDoc.id);
+          if (storedProject) {
+            conflictProject = normalizeProjectDocument(storedProject);
+          }
+        }
 
         inspection = {
           fileName: file.name,
           projectId: bundle.projectDoc.id,
           projectTitle: bundle.projectDoc.title,
           bundle,
-          conflictProject:
-            conflictProject.id === bundle.projectDoc.id &&
-            (await db.projects.get(bundle.projectDoc.id))
-              ? conflictProject
-              : null,
+          conflictProject,
         };
 
         set({
-          status: inspection.conflictProject
+          status: conflictProject
             ? "Import needs confirmation."
             : "Bundle ready to import.",
         });
@@ -1666,6 +2023,27 @@ export const useAppStore = create<AppState>((set, get) => {
   async resolveBundleImport(inspection, resolution) {
     await runWorkspaceAction(
       async () => {
+        if (electronApi) {
+          const bundle =
+            resolution === "copy" ? createImportCopy(inspection.bundle) : inspection.bundle;
+          const result = await electronApi.checkoutProject({
+            payload: await toCanonicalProjectPayload(bundle),
+            target: "current",
+          });
+
+          if (result.kind !== "opened" || !result.bootstrap) {
+            throw new Error("Could not open imported project.");
+          }
+
+          await applyElectronBootstrap(
+            result.bootstrap,
+            resolution === "copy"
+              ? `Imported ${bundle.projectDoc.title} as a copy.`
+              : `Imported ${bundle.projectDoc.title}.`,
+          );
+          return;
+        }
+
         if (resolution === "replace" && inspection.conflictProject) {
           await deleteProjectDataAtomically(inspection.conflictProject.id);
         }
@@ -1737,6 +2115,9 @@ export const useAppStore = create<AppState>((set, get) => {
               ...getHistoryFlags(historyByProject, state.activeProjectId),
             };
           });
+          if (useElectron) {
+            await syncElectronProjectDocument(updatedProject);
+          }
           return;
         }
 
@@ -1767,6 +2148,9 @@ export const useAppStore = create<AppState>((set, get) => {
               ...getHistoryFlags(historyByProject, state.activeProjectId),
             };
           });
+          if (useElectron) {
+            await syncElectronActiveProjectBundle(updatedProject);
+          }
           return;
         }
 
@@ -1797,6 +2181,9 @@ export const useAppStore = create<AppState>((set, get) => {
             ...getHistoryFlags(historyByProject, state.activeProjectId),
           };
         });
+        if (useElectron) {
+          await syncElectronActiveProjectBundle(updatedProject);
+        }
       },
       {
         getErrorStatus: (error) =>
@@ -1838,6 +2225,9 @@ export const useAppStore = create<AppState>((set, get) => {
               ...getHistoryFlags(historyByProject, state.activeProjectId),
             };
           });
+          if (useElectron) {
+            await syncElectronProjectDocument(updatedProject);
+          }
           return;
         }
 
@@ -1869,6 +2259,9 @@ export const useAppStore = create<AppState>((set, get) => {
               ...getHistoryFlags(historyByProject, state.activeProjectId),
             };
           });
+          if (useElectron) {
+            await syncElectronActiveProjectBundle(updatedProject);
+          }
           return;
         }
 
@@ -1900,6 +2293,9 @@ export const useAppStore = create<AppState>((set, get) => {
             ...getHistoryFlags(historyByProject, state.activeProjectId),
           };
         });
+        if (useElectron) {
+          await syncElectronActiveProjectBundle(updatedProject);
+        }
       },
       {
         getErrorStatus: (error) =>

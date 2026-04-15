@@ -5,10 +5,10 @@
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "types": ["node"],
-    "rootDir": "./electron",
+    "rootDir": ".",
     "outDir": "./dist-electron",
     "noEmit": false,
     "tsBuildInfoFile": "./tsconfig.electron.tsbuildinfo"
   },
-  "include": ["electron/**/*.ts"]
+  "include": ["electron/**/*.ts", "src/types/project.ts"]
 }

@@ -18,7 +18,7 @@ async function importGeneratedImage(page: Awaited<ReturnType<typeof launchApp>>[
 }
 
 async function launchApp(userDataDir: string) {
-  const appEntry = path.join(process.cwd(), "dist-electron/main.js");
+  const appEntry = path.join(process.cwd(), "dist-electron/electron/main.js");
   const { CI: _ci, ...childEnv } = process.env;
   const app = await electron.launch({
     args:

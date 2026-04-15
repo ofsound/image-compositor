@@ -17,3 +17,7 @@ declare module "utif" {
   ): void;
   export function toRGBA8(image: unknown): Uint8Array;
 }
+
+interface Window {
+  compositorElectron?: import("../../electron/contract").ElectronAppApi;
+}

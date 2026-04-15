@@ -50,6 +50,7 @@ import { DuplicateDialog } from "@/features/project-management/duplicate-dialog"
 import { TrashDialog } from "@/features/project-management/trash-dialog";
 import { ManageProjectsDialog } from "@/features/project-management/manage-projects-dialog";
 import { ImportConflictDialog } from "@/features/project-management/import-conflict-dialog";
+import { OpenProjectConflictDialog } from "@/features/project-management/open-project-conflict-dialog";
 import { VersionsDialog } from "@/features/project-management/versions-dialog";
 
 import { Button } from "@/components/ui/button";
@@ -80,6 +81,7 @@ import type {
   BundleImportInspection,
   SourceAsset,
 } from "@/types/project";
+import type { OpenProjectResult, ProjectSummary } from "../electron/contract";
 
 const LAYER_ROW_THUMBNAIL_WIDTH = 224;
 const LAYER_ROW_THUMBNAIL_HEIGHT = 140;
@@ -113,12 +115,18 @@ function App() {
   const [manageProjectsOpen, setManageProjectsOpen] = useState(false);
   const [trashDialogOpen, setTrashDialogOpen] = useState(false);
   const [importConflictOpen, setImportConflictOpen] = useState(false);
+  const [openProjectConflictOpen, setOpenProjectConflictOpen] = useState(false);
 
   // Dialog form values
   const [renameValue, setRenameValue] = useState("");
   const [duplicateValue, setDuplicateValue] = useState("");
   const [pendingImportInspection, setPendingImportInspection] =
     useState<BundleImportInspection | null>(null);
+  const [pendingOpenConflict, setPendingOpenConflict] = useState<{
+    projectId: string;
+    projectTitle: string;
+    target: "current" | "new";
+  } | null>(null);
 
   // Source editor controls
   const {
@@ -137,6 +145,7 @@ function App() {
     status,
     sourceImportProgress,
     projects,
+    projectSummaries,
     assets,
     versions,
     activeProjectId,
@@ -148,6 +157,9 @@ function App() {
     createProject,
     renameProject,
     duplicateProject,
+    duplicateProjectInNewWindow,
+    openProjectInNewWindow,
+    focusProjectWindow,
     trashProject,
     restoreProject,
     purgeProject,
@@ -214,16 +226,16 @@ function App() {
 
   // Project derivations
   const activeProjects = useMemo(
-    () => projects.filter((project) => project.deletedAt === null),
-    [projects],
+    () => projectSummaries.filter((project) => project.deletedAt === null),
+    [projectSummaries],
   );
   const trashedProjects = useMemo(
-    () => projects.filter((project) => project.deletedAt !== null),
-    [projects],
+    () => projectSummaries.filter((project) => project.deletedAt !== null),
+    [projectSummaries],
   );
   const activeProject = useMemo(
-    () => activeProjects.find((project) => project.id === activeProjectId) ?? null,
-    [activeProjectId, activeProjects],
+    () => projects.find((project) => project.id === activeProjectId) ?? null,
+    [activeProjectId, projects],
   );
   const deferredProject = useDeferredValue(activeProject);
   const previewProject = deferredProject ?? activeProject;
@@ -472,6 +484,64 @@ function App() {
     setTrashDialogOpen(false);
   };
 
+  const handleProjectOpenResult = (
+    result: OpenProjectResult | null,
+    project: Pick<ProjectSummary, "id" | "title">,
+    target: "current" | "new",
+  ) => {
+    if (!result || result.kind !== "already-open") {
+      return;
+    }
+
+    setPendingOpenConflict({
+      projectId: project.id,
+      projectTitle: project.title,
+      target,
+    });
+    setOpenProjectConflictOpen(true);
+  };
+
+  const handleSetActiveProject = async (projectId: string) => {
+    const project = activeProjects.find((entry) => entry.id === projectId);
+    const result = await setActiveProject(projectId);
+    if (project) {
+      handleProjectOpenResult(result, project, "current");
+    }
+  };
+
+  const handleOpenProjectInNewWindow = async (projectId: string) => {
+    const project = activeProjects.find((entry) => entry.id === projectId);
+    const result = await openProjectInNewWindow(projectId);
+    if (project) {
+      handleProjectOpenResult(result, project, "new");
+    }
+  };
+
+  const handleRevealExistingWindow = async () => {
+    if (!pendingOpenConflict) {
+      return;
+    }
+
+    await focusProjectWindow(pendingOpenConflict.projectId);
+    setOpenProjectConflictOpen(false);
+    setPendingOpenConflict(null);
+  };
+
+  const handleDuplicateConflictProject = async () => {
+    if (!pendingOpenConflict) {
+      return;
+    }
+
+    const duplicateTitle = `${pendingOpenConflict.projectTitle} Copy`;
+    if (pendingOpenConflict.target === "new") {
+      await duplicateProjectInNewWindow(pendingOpenConflict.projectId, duplicateTitle);
+    } else {
+      await duplicateProject(pendingOpenConflict.projectId, duplicateTitle);
+    }
+    setOpenProjectConflictOpen(false);
+    setPendingOpenConflict(null);
+  };
+
   const handleBundleImport = async (file: File) => {
     const inspection = await inspectBundleImport(file);
     if (inspection.conflictProject) {
@@ -502,7 +572,7 @@ function App() {
               <div className="min-w-[220px] shrink-0">
                 <Select
                   value={activeProject.id}
-                  onValueChange={(value) => void setActiveProject(value)}
+                  onValueChange={(value) => void handleSetActiveProject(value)}
                 >
                   <SelectTrigger className="h-8 text-xs">
                     <SelectValue />
@@ -722,10 +792,24 @@ function App() {
         activeProjects={activeProjects}
         trashedProjects={trashedProjects}
         activeProjectId={activeProject.id}
-        onSetActiveProject={setActiveProject}
+        onSetActiveProject={handleSetActiveProject}
+        onOpenProjectInNewWindow={handleOpenProjectInNewWindow}
         onTrashProject={trashProject}
         onRestoreProject={restoreProject}
         onPurgeProject={purgeProject}
+      />
+
+      <OpenProjectConflictDialog
+        open={openProjectConflictOpen}
+        onOpenChange={(open) => {
+          setOpenProjectConflictOpen(open);
+          if (!open) {
+            setPendingOpenConflict(null);
+          }
+        }}
+        projectTitle={pendingOpenConflict?.projectTitle ?? null}
+        onReveal={() => void handleRevealExistingWindow()}
+        onDuplicate={() => void handleDuplicateConflictProject()}
       />
 
       <ImportConflictDialog

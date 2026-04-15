@@ -1,4 +1,4 @@
-import { net, protocol } from "electron";
+import { net, protocol, type Session } from "electron";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
@@ -38,8 +38,9 @@ function resolveAssetPath(rootDir: string, requestPath: string) {
   return candidatePath;
 }
 
-export async function registerAppProtocol(rootDir: string) {
-  await protocol.handle(APP_SCHEME, (request) => {
+export async function registerAppProtocol(rootDir: string, targetSession?: Session) {
+  const sessionProtocol = targetSession?.protocol ?? protocol;
+  await sessionProtocol.handle(APP_SCHEME, (request) => {
     const requestUrl = new URL(request.url);
     const assetPath = resolveAssetPath(rootDir, requestUrl.pathname);
 

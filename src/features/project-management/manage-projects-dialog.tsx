@@ -9,14 +9,14 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
-import type { ProjectDocument } from "@/types/project";
+import type { ProjectSummary } from "../../../electron/contract";
 
 function ProjectRow({
   project,
   current,
   actions,
 }: {
-  project: ProjectDocument;
+  project: ProjectSummary;
   current: boolean;
   actions: React.ReactNode;
 }) {
@@ -34,6 +34,10 @@ function ProjectRow({
             <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.08em] text-text-muted">
               current
             </div>
+          ) : project.locked ? (
+            <div className="mt-1 font-mono text-[10px] uppercase tracking-[0.08em] text-amber-500">
+              open in another window
+            </div>
           ) : null}
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2">
@@ -47,10 +51,11 @@ function ProjectRow({
 interface ManageProjectsDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  activeProjects: ProjectDocument[];
-  trashedProjects: ProjectDocument[];
+  activeProjects: ProjectSummary[];
+  trashedProjects: ProjectSummary[];
   activeProjectId: string;
-  onSetActiveProject: (projectId: string) => Promise<void>;
+  onSetActiveProject: (projectId: string) => Promise<unknown>;
+  onOpenProjectInNewWindow: (projectId: string) => Promise<unknown>;
   onTrashProject: (projectId: string) => Promise<void>;
   onRestoreProject: (projectId: string) => Promise<void>;
   onPurgeProject: (projectId: string) => Promise<void>;
@@ -63,6 +68,7 @@ export function ManageProjectsDialog({
   trashedProjects,
   activeProjectId,
   onSetActiveProject,
+  onOpenProjectInNewWindow,
   onTrashProject,
   onRestoreProject,
   onPurgeProject,
@@ -106,7 +112,15 @@ export function ManageProjectsDialog({
                       </Button>
                       <Button
                         size="sm"
+                        variant="outline"
+                        onClick={() => void onOpenProjectInNewWindow(project.id)}
+                      >
+                        New Window
+                      </Button>
+                      <Button
+                        size="sm"
                         variant="secondary"
+                        disabled={project.locked && !project.lockedByCurrentWindow}
                         onClick={() => void onTrashProject(project.id)}
                       >
                         Trash
@@ -138,6 +152,7 @@ export function ManageProjectsDialog({
                         <Button
                           size="sm"
                           variant="outline"
+                          disabled={project.locked && !project.lockedByCurrentWindow}
                           onClick={() => void onRestoreProject(project.id)}
                         >
                           Restore
@@ -145,6 +160,7 @@ export function ManageProjectsDialog({
                         <Button
                           size="sm"
                           variant="secondary"
+                          disabled={project.locked && !project.lockedByCurrentWindow}
                           onClick={() => setPurgeDialogProjectId(project.id)}
                         >
                           Delete permanently

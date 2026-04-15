@@ -411,3 +411,44 @@ export async function persistImportedProjectBundleAtomically(
 
   return { projectDoc, versionDocs, assetDocs };
 }
+
+export async function clearWorkspaceDataAtomically() {
+  const [projects, assets, versions] = await Promise.all([
+    db.projects.toArray(),
+    db.assets.toArray(),
+    db.versions.toArray(),
+  ]);
+
+  const blobPaths = [
+    ...assets.flatMap((asset) => [
+      asset.originalPath,
+      asset.normalizedPath,
+      asset.previewPath,
+    ]),
+    ...versions
+      .map((version) => version.thumbnailPath)
+      .filter((thumbnailPath): thumbnailPath is string => Boolean(thumbnailPath)),
+  ];
+
+  await Promise.all(blobPaths.map((blobPath) => deleteBlob(blobPath)));
+  await db.transaction("rw", [db.projects, db.assets, db.versions, db.kv, db.blobs], async () => {
+    if (projects.length > 0) {
+      await db.projects.bulkDelete(projects.map((project) => project.id));
+    }
+    if (assets.length > 0) {
+      await db.assets.bulkDelete(assets.map((asset) => asset.id));
+    }
+    if (versions.length > 0) {
+      await db.versions.bulkDelete(versions.map((version) => version.id));
+    }
+    await db.kv.delete(ACTIVE_PROJECT_KEY);
+    await db.blobs.clear();
+  });
+}
+
+export async function replaceWorkspaceWithImportedProjectBundle(
+  bundle: ImportedProjectBundle,
+) {
+  await clearWorkspaceDataAtomically();
+  return persistImportedProjectBundleAtomically(bundle);
+}

@@ -143,6 +143,17 @@ function resetStore() {
     status: "Ready.",
     sourceImportProgress: null,
     projects: [project],
+    projectSummaries: [
+      {
+        id: project.id,
+        title: project.title,
+        createdAt: project.createdAt,
+        updatedAt: project.updatedAt,
+        deletedAt: project.deletedAt,
+        locked: false,
+        lockedByCurrentWindow: false,
+      },
+    ],
     assets: [],
     versions: [],
     activeProjectId: project.id,

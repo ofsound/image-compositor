@@ -155,6 +155,17 @@ function createStoreState(overrides?: {
     status: "Ready.",
     sourceImportProgress: overrides?.sourceImportProgress ?? null,
     projects: [project],
+    projectSummaries: [
+      {
+        id: project.id,
+        title: project.title,
+        createdAt: project.createdAt,
+        updatedAt: project.updatedAt,
+        deletedAt: project.deletedAt,
+        locked: false,
+        lockedByCurrentWindow: false,
+      },
+    ],
     assets,
     versions: [],
     activeProjectId: project.id,
@@ -165,10 +176,13 @@ function createStoreState(overrides?: {
     createProject: vi.fn(async () => undefined),
     renameProject: vi.fn(async () => undefined),
     duplicateProject: vi.fn(async () => undefined),
+    duplicateProjectInNewWindow: vi.fn(async () => undefined),
+    openProjectInNewWindow: vi.fn(async () => null),
+    focusProjectWindow: vi.fn(async () => false),
     trashProject: vi.fn(async () => undefined),
     restoreProject: vi.fn(async () => undefined),
     purgeProject: vi.fn(async () => undefined),
-    setActiveProject: vi.fn(async () => undefined),
+    setActiveProject: vi.fn(async () => null),
     selectLayer: vi.fn(async () => undefined),
     addLayer: vi.fn(async () => undefined),
     deleteLayer: vi.fn(async () => undefined),
@@ -203,13 +217,13 @@ function createStoreState(overrides?: {
 function mockStoreState(state: ReturnType<typeof createStoreState>) {
   const {
     ready, busy, status, sourceImportProgress,
-    projects, assets, versions, activeProjectId,
+    projects, projectSummaries, assets, versions, activeProjectId,
     canUndo, canRedo,
     ...actions
   } = state;
   mockedUseWorkspaceState.mockReturnValue({
     ready, busy, status, sourceImportProgress,
-    projects, assets, versions, activeProjectId,
+    projects, projectSummaries, assets, versions, activeProjectId,
     canUndo, canRedo,
   });
   mockedUseWorkspaceActions.mockReturnValue(actions as ReturnType<typeof useWorkspaceActions>);

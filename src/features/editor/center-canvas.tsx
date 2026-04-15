@@ -73,12 +73,14 @@ export function CenterCanvas({
     <PanelShell
       title="Preview"
       sectionLabel="Preview"
+      hideHeader
       className="min-w-0 flex-1"
-      actions={
+      overlayActions={
         <Button
           type="button"
           variant="ghost"
           size="icon"
+          className="bg-surface-raised/85 backdrop-blur-sm"
           aria-label={previewExpanded ? "Restore layout" : "Expand preview"}
           aria-pressed={previewExpanded}
           title={previewExpanded ? "Restore layout" : "Expand preview"}
@@ -110,9 +112,10 @@ export function CenterCanvas({
     <PanelShell
       title="Project Settings"
       sectionLabel="Project Settings"
+      hideHeader
       className="shrink-0"
       cardClassName="bg-surface-raised shadow-none"
-      contentClassName="max-h-[38vh] overflow-y-auto space-y-4 p-4 mt-2"
+      contentClassName="max-h-[38vh] overflow-y-auto space-y-4 p-4"
     >
       <div className="grid gap-6 md:grid-cols-2 md:items-start">
         <section aria-label="Canvas settings" className="min-w-0 space-y-4">

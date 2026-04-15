@@ -946,7 +946,8 @@ describe("App inspector grouping", () => {
     renderApp();
 
     expect(screen.getByRole("region", { name: "Layers" })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "Preview" })).toBeInTheDocument();
+    const preview = screen.getByRole("region", { name: "Preview" });
+    expect(preview).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Sources" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Inspector" })).toBeInTheDocument();
 
@@ -977,6 +978,11 @@ describe("App inspector grouping", () => {
     expect(within(projectSettings).getByText("Canvas Background")).toBeInTheDocument();
     expect(within(projectSettings).getByLabelText("Export W")).toBeInTheDocument();
     expect(within(projectSettings).queryByText("Shape")).not.toBeInTheDocument();
+    expect(within(preview).getByRole("button", { name: "Expand preview" })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Preview" })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "Project Settings" }),
+    ).not.toBeInTheDocument();
   });
 
   it("renders sources, layers, and preview in main-grid order", () => {

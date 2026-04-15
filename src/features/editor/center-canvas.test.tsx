@@ -1,5 +1,5 @@
 import { createRef } from "react";
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
@@ -12,6 +12,36 @@ vi.mock("@/components/app/preview-stage", () => ({
 }));
 
 describe("CenterCanvas", () => {
+  it("keeps accessible center regions without visible panel headings", () => {
+    const project = createProjectDocument("Center Canvas");
+
+    render(
+      <CenterCanvas
+        previewExpanded={false}
+        setPreviewExpanded={vi.fn()}
+        canvasRef={createRef<HTMLCanvasElement>()}
+        previewProject={project}
+        activeProject={project}
+        previewAssets={[]}
+        setRenderState={vi.fn()}
+        drawEnabled={false}
+        drawBrushSize={12}
+        appendDrawStroke={vi.fn(async () => undefined)}
+        patchProject={vi.fn()}
+      />,
+    );
+
+    const previewRegion = screen.getByRole("region", { name: "Preview" });
+    const projectSettingsRegion = screen.getByRole("region", {
+      name: "Project Settings",
+    });
+
+    expect(within(previewRegion).getByRole("button", { name: "Expand preview" })).toBeInTheDocument();
+    expect(within(projectSettingsRegion).getByLabelText("Canvas W")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Preview" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Project Settings" })).not.toBeInTheDocument();
+  });
+
   it("supports manual entry for background alpha", async () => {
     const user = userEvent.setup();
     const patchProject = vi.fn();

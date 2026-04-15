@@ -1,5 +1,3 @@
-import type { ElectronAppApi } from "../../electron/contract";
-
 declare module "heic2any" {
   interface Options {
     blob: Blob;
@@ -18,8 +16,4 @@ declare module "utif" {
     ifds?: unknown[],
   ): void;
   export function toRGBA8(image: unknown): Uint8Array;
-}
-
-interface Window {
-  compositorElectron?: ElectronAppApi;
 }

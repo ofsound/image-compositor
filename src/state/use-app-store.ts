@@ -530,10 +530,10 @@ export const useAppStore = create<AppState>((set, get) => {
     await replaceWorkspaceWithCanonicalPayload(bootstrap.workspace);
     const project = normalizeProjectDocument(bootstrap.workspace.projectDoc);
     const assets = sortAssetsByCreated(
-      bootstrap.workspace.assetDocs.map((asset) => structuredClone(asset)),
+      bootstrap.workspace.assetDocs.map((asset: SourceAsset) => structuredClone(asset)),
     );
     const versions = sortVersionsByCreated(
-      bootstrap.workspace.versionDocs.map((version) =>
+      bootstrap.workspace.versionDocs.map((version: ProjectVersion) =>
         normalizeProjectVersion(structuredClone(version)),
       ),
     );
@@ -1161,14 +1161,17 @@ export const useAppStore = create<AppState>((set, get) => {
     await runWorkspaceAction(
       async () => {
         if (electronApi) {
-          result = await electronApi.openProject({
+          const openResult = await electronApi.openProject({
             projectId,
             target: "current",
           });
-          if (result.kind === "opened" && result.bootstrap) {
-            await applyElectronBootstrap(result.bootstrap, "Project loaded.");
-          } else if (result.kind === "already-open") {
-            set({ status: `"${result.title}" is already open in another window.` });
+          result = openResult;
+          if (openResult.kind === "opened") {
+            if (openResult.bootstrap) {
+              await applyElectronBootstrap(openResult.bootstrap, "Project loaded.");
+            }
+          } else {
+            set({ status: `"${openResult.title}" is already open in another window.` });
           }
           return;
         }
@@ -1204,15 +1207,16 @@ export const useAppStore = create<AppState>((set, get) => {
     let result: OpenProjectResult | null = null;
     await runWorkspaceAction(
       async () => {
-        result = await electronApi.openProject({
+        const openResult = await electronApi.openProject({
           projectId,
           target: "new",
         });
-        if (result.kind === "opened") {
+        result = openResult;
+        if (openResult.kind === "opened") {
           await refreshElectronProjectSummaries();
           set({ status: "Opened in a new window." });
         } else {
-          set({ status: `"${result.title}" is already open in another window.` });
+          set({ status: `"${openResult.title}" is already open in another window.` });
         }
       },
       {

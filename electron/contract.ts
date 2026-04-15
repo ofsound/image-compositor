@@ -1,9 +1,15 @@
+import type {
+  ProjectDocument,
+  ProjectVersion,
+  SourceAsset,
+} from "../src/types/project.js";
+
 export type ElectronBinaryPayload = ArrayBuffer;
 
 export interface CanonicalProjectPayload {
-  projectDoc: import("../src/types/project.js").ProjectDocument;
-  versionDocs: import("../src/types/project.js").ProjectVersion[];
-  assetDocs: import("../src/types/project.js").SourceAsset[];
+  projectDoc: ProjectDocument;
+  versionDocs: ProjectVersion[];
+  assetDocs: SourceAsset[];
   assetBlobs: Record<string, ElectronBinaryPayload>;
   versionBlobs: Record<string, ElectronBinaryPayload>;
 }
@@ -55,9 +61,7 @@ export interface WindowDescriptor {
 export interface ElectronAppApi {
   bootstrapWindow: () => Promise<WindowBootstrapData>;
   listProjects: () => Promise<ProjectSummary[]>;
-  saveProjectDocument: (
-    projectDoc: import("../src/types/project.js").ProjectDocument,
-  ) => Promise<ProjectSummary[]>;
+  saveProjectDocument: (projectDoc: ProjectDocument) => Promise<ProjectSummary[]>;
   saveProjectBundle: (payload: CanonicalProjectPayload) => Promise<ProjectSummary[]>;
   checkoutProject: (options: {
     payload: CanonicalProjectPayload;

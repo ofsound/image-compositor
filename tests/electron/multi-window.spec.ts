@@ -21,7 +21,7 @@ async function launchApp(userDataDir: string) {
   return { app, page };
 }
 
-test("opens a project in a second window and duplicates on same-project collision", async ({}, testInfo) => {
+test("opens a project in a second window and duplicates on same-project collision", async (_fixtures, testInfo) => {
   const userDataDir = path.join(testInfo.outputDir, "user-data");
   const { app, page } = await launchApp(userDataDir);
 

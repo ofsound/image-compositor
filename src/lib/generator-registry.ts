@@ -201,16 +201,6 @@ function polarPoint(center: Point, radius: number, angleRadians: number): Point 
   };
 }
 
-function rotateVector(vector: Point, angleRadians: number): Point {
-  const cos = Math.cos(angleRadians);
-  const sin = Math.sin(angleRadians);
-
-  return {
-    x: vector.x * cos - vector.y * sin,
-    y: vector.x * sin + vector.y * cos,
-  };
-}
-
 function getUnitVector(from: Point, to: Point) {
   const dx = to.x - from.x;
   const dy = to.y - from.y;
@@ -218,13 +208,6 @@ function getUnitVector(from: Point, to: Point) {
   return {
     x: dx / length,
     y: dy / length,
-  };
-}
-
-function getPerpendicular(vector: Point) {
-  return {
-    x: -vector.y,
-    y: vector.x,
   };
 }
 
@@ -2184,7 +2167,7 @@ function generatePythagorasTree(
 
     if (depth === 0) return;
 
-    const [bottomLeft, bottomRight, topRight, topLeft] = quad;
+    const [, , topRight, topLeft] = quad;
     const topAxis = getUnitVector(topLeft, topRight);
     const upward = {
       x: -topAxis.y,

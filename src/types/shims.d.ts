@@ -1,3 +1,5 @@
+import type { ElectronAppApi } from "../../electron/contract";
+
 declare module "heic2any" {
   interface Options {
     blob: Blob;
@@ -19,5 +21,5 @@ declare module "utif" {
 }
 
 interface Window {
-  compositorElectron?: import("../../electron/contract").ElectronAppApi;
+  compositorElectron?: ElectronAppApi;
 }

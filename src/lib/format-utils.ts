@@ -1,4 +1,9 @@
-import type { GradientDirection, GradientMode, SourceKind } from "@/types/project";
+import type {
+  FractalVariant,
+  GradientDirection,
+  GradientMode,
+  SourceKind,
+} from "@/types/project";
 
 /** UI scaling factor applied to the raw density value for the slider display. */
 export const DENSITY_UI_SCALE = 4;
@@ -8,6 +13,13 @@ export const ORGANIC_DISTRIBUTION_MAX = 4_096;
 
 /** Maximum slider value for 3D distribution. */
 export const THREE_D_DISTRIBUTION_MAX = 4_096;
+
+export function formatFractalVariantLabel(variant: FractalVariant) {
+  return variant
+    .split("-")
+    .map((part) => part[0]!.toUpperCase() + part.slice(1))
+    .join(" ");
+}
 
 export function formatPercentValue(value: number) {
   return `${Math.round(value * 100)}%`;

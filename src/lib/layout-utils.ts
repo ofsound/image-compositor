@@ -1,6 +1,34 @@
-import type { GeometryShape, LayoutFamily } from "@/types/project";
+import type {
+  FractalVariant,
+  GeometryShape,
+  LayoutFamily,
+} from "@/types/project";
+
+export const FRACTAL_RADIAL_SYMMETRY_COPY_LIMIT = 6;
+
+const FRACTAL_ITERATION_LIMITS: Record<FractalVariant, number> = {
+  "sierpinski-triangle": 6,
+  "sierpinski-carpet": 4,
+  vicsek: 5,
+  "h-tree": 5,
+  rosette: 4,
+  "binary-tree": 8,
+  "pythagoras-tree": 6,
+};
+
+export function getFractalIterationLimit(variant: FractalVariant) {
+  return FRACTAL_ITERATION_LIMITS[variant];
+}
+
+export function isPatternDrivenFamily(family: LayoutFamily) {
+  return family === "fractal";
+}
 
 export function getGeometryOptions(family: LayoutFamily): GeometryShape[] {
+  if (family === "fractal") {
+    return ["rect"];
+  }
+
   return family === "grid"
     ? ["mixed", "rect", "triangle", "interlock", "ring", "arc", "wedge"]
     : family === "organic"
@@ -18,6 +46,10 @@ export function coerceShapeModeForFamily(
 
   if (family === "organic") {
     return "blob";
+  }
+
+  if (family === "fractal") {
+    return "rect";
   }
 
   if (shapeMode === "interlock") {

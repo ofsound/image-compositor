@@ -17,6 +17,7 @@ import type {
   SourceMappingSettings,
 } from "@/types/project";
 import { makeId } from "@/lib/id";
+import { getFractalIterationLimit } from "@/lib/layout-utils";
 import { normalizeSourceWeights } from "@/lib/source-weights";
 import { clamp } from "@/lib/utils";
 
@@ -165,6 +166,26 @@ export const DEFAULT_LAYOUT: LayoutSettings = {
   threeDPerspective: 0.68,
   threeDBillboard: 0.78,
   threeDZJitter: 0.18,
+  fractalVariant: "sierpinski-triangle",
+  fractalIterations: 4,
+  fractalSpacing: 0.04,
+  fractalTrianglePull: 1,
+  fractalTriangleRotation: 0,
+  fractalCarpetHoleScale: 0.33,
+  fractalCarpetOffset: 0,
+  fractalVicsekArmScale: 0.33,
+  fractalVicsekCenterScale: 0.33,
+  fractalHTreeRatio: 0.5,
+  fractalHTreeThickness: 0.18,
+  fractalRosettePetals: 6,
+  fractalRosetteTwist: 18,
+  fractalRosetteInnerRadius: 0.22,
+  fractalBinaryAngle: 32,
+  fractalBinaryDecay: 0.72,
+  fractalBinaryThickness: 0.16,
+  fractalPythagorasAngle: 42,
+  fractalPythagorasScale: 0.7,
+  fractalPythagorasLean: 0,
 };
 
 function normalizeStripAngle(layout: Partial<LayoutSettings> | undefined) {
@@ -310,6 +331,9 @@ export const DEFAULT_PRESETS: GeneratorPreset[] = [
 export function normalizeLayoutSettings(
   layout: Partial<LayoutSettings> | undefined,
 ): LayoutSettings {
+  const fractalVariant =
+    layout?.fractalVariant ?? DEFAULT_LAYOUT.fractalVariant;
+
   return {
     family: layout?.family ?? DEFAULT_LAYOUT.family,
     shapeMode: layout?.shapeMode ?? DEFAULT_LAYOUT.shapeMode,
@@ -383,6 +407,101 @@ export function normalizeLayoutSettings(
     threeDBillboard:
       layout?.threeDBillboard ?? DEFAULT_LAYOUT.threeDBillboard,
     threeDZJitter: layout?.threeDZJitter ?? DEFAULT_LAYOUT.threeDZJitter,
+    fractalVariant,
+    fractalIterations: clamp(
+      Math.round(layout?.fractalIterations ?? DEFAULT_LAYOUT.fractalIterations),
+      0,
+      getFractalIterationLimit(fractalVariant),
+    ),
+    fractalSpacing: clamp(
+      layout?.fractalSpacing ?? DEFAULT_LAYOUT.fractalSpacing,
+      0,
+      0.45,
+    ),
+    fractalTrianglePull: clamp(
+      layout?.fractalTrianglePull ?? DEFAULT_LAYOUT.fractalTrianglePull,
+      0.5,
+      1.4,
+    ),
+    fractalTriangleRotation:
+      layout?.fractalTriangleRotation ??
+      DEFAULT_LAYOUT.fractalTriangleRotation,
+    fractalCarpetHoleScale: clamp(
+      layout?.fractalCarpetHoleScale ?? DEFAULT_LAYOUT.fractalCarpetHoleScale,
+      0.18,
+      0.6,
+    ),
+    fractalCarpetOffset: clamp(
+      layout?.fractalCarpetOffset ?? DEFAULT_LAYOUT.fractalCarpetOffset,
+      -0.24,
+      0.24,
+    ),
+    fractalVicsekArmScale: clamp(
+      layout?.fractalVicsekArmScale ?? DEFAULT_LAYOUT.fractalVicsekArmScale,
+      0.18,
+      0.48,
+    ),
+    fractalVicsekCenterScale: clamp(
+      layout?.fractalVicsekCenterScale ?? DEFAULT_LAYOUT.fractalVicsekCenterScale,
+      0.18,
+      0.48,
+    ),
+    fractalHTreeRatio: clamp(
+      layout?.fractalHTreeRatio ?? DEFAULT_LAYOUT.fractalHTreeRatio,
+      0.25,
+      0.8,
+    ),
+    fractalHTreeThickness: clamp(
+      layout?.fractalHTreeThickness ?? DEFAULT_LAYOUT.fractalHTreeThickness,
+      0.04,
+      0.4,
+    ),
+    fractalRosettePetals: clamp(
+      Math.round(layout?.fractalRosettePetals ?? DEFAULT_LAYOUT.fractalRosettePetals),
+      3,
+      12,
+    ),
+    fractalRosetteTwist:
+      layout?.fractalRosetteTwist ?? DEFAULT_LAYOUT.fractalRosetteTwist,
+    fractalRosetteInnerRadius: clamp(
+      layout?.fractalRosetteInnerRadius ??
+        DEFAULT_LAYOUT.fractalRosetteInnerRadius,
+      0,
+      0.88,
+    ),
+    fractalBinaryAngle: clamp(
+      layout?.fractalBinaryAngle ?? DEFAULT_LAYOUT.fractalBinaryAngle,
+      5,
+      85,
+    ),
+    fractalBinaryDecay: clamp(
+      layout?.fractalBinaryDecay ?? DEFAULT_LAYOUT.fractalBinaryDecay,
+      0.35,
+      0.92,
+    ),
+    fractalBinaryThickness: clamp(
+      layout?.fractalBinaryThickness ??
+        DEFAULT_LAYOUT.fractalBinaryThickness,
+      0.04,
+      0.32,
+    ),
+    fractalPythagorasAngle: clamp(
+      layout?.fractalPythagorasAngle ??
+        DEFAULT_LAYOUT.fractalPythagorasAngle,
+      5,
+      85,
+    ),
+    fractalPythagorasScale: clamp(
+      layout?.fractalPythagorasScale ??
+        DEFAULT_LAYOUT.fractalPythagorasScale,
+      0.35,
+      0.92,
+    ),
+    fractalPythagorasLean: clamp(
+      layout?.fractalPythagorasLean ?? DEFAULT_LAYOUT.fractalPythagorasLean,
+      -1,
+      1,
+    ),
   };
 }
 

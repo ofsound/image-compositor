@@ -21,16 +21,22 @@ import type { GeometryShape } from "@/types/project";
 import { coerceShapeModeForFamily } from "@/lib/layout-utils";
 import {
   DENSITY_UI_SCALE,
+  formatFractalVariantLabel,
   ORGANIC_DISTRIBUTION_MAX,
   THREE_D_DISTRIBUTION_MAX,
   formatPercentValue,
   formatDegreeValue,
 } from "@/lib/format-utils";
 import type { ProjectEditorView } from "@/lib/project-editor-view";
+import {
+  FRACTAL_RADIAL_SYMMETRY_COPY_LIMIT,
+  getFractalIterationLimit,
+} from "@/lib/layout-utils";
 import { Switch } from "@/components/ui/switch";
 import {
   BLEND_MODE_OPTIONS,
   CROP_DISTRIBUTION_OPTIONS,
+  FRACTAL_VARIANT_OPTIONS,
   isOption,
   KALEIDOSCOPE_MIRROR_MODE_OPTIONS,
   LAYOUT_FAMILY_OPTIONS,
@@ -60,11 +66,13 @@ interface RightSidebarProps {
   isOrganicFamily: boolean;
   isFlowFamily: boolean;
   isThreeDFamily: boolean;
+  isFractalFamily: boolean;
   isSymmetryActive: boolean;
   isRadialSymmetry: boolean;
   isWeightedAssignment: boolean;
   isPaletteAssignment: boolean;
   isKaleidoscopeActive: boolean;
+  showGeometryControls: boolean;
   geometryOptions: GeometryShape[];
   geometryValue: GeometryShape;
 }
@@ -87,15 +95,25 @@ export function RightSidebar({
   isOrganicFamily,
   isFlowFamily,
   isThreeDFamily,
+  isFractalFamily,
   isSymmetryActive,
   isRadialSymmetry,
   isWeightedAssignment,
   isPaletteAssignment,
   isKaleidoscopeActive,
+  showGeometryControls,
   geometryOptions,
   geometryValue,
 }: RightSidebarProps) {
   if (previewExpanded) return null;
+
+  const fractalIterationMax = getFractalIterationLimit(
+    activeProjectView.layout.fractalVariant,
+  );
+  const radialCopiesMax =
+    isFractalFamily && isRadialSymmetry
+      ? FRACTAL_RADIAL_SYMMETRY_COPY_LIMIT
+      : 12;
 
   return (
     <div className="flex min-h-0 flex-col gap-3">
@@ -135,6 +153,14 @@ export function RightSidebar({
                                 value,
                                 project.layout.shapeMode,
                               ),
+                              symmetryCopies:
+                                value === "fractal" &&
+                                project.layout.symmetryMode === "radial"
+                                  ? Math.min(
+                                      project.layout.symmetryCopies,
+                                      FRACTAL_RADIAL_SYMMETRY_COPY_LIMIT,
+                                    )
+                                  : project.layout.symmetryCopies,
                             },
                           }));
                         }}
@@ -151,32 +177,34 @@ export function RightSidebar({
                         </SelectContent>
                       </Select>
                     </ControlBlock>
-                    <ControlBlock label="Geometry">
-                      <Select
-                        value={geometryValue}
-                        onValueChange={(value) => {
-                          if (!isOption(geometryOptions, value)) return;
-                          patchProject((project) => ({
-                            ...project,
-                            layout: {
-                              ...project.layout,
-                              shapeMode: value,
-                            },
-                          }));
-                        }}
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {geometryOptions.map((option: GeometryShape) => (
-                            <SelectItem key={option} value={option}>
-                              {option}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </ControlBlock>
+                    {showGeometryControls ? (
+                      <ControlBlock label="Geometry">
+                        <Select
+                          value={geometryValue}
+                          onValueChange={(value) => {
+                            if (!isOption(geometryOptions, value)) return;
+                            patchProject((project) => ({
+                              ...project,
+                              layout: {
+                                ...project.layout,
+                                shapeMode: value,
+                              },
+                            }));
+                          }}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {geometryOptions.map((option: GeometryShape) => (
+                              <SelectItem key={option} value={option}>
+                                {option}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </ControlBlock>
+                    ) : null}
                     {isRectShapeMode ? (
                       <SliderField
                         className="sm:col-span-2"
@@ -996,6 +1024,401 @@ export function RightSidebar({
                   </InspectorGroup>
                 ) : null}
 
+                {isFractalFamily ? (
+                  <InspectorGroup title="Fractal" className="xl:col-span-2">
+                    <InspectorFieldGrid className="sm:grid-cols-2">
+                      <ControlBlock label="Fractal Variant" className="sm:col-span-2">
+                        <Select
+                          value={activeProjectView.layout.fractalVariant}
+                          onValueChange={(value) => {
+                            if (!isOption(FRACTAL_VARIANT_OPTIONS, value)) return;
+                            patchProject((project) => ({
+                              ...project,
+                              layout: {
+                                ...project.layout,
+                                fractalVariant: value,
+                                fractalIterations: Math.min(
+                                  project.layout.fractalIterations,
+                                  getFractalIterationLimit(value),
+                                ),
+                                shapeMode: "rect",
+                              },
+                            }));
+                          }}
+                        >
+                          <SelectTrigger aria-label="Fractal Variant">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {FRACTAL_VARIANT_OPTIONS.map((option) => (
+                              <SelectItem key={option} value={option}>
+                                {formatFractalVariantLabel(option)}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </ControlBlock>
+                      <SliderField
+                        label="Iterations"
+                        min={0}
+                        max={fractalIterationMax}
+                        step={1}
+                        value={Math.min(
+                          activeProjectView.layout.fractalIterations,
+                          fractalIterationMax,
+                        )}
+                        formatter={(value) => `${Math.round(value)}`}
+                        onChange={(value) =>
+                          patchProject((project) => ({
+                            ...project,
+                            layout: {
+                              ...project.layout,
+                              fractalIterations: Math.round(value),
+                            },
+                          }))
+                        }
+                      />
+                      <SliderField
+                        label="Spacing"
+                        min={0}
+                        max={0.45}
+                        step={0.01}
+                        value={activeProjectView.layout.fractalSpacing}
+                        formatter={formatPercentValue}
+                        onChange={(value) =>
+                          patchProject((project) => ({
+                            ...project,
+                            layout: {
+                              ...project.layout,
+                              fractalSpacing: value,
+                            },
+                          }))
+                        }
+                      />
+                      {activeProjectView.layout.fractalVariant === "sierpinski-triangle" ? (
+                        <>
+                          <SliderField
+                            label="Corner Pull"
+                            min={0.5}
+                            max={1.4}
+                            step={0.01}
+                            value={activeProjectView.layout.fractalTrianglePull}
+                            formatter={(value) => `${value.toFixed(2)}x`}
+                            onChange={(value) =>
+                              patchProject((project) => ({
+                                ...project,
+                                layout: {
+                                  ...project.layout,
+                                  fractalTrianglePull: value,
+                                },
+                              }))
+                            }
+                          />
+                          <SliderField
+                            label="Rotation"
+                            min={-180}
+                            max={180}
+                            step={1}
+                            value={activeProjectView.layout.fractalTriangleRotation}
+                            formatter={formatDegreeValue}
+                            onChange={(value) =>
+                              patchProject((project) => ({
+                                ...project,
+                                layout: {
+                                  ...project.layout,
+                                  fractalTriangleRotation: value,
+                                },
+                              }))
+                            }
+                          />
+                        </>
+                      ) : null}
+                      {activeProjectView.layout.fractalVariant === "sierpinski-carpet" ? (
+                        <>
+                          <SliderField
+                            label="Hole Scale"
+                            min={0.18}
+                            max={0.6}
+                            step={0.01}
+                            value={activeProjectView.layout.fractalCarpetHoleScale}
+                            formatter={formatPercentValue}
+                            onChange={(value) =>
+                              patchProject((project) => ({
+                                ...project,
+                                layout: {
+                                  ...project.layout,
+                                  fractalCarpetHoleScale: value,
+                                },
+                              }))
+                            }
+                          />
+                          <SliderField
+                            label="Offset"
+                            min={-0.24}
+                            max={0.24}
+                            step={0.01}
+                            value={activeProjectView.layout.fractalCarpetOffset}
+                            formatter={formatPercentValue}
+                            onChange={(value) =>
+                              patchProject((project) => ({
+                                ...project,
+                                layout: {
+                                  ...project.layout,
+                                  fractalCarpetOffset: value,
+                                },
+                              }))
+                            }
+                          />
+                        </>
+                      ) : null}
+                      {activeProjectView.layout.fractalVariant === "vicsek" ? (
+                        <>
+                          <SliderField
+                            label="Arm Scale"
+                            min={0.18}
+                            max={0.48}
+                            step={0.01}
+                            value={activeProjectView.layout.fractalVicsekArmScale}
+                            formatter={formatPercentValue}
+                            onChange={(value) =>
+                              patchProject((project) => ({
+                                ...project,
+                                layout: {
+                                  ...project.layout,
+                                  fractalVicsekArmScale: value,
+                                },
+                              }))
+                            }
+                          />
+                          <SliderField
+                            label="Center Scale"
+                            min={0.18}
+                            max={0.48}
+                            step={0.01}
+                            value={activeProjectView.layout.fractalVicsekCenterScale}
+                            formatter={formatPercentValue}
+                            onChange={(value) =>
+                              patchProject((project) => ({
+                                ...project,
+                                layout: {
+                                  ...project.layout,
+                                  fractalVicsekCenterScale: value,
+                                },
+                              }))
+                            }
+                          />
+                        </>
+                      ) : null}
+                      {activeProjectView.layout.fractalVariant === "h-tree" ? (
+                        <>
+                          <SliderField
+                            label="Branch Ratio"
+                            min={0.25}
+                            max={0.8}
+                            step={0.01}
+                            value={activeProjectView.layout.fractalHTreeRatio}
+                            formatter={formatPercentValue}
+                            onChange={(value) =>
+                              patchProject((project) => ({
+                                ...project,
+                                layout: {
+                                  ...project.layout,
+                                  fractalHTreeRatio: value,
+                                },
+                              }))
+                            }
+                          />
+                          <SliderField
+                            label="Stroke Thickness"
+                            min={0.04}
+                            max={0.4}
+                            step={0.01}
+                            value={activeProjectView.layout.fractalHTreeThickness}
+                            formatter={formatPercentValue}
+                            onChange={(value) =>
+                              patchProject((project) => ({
+                                ...project,
+                                layout: {
+                                  ...project.layout,
+                                  fractalHTreeThickness: value,
+                                },
+                              }))
+                            }
+                          />
+                        </>
+                      ) : null}
+                      {activeProjectView.layout.fractalVariant === "rosette" ? (
+                        <>
+                          <SliderField
+                            label="Petals"
+                            min={3}
+                            max={12}
+                            step={1}
+                            value={activeProjectView.layout.fractalRosettePetals}
+                            formatter={(value) => `${Math.round(value)}`}
+                            onChange={(value) =>
+                              patchProject((project) => ({
+                                ...project,
+                                layout: {
+                                  ...project.layout,
+                                  fractalRosettePetals: Math.round(value),
+                                },
+                              }))
+                            }
+                          />
+                          <SliderField
+                            label="Twist"
+                            min={-180}
+                            max={180}
+                            step={1}
+                            value={activeProjectView.layout.fractalRosetteTwist}
+                            formatter={formatDegreeValue}
+                            onChange={(value) =>
+                              patchProject((project) => ({
+                                ...project,
+                                layout: {
+                                  ...project.layout,
+                                  fractalRosetteTwist: value,
+                                },
+                              }))
+                            }
+                          />
+                          <SliderField
+                            className="sm:col-span-2"
+                            label="Inner Radius"
+                            min={0}
+                            max={0.88}
+                            step={0.01}
+                            value={activeProjectView.layout.fractalRosetteInnerRadius}
+                            formatter={formatPercentValue}
+                            onChange={(value) =>
+                              patchProject((project) => ({
+                                ...project,
+                                layout: {
+                                  ...project.layout,
+                                  fractalRosetteInnerRadius: value,
+                                },
+                              }))
+                            }
+                          />
+                        </>
+                      ) : null}
+                      {activeProjectView.layout.fractalVariant === "binary-tree" ? (
+                        <>
+                          <SliderField
+                            label="Branch Angle"
+                            min={5}
+                            max={85}
+                            step={1}
+                            value={activeProjectView.layout.fractalBinaryAngle}
+                            formatter={formatDegreeValue}
+                            onChange={(value) =>
+                              patchProject((project) => ({
+                                ...project,
+                                layout: {
+                                  ...project.layout,
+                                  fractalBinaryAngle: value,
+                                },
+                              }))
+                            }
+                          />
+                          <SliderField
+                            label="Length Decay"
+                            min={0.35}
+                            max={0.92}
+                            step={0.01}
+                            value={activeProjectView.layout.fractalBinaryDecay}
+                            formatter={formatPercentValue}
+                            onChange={(value) =>
+                              patchProject((project) => ({
+                                ...project,
+                                layout: {
+                                  ...project.layout,
+                                  fractalBinaryDecay: value,
+                                },
+                              }))
+                            }
+                          />
+                          <SliderField
+                            className="sm:col-span-2"
+                            label="Branch Thickness"
+                            min={0.04}
+                            max={0.32}
+                            step={0.01}
+                            value={activeProjectView.layout.fractalBinaryThickness}
+                            formatter={formatPercentValue}
+                            onChange={(value) =>
+                              patchProject((project) => ({
+                                ...project,
+                                layout: {
+                                  ...project.layout,
+                                  fractalBinaryThickness: value,
+                                },
+                              }))
+                            }
+                          />
+                        </>
+                      ) : null}
+                      {activeProjectView.layout.fractalVariant === "pythagoras-tree" ? (
+                        <>
+                          <SliderField
+                            label="Branch Angle"
+                            min={5}
+                            max={85}
+                            step={1}
+                            value={activeProjectView.layout.fractalPythagorasAngle}
+                            formatter={formatDegreeValue}
+                            onChange={(value) =>
+                              patchProject((project) => ({
+                                ...project,
+                                layout: {
+                                  ...project.layout,
+                                  fractalPythagorasAngle: value,
+                                },
+                              }))
+                            }
+                          />
+                          <SliderField
+                            label="Square Scale"
+                            min={0.35}
+                            max={0.92}
+                            step={0.01}
+                            value={activeProjectView.layout.fractalPythagorasScale}
+                            formatter={formatPercentValue}
+                            onChange={(value) =>
+                              patchProject((project) => ({
+                                ...project,
+                                layout: {
+                                  ...project.layout,
+                                  fractalPythagorasScale: value,
+                                },
+                              }))
+                            }
+                          />
+                          <SliderField
+                            className="sm:col-span-2"
+                            label="Lean"
+                            min={-1}
+                            max={1}
+                            step={0.01}
+                            value={activeProjectView.layout.fractalPythagorasLean}
+                            formatter={formatPercentValue}
+                            onChange={(value) =>
+                              patchProject((project) => ({
+                                ...project,
+                                layout: {
+                                  ...project.layout,
+                                  fractalPythagorasLean: value,
+                                },
+                              }))
+                            }
+                          />
+                        </>
+                      ) : null}
+                    </InspectorFieldGrid>
+                  </InspectorGroup>
+                ) : null}
+
                 {!isDrawFamily ? (
                 <InspectorGroup title="Symmetry">
                   <InspectorFieldGrid>
@@ -1009,6 +1432,14 @@ export function RightSidebar({
                             layout: {
                               ...project.layout,
                               symmetryMode: value,
+                              symmetryCopies:
+                                value === "radial" &&
+                                project.layout.family === "fractal"
+                                  ? Math.min(
+                                      project.layout.symmetryCopies,
+                                      FRACTAL_RADIAL_SYMMETRY_COPY_LIMIT,
+                                    )
+                                  : project.layout.symmetryCopies,
                             },
                           }));
                         }}
@@ -1103,16 +1534,22 @@ export function RightSidebar({
                         <SliderField
                           label="Radial Copies"
                           min={2}
-                          max={12}
+                          max={radialCopiesMax}
                           step={1}
-                          value={activeProjectView.layout.symmetryCopies}
+                          value={Math.min(
+                            activeProjectView.layout.symmetryCopies,
+                            radialCopiesMax,
+                          )}
                           formatter={(value) => `${Math.round(value)}`}
                           onChange={(value) =>
                             patchProject((project) => ({
                               ...project,
                               layout: {
                                 ...project.layout,
-                                symmetryCopies: Math.round(value),
+                                symmetryCopies: Math.min(
+                                  Math.round(value),
+                                  radialCopiesMax,
+                                ),
                               },
                             }))
                           }

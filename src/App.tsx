@@ -68,7 +68,11 @@ import {
   type ProjectEditorView,
   updateProjectFromEditorView,
 } from "@/lib/project-editor-view";
-import { coerceShapeModeForFamily, getGeometryOptions } from "@/lib/layout-utils";
+import {
+  coerceShapeModeForFamily,
+  getGeometryOptions,
+  isPatternDrivenFamily,
+} from "@/lib/layout-utils";
 import { readBlob } from "@/lib/opfs";
 import { toggleSourceId } from "@/lib/source-selection";
 import { setSourceWeight } from "@/lib/source-weights";
@@ -377,6 +381,7 @@ function App() {
   const isOrganicFamily = activeProjectView.layout.family === "organic";
   const isFlowFamily = activeProjectView.layout.family === "flow";
   const isThreeDFamily = activeProjectView.layout.family === "3d";
+  const isFractalFamily = activeProjectView.layout.family === "fractal";
   const isDrawFamily = activeProjectView.layout.family === "draw";
   const isRectShapeMode = activeProjectView.layout.shapeMode === "rect";
   const isWedgeShapeMode =
@@ -396,6 +401,9 @@ function App() {
   const isKaleidoscopeActive =
     activeProjectView.effects.kaleidoscopeSegments > 1;
   const geometryOptions = getGeometryOptions(activeProjectView.layout.family);
+  const showGeometryControls = !isPatternDrivenFamily(
+    activeProjectView.layout.family,
+  );
   const geometryValue = geometryOptions.includes(
     activeProjectView.layout.shapeMode,
   )
@@ -728,11 +736,13 @@ function App() {
               isOrganicFamily={isOrganicFamily}
               isFlowFamily={isFlowFamily}
               isThreeDFamily={isThreeDFamily}
+              isFractalFamily={isFractalFamily}
               isSymmetryActive={isSymmetryActive}
               isRadialSymmetry={isRadialSymmetry}
               isWeightedAssignment={isWeightedAssignment}
               isPaletteAssignment={isPaletteAssignment}
               isKaleidoscopeActive={isKaleidoscopeActive}
+              showGeometryControls={showGeometryControls}
               geometryOptions={geometryOptions}
               geometryValue={geometryValue}
             />

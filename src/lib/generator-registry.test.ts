@@ -1793,4 +1793,125 @@ describe("buildRenderSlices", () => {
     expect(slices.length).toBe(baseline.length);
     expect(slices.every((slice) => slice.mirrorAxis === "none")).toBe(true);
   });
+
+  it.each([
+    "sierpinski-triangle",
+    "sierpinski-carpet",
+    "vicsek",
+    "h-tree",
+    "rosette",
+    "binary-tree",
+    "pythagoras-tree",
+  ] as const)("builds deterministic slices for fractal variant %s", (variant) => {
+    const project = createProjectView(`Fractal ${variant}`);
+    project.sourceIds = [assets[0]!.id, assets[1]!.id];
+    project.layout.family = "fractal";
+    project.layout.fractalVariant = variant;
+
+    const first = buildRenderSlices(project, assets);
+    const second = buildRenderSlices(project, assets);
+
+    expect(first).toEqual(second);
+    expect(first.length).toBeGreaterThan(0);
+  });
+
+  it("changes fractal slice counts as rosette petals change", () => {
+    const project = createProjectView("Fractal Rosette Controls");
+    project.sourceIds = [assets[0]!.id];
+    project.layout.family = "fractal";
+    project.layout.fractalVariant = "rosette";
+    project.layout.fractalIterations = 3;
+    project.layout.fractalRosettePetals = 4;
+
+    const sparse = buildRenderSlices(project, [assets[0]!]);
+
+    project.layout.fractalRosettePetals = 9;
+    const dense = buildRenderSlices(project, [assets[0]!]);
+
+    expect(dense.length).toBeGreaterThan(sparse.length);
+  });
+
+  it("rotates sierpinski triangle output with the rotation control", () => {
+    const project = createProjectView("Fractal Triangle Rotation");
+    project.sourceIds = [assets[0]!.id];
+    project.layout.family = "fractal";
+    project.layout.fractalVariant = "sierpinski-triangle";
+    project.layout.fractalIterations = 1;
+    project.layout.fractalTriangleRotation = 0;
+
+    const upright = buildRenderSlices(project, [assets[0]!]);
+
+    project.layout.fractalTriangleRotation = 30;
+    const rotated = buildRenderSlices(project, [assets[0]!]);
+
+    expect(upright[0]?.clipPathPoints).not.toEqual(rotated[0]?.clipPathPoints);
+  });
+
+  it("clamps fractal recursion under radial symmetry and the global slice budget", () => {
+    const project = createProjectView("Fractal Clamp");
+    project.sourceIds = [assets[0]!.id];
+    project.layout.family = "fractal";
+    project.layout.fractalVariant = "sierpinski-carpet";
+    project.layout.fractalIterations = 4;
+    project.layout.symmetryMode = "radial";
+    project.layout.symmetryCopies = 12;
+
+    const slices = buildRenderSlices(project, [assets[0]!]);
+
+    expect(slices.length).toBeLessThanOrEqual(1_200);
+    expect(slices.length).toBe(384);
+  });
+
+  it("emits polygon clip paths for rosette petals", () => {
+    const project = createProjectView("Fractal Rosette Paths");
+    project.sourceIds = [assets[0]!.id];
+    project.layout.family = "fractal";
+    project.layout.fractalVariant = "rosette";
+
+    const slices = buildRenderSlices(project, [assets[0]!]);
+
+    expect(slices.some((slice) => (slice.clipPathPoints?.length ?? 0) >= 3)).toBe(true);
+  });
+
+  it.each(["h-tree", "binary-tree", "pythagoras-tree"] as const)(
+    "keeps %s slices inside the inset canvas",
+    (variant) => {
+      const project = createProjectView(`Fractal Bounds ${variant}`);
+      project.sourceIds = [assets[0]!.id];
+      project.layout.family = "fractal";
+      project.layout.fractalVariant = variant;
+      project.layout.fractalIterations = 4;
+
+      const slices = buildRenderSlices(project, [assets[0]!]);
+      const left = project.canvas.inset;
+      const right = project.canvas.width - project.canvas.inset;
+      const top = project.canvas.inset;
+      const bottom = project.canvas.height - project.canvas.inset;
+
+      expect(
+        slices.every((slice) => {
+          const points =
+            slice.quadPoints ??
+            slice.clipPathPoints ??
+            [
+              { x: slice.rect.x, y: slice.rect.y },
+              { x: slice.rect.x + slice.rect.width, y: slice.rect.y },
+              {
+                x: slice.rect.x + slice.rect.width,
+                y: slice.rect.y + slice.rect.height,
+              },
+              { x: slice.rect.x, y: slice.rect.y + slice.rect.height },
+            ];
+
+          return points.every(
+            (point) =>
+              point.x >= left - 1 &&
+              point.x <= right + 1 &&
+              point.y >= top - 1 &&
+              point.y <= bottom + 1,
+          );
+        }),
+      ).toBe(true);
+    },
+  );
 });

@@ -75,7 +75,15 @@ type AppStoreState = ReturnType<typeof useWorkspaceState> & ReturnType<typeof us
 type UpdateProject = AppStoreState["updateProject"];
 
 function createStoreState(overrides?: {
-  family?: "grid" | "strips" | "blocks" | "radial" | "organic" | "flow" | "3d";
+  family?:
+    | "grid"
+    | "strips"
+    | "blocks"
+    | "radial"
+    | "organic"
+    | "flow"
+    | "3d"
+    | "fractal";
   shapeMode?:
     | "rect"
     | "triangle"
@@ -97,6 +105,14 @@ function createStoreState(overrides?: {
     | "luminance"
     | "palette"
     | "symmetry";
+  fractalVariant?:
+    | "sierpinski-triangle"
+    | "sierpinski-carpet"
+    | "vicsek"
+    | "h-tree"
+    | "rosette"
+    | "binary-tree"
+    | "pythagoras-tree";
   assets?: SourceAsset[];
   enabledSourceIds?: string[];
   sourceWeights?: Record<string, number>;
@@ -133,6 +149,10 @@ function createStoreState(overrides?: {
 
   if (overrides?.strategy) {
     selectedLayer.sourceMapping.strategy = overrides.strategy;
+  }
+
+  if (overrides?.fractalVariant) {
+    selectedLayer.layout.fractalVariant = overrides.fractalVariant;
   }
 
   const assets =
@@ -749,6 +769,7 @@ describe("App conditional sliders", () => {
     expect(getGeometryOptions("organic")).toContain("rect");
     expect(getGeometryOptions("flow")).toContain("arc");
     expect(getGeometryOptions("3d")).not.toContain("interlock");
+    expect(getGeometryOptions("fractal")).toEqual(["rect"]);
   });
 
   it("coerces interlock back to triangle when leaving grid", () => {
@@ -868,6 +889,38 @@ describe("App conditional sliders", () => {
     expectSliderHidden("Radial Rings");
     expectSliderHidden("Gutter");
     expectSliderHidden("Block Depth");
+  });
+
+  it("hides geometry and shows fractal controls for the fractal family", async () => {
+    renderApp({
+      family: "fractal",
+      symmetryMode: "radial",
+      strategy: "random",
+      fractalVariant: "rosette",
+    });
+
+    expect(screen.queryByLabelText("Geometry")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Fractal Variant")).toBeInTheDocument();
+    expectSliderEnabled("Iterations");
+    expectSliderEnabled("Spacing");
+    expectSliderEnabled("Petals");
+    expectSliderEnabled("Twist");
+    expectSliderEnabled("Inner Radius");
+    expectSliderEnabled("Radial Copies");
+  });
+
+  it("shows variant-specific fractal sliders for binary tree", () => {
+    renderApp({
+      family: "fractal",
+      symmetryMode: "none",
+      strategy: "random",
+      fractalVariant: "binary-tree",
+    });
+
+    expectSliderEnabled("Branch Angle");
+    expectSliderEnabled("Length Decay");
+    expectSliderEnabled("Branch Thickness");
+    expectSliderHidden("Petals");
   });
 
   it("stores the organic distribution slider as an integer variation seed", () => {

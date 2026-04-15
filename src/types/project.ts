@@ -15,7 +15,16 @@ export type LayoutFamily =
   | "organic"
   | "flow"
   | "3d"
+  | "fractal"
   | "draw";
+export type FractalVariant =
+  | "sierpinski-triangle"
+  | "sierpinski-carpet"
+  | "vicsek"
+  | "h-tree"
+  | "rosette"
+  | "binary-tree"
+  | "pythagoras-tree";
 export type RadialChildRotationMode = "none" | "tangent" | "outward";
 export type ThreeDStructureMode = "sphere" | "torus" | "attractor";
 export type KaleidoscopeMirrorMode =
@@ -233,6 +242,26 @@ export interface LayoutSettings {
   threeDPerspective: number;
   threeDBillboard: number;
   threeDZJitter: number;
+  fractalVariant: FractalVariant;
+  fractalIterations: number;
+  fractalSpacing: number;
+  fractalTrianglePull: number;
+  fractalTriangleRotation: number;
+  fractalCarpetHoleScale: number;
+  fractalCarpetOffset: number;
+  fractalVicsekArmScale: number;
+  fractalVicsekCenterScale: number;
+  fractalHTreeRatio: number;
+  fractalHTreeThickness: number;
+  fractalRosettePetals: number;
+  fractalRosetteTwist: number;
+  fractalRosetteInnerRadius: number;
+  fractalBinaryAngle: number;
+  fractalBinaryDecay: number;
+  fractalBinaryThickness: number;
+  fractalPythagorasAngle: number;
+  fractalPythagorasScale: number;
+  fractalPythagorasLean: number;
 }
 
 export interface SourceMappingSettings {

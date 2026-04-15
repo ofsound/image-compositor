@@ -1,6 +1,7 @@
 import type {
   BlendMode,
   CropDistribution,
+  FractalVariant,
   GeometryShape,
   KaleidoscopeMirrorMode,
   LayoutFamily,
@@ -18,7 +19,18 @@ export const LAYOUT_FAMILY_OPTIONS: LayoutFamily[] = [
   "organic",
   "flow",
   "3d",
+  "fractal",
   "draw",
+];
+
+export const FRACTAL_VARIANT_OPTIONS: FractalVariant[] = [
+  "sierpinski-triangle",
+  "sierpinski-carpet",
+  "vicsek",
+  "h-tree",
+  "rosette",
+  "binary-tree",
+  "pythagoras-tree",
 ];
 
 export const RADIAL_CHILD_ROTATION_OPTIONS: RadialChildRotationMode[] = [

@@ -67,6 +67,26 @@ describe("createProjectDocument", () => {
     expect(project.layout.threeDPerspective).toBe(0.68);
     expect(project.layout.threeDBillboard).toBe(0.78);
     expect(project.layout.threeDZJitter).toBe(0.18);
+    expect(project.layout.fractalVariant).toBe("sierpinski-triangle");
+    expect(project.layout.fractalIterations).toBe(4);
+    expect(project.layout.fractalSpacing).toBe(0.04);
+    expect(project.layout.fractalTrianglePull).toBe(1);
+    expect(project.layout.fractalTriangleRotation).toBe(0);
+    expect(project.layout.fractalCarpetHoleScale).toBe(0.33);
+    expect(project.layout.fractalCarpetOffset).toBe(0);
+    expect(project.layout.fractalVicsekArmScale).toBe(0.33);
+    expect(project.layout.fractalVicsekCenterScale).toBe(0.33);
+    expect(project.layout.fractalHTreeRatio).toBe(0.5);
+    expect(project.layout.fractalHTreeThickness).toBe(0.18);
+    expect(project.layout.fractalRosettePetals).toBe(6);
+    expect(project.layout.fractalRosetteTwist).toBe(18);
+    expect(project.layout.fractalRosetteInnerRadius).toBe(0.22);
+    expect(project.layout.fractalBinaryAngle).toBe(32);
+    expect(project.layout.fractalBinaryDecay).toBe(0.72);
+    expect(project.layout.fractalBinaryThickness).toBe(0.16);
+    expect(project.layout.fractalPythagorasAngle).toBe(42);
+    expect(project.layout.fractalPythagorasScale).toBe(0.7);
+    expect(project.layout.fractalPythagorasLean).toBe(0);
     expect(project.effects.kaleidoscopeCenterX).toBe(0.5);
     expect(project.effects.kaleidoscopeCenterY).toBe(0.5);
     expect(project.effects.kaleidoscopeAngleOffset).toBe(0);
@@ -275,6 +295,97 @@ describe("createProjectDocument", () => {
     } as unknown as ProjectDocument;
 
     expect(normalizeProjectView(legacyProject).layout.organicVariation).toBe(0);
+  });
+
+  it("normalizes legacy projects without fractal fields to the new defaults", () => {
+    const project = createProjectView("Legacy Fractal");
+    const legacyProject = {
+      ...project,
+      layout: {
+        family: "fractal",
+        shapeMode: "rect",
+        rectCornerRadius: project.layout.rectCornerRadius,
+        density: project.layout.density,
+        stripAngle: project.layout.stripAngle,
+        columns: project.layout.columns,
+        rows: project.layout.rows,
+        gutter: project.layout.gutter,
+        gutterHorizontal: project.layout.gutterHorizontal,
+        gutterVertical: project.layout.gutterVertical,
+        blockDepth: project.layout.blockDepth,
+        blockSplitRandomness: project.layout.blockSplitRandomness,
+        blockMinSize: project.layout.blockMinSize,
+        blockSplitBias: project.layout.blockSplitBias,
+        stripOrientation: project.layout.stripOrientation,
+        radialSegments: project.layout.radialSegments,
+        radialRings: project.layout.radialRings,
+        radialAngleOffset: project.layout.radialAngleOffset,
+        radialRingPhaseStep: project.layout.radialRingPhaseStep,
+        radialInnerRadius: project.layout.radialInnerRadius,
+        radialChildRotationMode: project.layout.radialChildRotationMode,
+        symmetryMode: project.layout.symmetryMode,
+        symmetryCopies: project.layout.symmetryCopies,
+        symmetryCenterX: project.layout.symmetryCenterX,
+        symmetryCenterY: project.layout.symmetryCenterY,
+        symmetryAngleOffset: project.layout.symmetryAngleOffset,
+        symmetryJitter: project.layout.symmetryJitter,
+        hidePercentage: project.layout.hidePercentage,
+        letterbox: project.layout.letterbox,
+        offsetX: project.layout.offsetX,
+        offsetY: project.layout.offsetY,
+        wedgeAngle: project.layout.wedgeAngle,
+        wedgeJitter: project.layout.wedgeJitter,
+        hollowRatio: project.layout.hollowRatio,
+        randomness: project.layout.randomness,
+        organicVariation: project.layout.organicVariation,
+        flowCurvature: project.layout.flowCurvature,
+        flowCoherence: project.layout.flowCoherence,
+        flowBranchRate: project.layout.flowBranchRate,
+        flowTaper: project.layout.flowTaper,
+        threeDStructure: project.layout.threeDStructure,
+        threeDDistribution: project.layout.threeDDistribution,
+        threeDDepth: project.layout.threeDDepth,
+        threeDCameraDistance: project.layout.threeDCameraDistance,
+        threeDPanX: project.layout.threeDPanX,
+        threeDPanY: project.layout.threeDPanY,
+        threeDYaw: project.layout.threeDYaw,
+        threeDPitch: project.layout.threeDPitch,
+        threeDPerspective: project.layout.threeDPerspective,
+        threeDBillboard: project.layout.threeDBillboard,
+        threeDZJitter: project.layout.threeDZJitter,
+      },
+    } as unknown as ProjectDocument;
+
+    const normalized = normalizeProjectView(legacyProject);
+
+    expect(normalized.layout.fractalVariant).toBe("sierpinski-triangle");
+    expect(normalized.layout.fractalIterations).toBe(4);
+    expect(normalized.layout.fractalSpacing).toBe(0.04);
+  });
+
+  it("serializes and reloads fractal layout settings canonically", () => {
+    const project = createProjectDocument("Fractal Round Trip");
+    const layer = project.layers[0]!;
+    layer.layout.family = "fractal";
+    layer.layout.fractalVariant = "rosette";
+    layer.layout.fractalIterations = 3;
+    layer.layout.fractalSpacing = 0.12;
+    layer.layout.fractalRosettePetals = 9;
+    layer.layout.fractalRosetteTwist = -24;
+    layer.layout.fractalRosetteInnerRadius = 0.3;
+
+    const serialized = serializeProjectDocument(normalizeProjectDocument(project));
+    const normalized = normalizeProjectDocument(serialized);
+    const selectedLayer = getSelectedLayer(normalized);
+
+    expect(selectedLayer?.layout.family).toBe("fractal");
+    expect(selectedLayer?.layout.fractalVariant).toBe("rosette");
+    expect(selectedLayer?.layout.fractalIterations).toBe(3);
+    expect(selectedLayer?.layout.fractalSpacing).toBe(0.12);
+    expect(selectedLayer?.layout.fractalRosettePetals).toBe(9);
+    expect(selectedLayer?.layout.fractalRosetteTwist).toBe(-24);
+    expect(selectedLayer?.layout.fractalRosetteInnerRadius).toBe(0.3);
+    expect("layout" in serialized).toBe(false);
   });
 
   it("normalizes legacy projects without flow and hollow controls to defaults", () => {

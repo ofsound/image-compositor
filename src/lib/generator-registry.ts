@@ -1,4 +1,5 @@
 import type {
+  FractalVariant,
   GeometryShape,
   LayerRenderProject,
   LayoutFamily,
@@ -11,6 +12,10 @@ import type {
   SourceAssignmentStrategy,
   ThreeDStructureMode,
 } from "@/types/project";
+import {
+  FRACTAL_RADIAL_SYMMETRY_COPY_LIMIT,
+  getFractalIterationLimit,
+} from "@/lib/layout-utils";
 import {
   createLayerRenderProject,
   getSelectedLayer,
@@ -69,6 +74,7 @@ const MIN_WEDGE_SWEEP_DEGREES = 0.5;
 const MAX_BLOCK_SPLIT_OFFSET = 0.18;
 const ORGANIC_VARIATION_MAX = 4_096;
 const THREE_D_DISTRIBUTION_MAX = 4_096;
+const FRACTAL_MAX_SLICES = 1_200;
 
 function degToRad(degrees: number) {
   return (degrees * Math.PI) / 180;
@@ -148,6 +154,19 @@ function translateRect(rect: RenderRect | null, dx: number, dy: number) {
   };
 }
 
+function scaleRectAroundCenter(rect: RenderRect, factor: number): RenderRect {
+  const center = getRectCenter(rect);
+  const width = Math.max(1, rect.width * factor);
+  const height = Math.max(1, rect.height * factor);
+
+  return {
+    x: center.x - width / 2,
+    y: center.y - height / 2,
+    width,
+    height,
+  };
+}
+
 function rotatePoints(points: RenderPoint[], angle: number, center: Point) {
   const cos = Math.cos(angle);
   const sin = Math.sin(angle);
@@ -161,6 +180,216 @@ function rotatePoints(points: RenderPoint[], angle: number, center: Point) {
       y: center.y + x * sin + y * cos,
     };
   });
+}
+
+function interpolatePoint(from: Point, to: Point, t: number): Point {
+  return {
+    x: lerp(from.x, to.x, t),
+    y: lerp(from.y, to.y, t),
+  };
+}
+
+function getPointCenter(points: RenderPoint[]) {
+  const bounds = getBoundsForPoints(points);
+  return getRectCenter(bounds);
+}
+
+function polarPoint(center: Point, radius: number, angleRadians: number): Point {
+  return {
+    x: center.x + Math.cos(angleRadians) * radius,
+    y: center.y + Math.sin(angleRadians) * radius,
+  };
+}
+
+function rotateVector(vector: Point, angleRadians: number): Point {
+  const cos = Math.cos(angleRadians);
+  const sin = Math.sin(angleRadians);
+
+  return {
+    x: vector.x * cos - vector.y * sin,
+    y: vector.x * sin + vector.y * cos,
+  };
+}
+
+function getUnitVector(from: Point, to: Point) {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const length = Math.hypot(dx, dy) || 1;
+  return {
+    x: dx / length,
+    y: dy / length,
+  };
+}
+
+function getPerpendicular(vector: Point) {
+  return {
+    x: -vector.y,
+    y: vector.x,
+  };
+}
+
+function createPathCell(
+  points: RenderPoint[],
+  shape: ConcreteGeometryShape = "rect",
+): LayoutCell {
+  const bounds = getBoundsForPoints(points);
+  return {
+    ...bounds,
+    shape,
+    clipPathPoints: points,
+  };
+}
+
+function createQuadCell(points: [RenderPoint, RenderPoint, RenderPoint, RenderPoint]): LayoutCell {
+  const bounds = getBoundsForPoints(points);
+  return {
+    ...bounds,
+    shape: "rect",
+    quadPoints: points,
+  };
+}
+
+function createRotatedRectCell(
+  center: Point,
+  width: number,
+  height: number,
+  angleRadians: number,
+): LayoutCell {
+  const clipRect = {
+    x: center.x - width / 2,
+    y: center.y - height / 2,
+    width: Math.max(1, width),
+    height: Math.max(1, height),
+  };
+
+  return {
+    ...getRotatedBounds(clipRect, angleRadians),
+    clipRect,
+    clipRotation: angleRadians,
+    shape: "rect",
+  };
+}
+
+function applyFractalSpacingToCell(cell: LayoutCell, spacing: number): LayoutCell {
+  const factor = clamp(1 - spacing, 0.05, 1);
+  if (factor >= 0.9999) {
+    return cell;
+  }
+
+  const center = getRectCenter(cell);
+
+  if (cell.quadPoints && cell.quadPoints.length === 4) {
+    const quadPoints = scalePointsFromCenter(cell.quadPoints, center, factor);
+    return {
+      ...cell,
+      ...getBoundsForPoints(quadPoints),
+      quadPoints,
+    };
+  }
+
+  if (cell.clipPathPoints && cell.clipPathPoints.length > 2) {
+    const clipPathPoints = scalePointsFromCenter(
+      cell.clipPathPoints,
+      getPointCenter(cell.clipPathPoints),
+      factor,
+    );
+    return {
+      ...cell,
+      ...getBoundsForPoints(clipPathPoints),
+      clipPathPoints,
+    };
+  }
+
+  if (cell.clipRect) {
+    const clipRect = scaleRectAroundCenter(cell.clipRect, factor);
+    return {
+      ...cell,
+      ...getRotatedBounds(clipRect, cell.clipRotation ?? 0),
+      clipRect,
+    };
+  }
+
+  const rect = scaleRectAroundCenter(cell, factor);
+  return {
+    ...cell,
+    ...rect,
+  };
+}
+
+function getEffectiveSymmetryCopies(project: LayerRenderProject) {
+  if (project.layout.symmetryMode !== "radial") {
+    return project.layout.symmetryCopies;
+  }
+
+  return project.layout.family === "fractal"
+    ? Math.min(project.layout.symmetryCopies, FRACTAL_RADIAL_SYMMETRY_COPY_LIMIT)
+    : project.layout.symmetryCopies;
+}
+
+function getSymmetryMultiplier(project: LayerRenderProject) {
+  if (project.layout.symmetryMode === "mirror-x" || project.layout.symmetryMode === "mirror-y") {
+    return 2;
+  }
+
+  if (project.layout.symmetryMode === "quad") {
+    return 3;
+  }
+
+  if (project.layout.symmetryMode === "radial") {
+    return Math.max(1, getEffectiveSymmetryCopies(project));
+  }
+
+  return 1;
+}
+
+function estimateFractalSliceCount(
+  variant: FractalVariant,
+  iterations: number,
+  project: LayerRenderProject,
+) {
+  switch (variant) {
+    case "sierpinski-triangle":
+      return 3 ** iterations;
+    case "sierpinski-carpet":
+      return 8 ** iterations;
+    case "vicsek":
+      return 5 ** iterations;
+    case "h-tree": {
+      let total = 0;
+      let nodes = 1;
+      for (let level = 0; level <= iterations; level += 1) {
+        total += nodes * 3;
+        nodes *= 4;
+      }
+      return total;
+    }
+    case "rosette":
+      return Math.max(1, Math.round(project.layout.fractalRosettePetals)) * (iterations + 1);
+    case "binary-tree":
+    case "pythagoras-tree":
+      return 2 ** (iterations + 1) - 1;
+  }
+}
+
+function getEffectiveFractalIterations(project: LayerRenderProject) {
+  const requested = clamp(
+    Math.round(project.layout.fractalIterations),
+    0,
+    getFractalIterationLimit(project.layout.fractalVariant),
+  );
+  const multiplier = getSymmetryMultiplier(project);
+  let nextIterations = requested;
+
+  while (
+    nextIterations > 0 &&
+    estimateFractalSliceCount(project.layout.fractalVariant, nextIterations, project) *
+      multiplier >
+      FRACTAL_MAX_SLICES
+  ) {
+    nextIterations -= 1;
+  }
+
+  return nextIterations;
 }
 
 function getRotatedBounds(rect: RenderRect, radians: number): RenderRect {
@@ -1538,6 +1767,501 @@ function generateThreeD(context: GeneratorContext) {
   );
 }
 
+function getFractalInsetRect(project: LayerRenderProject) {
+  return {
+    x: project.canvas.inset,
+    y: project.canvas.inset,
+    width: project.canvas.width - project.canvas.inset * 2,
+    height: project.canvas.height - project.canvas.inset * 2,
+  };
+}
+
+function generateSierpinskiTriangle(
+  project: LayerRenderProject,
+  iterations: number,
+) {
+  const innerRect = getFractalInsetRect(project);
+  const side = Math.min(innerRect.width, (innerRect.height * 2) / Math.sqrt(3));
+  const height = (side * Math.sqrt(3)) / 2;
+  const center = getRectCenter(innerRect);
+  const topY = center.y - height / 2;
+  const points: [Point, Point, Point] = [
+    { x: center.x, y: topY },
+    { x: center.x + side / 2, y: topY + height },
+    { x: center.x - side / 2, y: topY + height },
+  ];
+  const rotation = degToRad(project.layout.fractalTriangleRotation);
+  const factor = clamp(project.layout.fractalTrianglePull * 0.5, 0.2, 0.72);
+  const rootPoints =
+    Math.abs(rotation) > 0.0001
+      ? (rotatePoints(points, rotation, center) as [Point, Point, Point])
+      : points;
+  const cells: LayoutCell[] = [];
+
+  const visit = (triangle: [Point, Point, Point], depth: number) => {
+    if (depth === 0) {
+      cells.push(
+        applyFractalSpacingToCell(
+          createPathCell([...triangle], "triangle"),
+          project.layout.fractalSpacing,
+        ),
+      );
+      return;
+    }
+
+    for (let cornerIndex = 0; cornerIndex < triangle.length; cornerIndex += 1) {
+      const corner = triangle[cornerIndex]!;
+      const otherA = triangle[(cornerIndex + 1) % triangle.length]!;
+      const otherB = triangle[(cornerIndex + 2) % triangle.length]!;
+      visit(
+        [
+          corner,
+          interpolatePoint(corner, otherA, factor),
+          interpolatePoint(corner, otherB, factor),
+        ],
+        depth - 1,
+      );
+    }
+  };
+
+  visit(rootPoints, iterations);
+  return cells;
+}
+
+function getCarpetBands(
+  rect: RenderRect,
+  holeScale: number,
+  offset: number,
+) {
+  const holeWidth = rect.width * holeScale;
+  const holeHeight = rect.height * holeScale;
+  const maxShiftX = Math.max(0, (rect.width - holeWidth) / 2 - 2);
+  const maxShiftY = Math.max(0, (rect.height - holeHeight) / 2 - 2);
+  const holeCenterX = rect.x + rect.width / 2 + offset * maxShiftX;
+  const holeCenterY = rect.y + rect.height / 2 + offset * maxShiftY;
+  const left = clamp(holeCenterX - holeWidth / 2, rect.x + 1, rect.x + rect.width - holeWidth - 1);
+  const top = clamp(holeCenterY - holeHeight / 2, rect.y + 1, rect.y + rect.height - holeHeight - 1);
+  const right = left + holeWidth;
+  const bottom = top + holeHeight;
+
+  return {
+    xs: [rect.x, left, right, rect.x + rect.width],
+    ys: [rect.y, top, bottom, rect.y + rect.height],
+  };
+}
+
+function generateSierpinskiCarpet(
+  project: LayerRenderProject,
+  iterations: number,
+) {
+  const cells: LayoutCell[] = [];
+  const innerRect = getFractalInsetRect(project);
+
+  const visit = (rect: RenderRect, depth: number) => {
+    if (depth === 0) {
+      cells.push(
+        applyFractalSpacingToCell(
+          {
+            ...rect,
+            shape: "rect",
+          },
+          project.layout.fractalSpacing,
+        ),
+      );
+      return;
+    }
+
+    const { xs, ys } = getCarpetBands(
+      rect,
+      project.layout.fractalCarpetHoleScale,
+      project.layout.fractalCarpetOffset,
+    );
+
+    for (let row = 0; row < 3; row += 1) {
+      for (let column = 0; column < 3; column += 1) {
+        if (row === 1 && column === 1) continue;
+        const child = {
+          x: xs[column]!,
+          y: ys[row]!,
+          width: xs[column + 1]! - xs[column]!,
+          height: ys[row + 1]! - ys[row]!,
+        };
+        if (child.width <= 2 || child.height <= 2) continue;
+        visit(child, depth - 1);
+      }
+    }
+  };
+
+  visit(innerRect, iterations);
+  return cells;
+}
+
+function generateVicsek(
+  project: LayerRenderProject,
+  iterations: number,
+) {
+  const cells: LayoutCell[] = [];
+  const innerRect = getFractalInsetRect(project);
+
+  const visit = (rect: RenderRect, depth: number) => {
+    if (depth === 0) {
+      cells.push(
+        applyFractalSpacingToCell(
+          {
+            ...rect,
+            shape: "rect",
+          },
+          project.layout.fractalSpacing,
+        ),
+      );
+      return;
+    }
+
+    const centerScale = clamp(project.layout.fractalVicsekCenterScale, 0.18, 0.48);
+    const armScale = clamp(project.layout.fractalVicsekArmScale, 0.18, 0.48);
+    const centerWidth = rect.width * centerScale;
+    const centerHeight = rect.height * centerScale;
+    const armWidth = rect.width * armScale;
+    const armHeight = rect.height * armScale;
+    const centerRect = {
+      x: rect.x + (rect.width - centerWidth) / 2,
+      y: rect.y + (rect.height - centerHeight) / 2,
+      width: centerWidth,
+      height: centerHeight,
+    };
+    const children: RenderRect[] = [
+      centerRect,
+      {
+        x: rect.x,
+        y: rect.y + (rect.height - armHeight) / 2,
+        width: armWidth,
+        height: armHeight,
+      },
+      {
+        x: rect.x + rect.width - armWidth,
+        y: rect.y + (rect.height - armHeight) / 2,
+        width: armWidth,
+        height: armHeight,
+      },
+      {
+        x: rect.x + (rect.width - armWidth) / 2,
+        y: rect.y,
+        width: armWidth,
+        height: armHeight,
+      },
+      {
+        x: rect.x + (rect.width - armWidth) / 2,
+        y: rect.y + rect.height - armHeight,
+        width: armWidth,
+        height: armHeight,
+      },
+    ];
+
+    for (const child of children) {
+      if (child.width <= 2 || child.height <= 2) continue;
+      visit(child, depth - 1);
+    }
+  };
+
+  visit(innerRect, iterations);
+  return cells;
+}
+
+function generateHTree(
+  project: LayerRenderProject,
+  iterations: number,
+) {
+  const cells: LayoutCell[] = [];
+  const innerRect = getFractalInsetRect(project);
+  const center = getRectCenter(innerRect);
+  const ratio = clamp(project.layout.fractalHTreeRatio, 0.25, 0.8);
+  const totalScale = getGeometricSeriesTotal(ratio, iterations);
+  const baseLength =
+    (Math.min(innerRect.width, innerRect.height) * 0.96) /
+    Math.max(totalScale, 1);
+
+  const visit = (nodeCenter: Point, length: number, depth: number) => {
+    const half = length / 2;
+    const thickness = Math.max(2, length * project.layout.fractalHTreeThickness);
+
+    cells.push(
+      applyFractalSpacingToCell(
+        createRotatedRectCell(nodeCenter, length, thickness, 0),
+        project.layout.fractalSpacing,
+      ),
+      applyFractalSpacingToCell(
+        createRotatedRectCell(
+          { x: nodeCenter.x - half, y: nodeCenter.y },
+          length,
+          thickness,
+          Math.PI / 2,
+        ),
+        project.layout.fractalSpacing,
+      ),
+      applyFractalSpacingToCell(
+        createRotatedRectCell(
+          { x: nodeCenter.x + half, y: nodeCenter.y },
+          length,
+          thickness,
+          Math.PI / 2,
+        ),
+        project.layout.fractalSpacing,
+      ),
+    );
+
+    if (depth === 0) return;
+
+    const nextLength = length * ratio;
+    const endpoints = [
+      { x: nodeCenter.x - half, y: nodeCenter.y - half },
+      { x: nodeCenter.x - half, y: nodeCenter.y + half },
+      { x: nodeCenter.x + half, y: nodeCenter.y - half },
+      { x: nodeCenter.x + half, y: nodeCenter.y + half },
+    ];
+
+    for (const endpoint of endpoints) {
+      visit(endpoint, nextLength, depth - 1);
+    }
+  };
+
+  visit(center, baseLength, iterations);
+  return cells;
+}
+
+function generateRosette(
+  project: LayerRenderProject,
+  iterations: number,
+) {
+  const cells: LayoutCell[] = [];
+  const innerRect = getFractalInsetRect(project);
+  const center = getRectCenter(innerRect);
+  const maxRadius = Math.min(innerRect.width, innerRect.height) / 2;
+  const petalCount = Math.max(3, Math.round(project.layout.fractalRosettePetals));
+  const holeRadius = maxRadius * clamp(project.layout.fractalRosetteInnerRadius, 0, 0.88);
+  const ringCount = Math.max(1, iterations + 1);
+  const petalSweep = (Math.PI * 2) / petalCount;
+  const twistRadians = degToRad(project.layout.fractalRosetteTwist);
+
+  for (let ring = 0; ring < ringCount; ring += 1) {
+    const outerRadius = lerp(maxRadius, holeRadius, ring / ringCount);
+    const innerRadius = lerp(maxRadius, holeRadius, (ring + 1) / ringCount);
+    const ringAngleOffset = twistRadians * ring;
+    const sideAngle = petalSweep * 0.35;
+
+    for (let petalIndex = 0; petalIndex < petalCount; petalIndex += 1) {
+      const angle = ringAngleOffset + petalSweep * petalIndex - Math.PI / 2;
+      const points: [Point, Point, Point] = [
+        polarPoint(center, innerRadius, angle - sideAngle),
+        polarPoint(center, outerRadius, angle),
+        polarPoint(center, innerRadius, angle + sideAngle),
+      ];
+      cells.push(
+        applyFractalSpacingToCell(
+          createPathCell([...points]),
+          project.layout.fractalSpacing,
+        ),
+      );
+    }
+  }
+
+  return cells;
+}
+
+function getGeometricSeriesTotal(scale: number, iterations: number) {
+  if (Math.abs(1 - scale) < 0.0001) {
+    return iterations + 1;
+  }
+
+  return (1 - scale ** (iterations + 1)) / (1 - scale);
+}
+
+function generateBinaryTree(
+  project: LayerRenderProject,
+  iterations: number,
+) {
+  const cells: LayoutCell[] = [];
+  const innerRect = getFractalInsetRect(project);
+  const decay = clamp(project.layout.fractalBinaryDecay, 0.35, 0.92);
+  const totalLengthFactor = getGeometricSeriesTotal(decay, iterations);
+  const baseLength =
+    (Math.min(innerRect.width * 0.6, innerRect.height * 0.82) /
+      Math.max(totalLengthFactor, 1));
+  const baseThickness =
+    Math.min(innerRect.width, innerRect.height) * project.layout.fractalBinaryThickness;
+  const branchAngle = degToRad(project.layout.fractalBinaryAngle);
+
+  const visit = (
+    start: Point,
+    angle: number,
+    length: number,
+    thickness: number,
+    depth: number,
+  ) => {
+    const end = polarPoint(start, length, angle);
+    const center = interpolatePoint(start, end, 0.5);
+    cells.push(
+      applyFractalSpacingToCell(
+        createRotatedRectCell(center, length, Math.max(2, thickness), angle),
+        project.layout.fractalSpacing,
+      ),
+    );
+
+    if (depth === 0) return;
+
+    const nextLength = length * decay;
+    const nextThickness = thickness * 0.84;
+    visit(end, angle - branchAngle, nextLength, nextThickness, depth - 1);
+    visit(end, angle + branchAngle, nextLength, nextThickness, depth - 1);
+  };
+
+  visit(
+    {
+      x: innerRect.x + innerRect.width / 2,
+      y: innerRect.y + innerRect.height,
+    },
+    -Math.PI / 2,
+    baseLength,
+    baseThickness,
+    iterations,
+  );
+  return cells;
+}
+
+function buildSquareQuad(center: Point, side: number, angle: number) {
+  const half = side / 2;
+  const xAxis = {
+    x: Math.cos(angle),
+    y: Math.sin(angle),
+  };
+  const yAxis = {
+    x: -Math.sin(angle),
+    y: Math.cos(angle),
+  };
+
+  return [
+    {
+      x: center.x - xAxis.x * half + yAxis.x * half,
+      y: center.y - xAxis.y * half + yAxis.y * half,
+    },
+    {
+      x: center.x + xAxis.x * half + yAxis.x * half,
+      y: center.y + xAxis.y * half + yAxis.y * half,
+    },
+    {
+      x: center.x + xAxis.x * half - yAxis.x * half,
+      y: center.y + xAxis.y * half - yAxis.y * half,
+    },
+    {
+      x: center.x - xAxis.x * half - yAxis.x * half,
+      y: center.y - xAxis.y * half - yAxis.y * half,
+    },
+  ] as [Point, Point, Point, Point];
+}
+
+function generatePythagorasTree(
+  project: LayerRenderProject,
+  iterations: number,
+) {
+  const cells: LayoutCell[] = [];
+  const innerRect = getFractalInsetRect(project);
+  const scale = clamp(project.layout.fractalPythagorasScale, 0.35, 0.92);
+  const angle = degToRad(project.layout.fractalPythagorasAngle);
+  const lean = clamp(project.layout.fractalPythagorasLean, -1, 1);
+  const totalSideFactor = getGeometricSeriesTotal(scale, iterations);
+  const baseSide =
+    (Math.min(innerRect.width * 0.38, innerRect.height * 0.74) /
+      Math.max(totalSideFactor, 1));
+  const rootCenter = {
+    x: innerRect.x + innerRect.width / 2,
+    y: innerRect.y + innerRect.height - baseSide / 2,
+  };
+
+  const visit = (center: Point, side: number, rotation: number, depth: number) => {
+    const quad = buildSquareQuad(center, side, rotation);
+    cells.push(
+      applyFractalSpacingToCell(createQuadCell(quad), project.layout.fractalSpacing),
+    );
+
+    if (depth === 0) return;
+
+    const [bottomLeft, bottomRight, topRight, topLeft] = quad;
+    const topAxis = getUnitVector(topLeft, topRight);
+    const upward = {
+      x: -topAxis.y,
+      y: topAxis.x,
+    };
+    const childSide = side * scale;
+    const leanOffset = side * lean * 0.18;
+    const leftAngle = rotation - angle;
+    const rightAngle = rotation + angle;
+    const leftXAxis = { x: Math.cos(leftAngle), y: Math.sin(leftAngle) };
+    const leftYAxis = { x: -Math.sin(leftAngle), y: Math.cos(leftAngle) };
+    const rightXAxis = { x: Math.cos(rightAngle), y: Math.sin(rightAngle) };
+    const rightYAxis = { x: -Math.sin(rightAngle), y: Math.cos(rightAngle) };
+    const leftAnchor = {
+      x: topLeft.x + topAxis.x * leanOffset,
+      y: topLeft.y + topAxis.y * leanOffset,
+    };
+    const rightAnchor = {
+      x: topRight.x + topAxis.x * leanOffset,
+      y: topRight.y + topAxis.y * leanOffset,
+    };
+
+    const leftCenter = {
+      x:
+        leftAnchor.x +
+        leftXAxis.x * (childSide / 2) -
+        leftYAxis.x * (childSide / 2) +
+        upward.x * (childSide * 0.14),
+      y:
+        leftAnchor.y +
+        leftXAxis.y * (childSide / 2) -
+        leftYAxis.y * (childSide / 2) +
+        upward.y * (childSide * 0.14),
+    };
+    const rightCenter = {
+      x:
+        rightAnchor.x -
+        rightXAxis.x * (childSide / 2) -
+        rightYAxis.x * (childSide / 2) +
+        upward.x * (childSide * 0.14),
+      y:
+        rightAnchor.y -
+        rightXAxis.y * (childSide / 2) -
+        rightYAxis.y * (childSide / 2) +
+        upward.y * (childSide * 0.14),
+    };
+
+    visit(leftCenter, childSide, leftAngle, depth - 1);
+    visit(rightCenter, childSide, rightAngle, depth - 1);
+  };
+
+  visit(rootCenter, baseSide, 0, iterations);
+  return cells;
+}
+
+function generateFractal(context: GeneratorContext) {
+  const { project } = context;
+  const iterations = getEffectiveFractalIterations(project);
+
+  switch (project.layout.fractalVariant) {
+    case "sierpinski-triangle":
+      return generateSierpinskiTriangle(project, iterations);
+    case "sierpinski-carpet":
+      return generateSierpinskiCarpet(project, iterations);
+    case "vicsek":
+      return generateVicsek(project, iterations);
+    case "h-tree":
+      return generateHTree(project, iterations);
+    case "rosette":
+      return generateRosette(project, iterations);
+    case "binary-tree":
+      return generateBinaryTree(project, iterations);
+    case "pythagoras-tree":
+      return generatePythagorasTree(project, iterations);
+  }
+}
+
 const layoutRegistry: Record<Exclude<LayoutFamily, "draw">, (context: GeneratorContext) => LayoutCell[]> = {
   grid: generateGrid,
   strips: generateStrips,
@@ -1546,6 +2270,7 @@ const layoutRegistry: Record<Exclude<LayoutFamily, "draw">, (context: GeneratorC
   organic: generateOrganic,
   flow: generateFlow,
   "3d": generateThreeD,
+  fractal: generateFractal,
 };
 
 function normalizeRank(index: number, total: number) {
@@ -1762,7 +2487,8 @@ function assetByStrategy(
 }
 
 function reflectSlices(slices: RenderSlice[], project: LayerRenderProject) {
-  const { symmetryMode, symmetryCopies } = project.layout;
+  const { symmetryMode } = project.layout;
+  const symmetryCopies = getEffectiveSymmetryCopies(project);
   if (symmetryMode === "none") return slices;
 
   const clones = [...slices];

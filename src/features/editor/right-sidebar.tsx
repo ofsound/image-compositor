@@ -307,7 +307,10 @@ export function RightSidebar({
                           }))
                         }
                       />
-                      <ControlBlock label="Layer Strokes" className="sm:col-span-2">
+                      <ControlBlock
+                        label="Layer Strokes"
+                        className="sm:col-span-2"
+                      >
                         <Button
                           type="button"
                           variant="outline"
@@ -1027,11 +1030,15 @@ export function RightSidebar({
                 {isFractalFamily ? (
                   <InspectorGroup title="Fractal" className="xl:col-span-2">
                     <InspectorFieldGrid className="sm:grid-cols-2">
-                      <ControlBlock label="Fractal Variant" className="sm:col-span-2">
+                      <ControlBlock
+                        label="Fractal Variant"
+                        className="sm:col-span-2"
+                      >
                         <Select
                           value={activeProjectView.layout.fractalVariant}
                           onValueChange={(value) => {
-                            if (!isOption(FRACTAL_VARIANT_OPTIONS, value)) return;
+                            if (!isOption(FRACTAL_VARIANT_OPTIONS, value))
+                              return;
                             patchProject((project) => ({
                               ...project,
                               layout: {
@@ -1095,7 +1102,8 @@ export function RightSidebar({
                           }))
                         }
                       />
-                      {activeProjectView.layout.fractalVariant === "sierpinski-triangle" ? (
+                      {activeProjectView.layout.fractalVariant ===
+                      "sierpinski-triangle" ? (
                         <>
                           <SliderField
                             label="Corner Pull"
@@ -1119,7 +1127,9 @@ export function RightSidebar({
                             min={-180}
                             max={180}
                             step={1}
-                            value={activeProjectView.layout.fractalTriangleRotation}
+                            value={
+                              activeProjectView.layout.fractalTriangleRotation
+                            }
                             formatter={formatDegreeValue}
                             onChange={(value) =>
                               patchProject((project) => ({
@@ -1133,14 +1143,17 @@ export function RightSidebar({
                           />
                         </>
                       ) : null}
-                      {activeProjectView.layout.fractalVariant === "sierpinski-carpet" ? (
+                      {activeProjectView.layout.fractalVariant ===
+                      "sierpinski-carpet" ? (
                         <>
                           <SliderField
                             label="Hole Scale"
                             min={0.18}
                             max={0.6}
                             step={0.01}
-                            value={activeProjectView.layout.fractalCarpetHoleScale}
+                            value={
+                              activeProjectView.layout.fractalCarpetHoleScale
+                            }
                             formatter={formatPercentValue}
                             onChange={(value) =>
                               patchProject((project) => ({
@@ -1178,7 +1191,9 @@ export function RightSidebar({
                             min={0.18}
                             max={0.48}
                             step={0.01}
-                            value={activeProjectView.layout.fractalVicsekArmScale}
+                            value={
+                              activeProjectView.layout.fractalVicsekArmScale
+                            }
                             formatter={formatPercentValue}
                             onChange={(value) =>
                               patchProject((project) => ({
@@ -1195,7 +1210,9 @@ export function RightSidebar({
                             min={0.18}
                             max={0.48}
                             step={0.01}
-                            value={activeProjectView.layout.fractalVicsekCenterScale}
+                            value={
+                              activeProjectView.layout.fractalVicsekCenterScale
+                            }
                             formatter={formatPercentValue}
                             onChange={(value) =>
                               patchProject((project) => ({
@@ -1233,7 +1250,9 @@ export function RightSidebar({
                             min={0.04}
                             max={0.4}
                             step={0.01}
-                            value={activeProjectView.layout.fractalHTreeThickness}
+                            value={
+                              activeProjectView.layout.fractalHTreeThickness
+                            }
                             formatter={formatPercentValue}
                             onChange={(value) =>
                               patchProject((project) => ({
@@ -1254,7 +1273,9 @@ export function RightSidebar({
                             min={3}
                             max={12}
                             step={1}
-                            value={activeProjectView.layout.fractalRosettePetals}
+                            value={
+                              activeProjectView.layout.fractalRosettePetals
+                            }
                             formatter={(value) => `${Math.round(value)}`}
                             onChange={(value) =>
                               patchProject((project) => ({
@@ -1289,7 +1310,9 @@ export function RightSidebar({
                             min={0}
                             max={0.88}
                             step={0.01}
-                            value={activeProjectView.layout.fractalRosetteInnerRadius}
+                            value={
+                              activeProjectView.layout.fractalRosetteInnerRadius
+                            }
                             formatter={formatPercentValue}
                             onChange={(value) =>
                               patchProject((project) => ({
@@ -1303,7 +1326,8 @@ export function RightSidebar({
                           />
                         </>
                       ) : null}
-                      {activeProjectView.layout.fractalVariant === "binary-tree" ? (
+                      {activeProjectView.layout.fractalVariant ===
+                      "binary-tree" ? (
                         <>
                           <SliderField
                             label="Branch Angle"
@@ -1345,7 +1369,9 @@ export function RightSidebar({
                             min={0.04}
                             max={0.32}
                             step={0.01}
-                            value={activeProjectView.layout.fractalBinaryThickness}
+                            value={
+                              activeProjectView.layout.fractalBinaryThickness
+                            }
                             formatter={formatPercentValue}
                             onChange={(value) =>
                               patchProject((project) => ({
@@ -1359,14 +1385,17 @@ export function RightSidebar({
                           />
                         </>
                       ) : null}
-                      {activeProjectView.layout.fractalVariant === "pythagoras-tree" ? (
+                      {activeProjectView.layout.fractalVariant ===
+                      "pythagoras-tree" ? (
                         <>
                           <SliderField
                             label="Branch Angle"
                             min={5}
                             max={85}
                             step={1}
-                            value={activeProjectView.layout.fractalPythagorasAngle}
+                            value={
+                              activeProjectView.layout.fractalPythagorasAngle
+                            }
                             formatter={formatDegreeValue}
                             onChange={(value) =>
                               patchProject((project) => ({
@@ -1383,7 +1412,9 @@ export function RightSidebar({
                             min={0.35}
                             max={0.92}
                             step={0.01}
-                            value={activeProjectView.layout.fractalPythagorasScale}
+                            value={
+                              activeProjectView.layout.fractalPythagorasScale
+                            }
                             formatter={formatPercentValue}
                             onChange={(value) =>
                               patchProject((project) => ({
@@ -1401,7 +1432,9 @@ export function RightSidebar({
                             min={-1}
                             max={1}
                             step={0.01}
-                            value={activeProjectView.layout.fractalPythagorasLean}
+                            value={
+                              activeProjectView.layout.fractalPythagorasLean
+                            }
                             formatter={formatPercentValue}
                             onChange={(value) =>
                               patchProject((project) => ({
@@ -1420,185 +1453,185 @@ export function RightSidebar({
                 ) : null}
 
                 {!isDrawFamily ? (
-                <InspectorGroup title="Symmetry">
-                  <InspectorFieldGrid>
-                    <ControlBlock label="Symmetry" className="sm:col-span-2">
-                      <Select
-                        value={activeProjectView.layout.symmetryMode}
-                        onValueChange={(value) => {
-                          if (!isOption(SYMMETRY_MODE_OPTIONS, value)) return;
+                  <InspectorGroup title="Symmetry">
+                    <InspectorFieldGrid>
+                      <ControlBlock label="Symmetry" className="sm:col-span-2">
+                        <Select
+                          value={activeProjectView.layout.symmetryMode}
+                          onValueChange={(value) => {
+                            if (!isOption(SYMMETRY_MODE_OPTIONS, value)) return;
+                            patchProject((project) => ({
+                              ...project,
+                              layout: {
+                                ...project.layout,
+                                symmetryMode: value,
+                                symmetryCopies:
+                                  value === "radial" &&
+                                  project.layout.family === "fractal"
+                                    ? Math.min(
+                                        project.layout.symmetryCopies,
+                                        FRACTAL_RADIAL_SYMMETRY_COPY_LIMIT,
+                                      )
+                                    : project.layout.symmetryCopies,
+                              },
+                            }));
+                          }}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {SYMMETRY_MODE_OPTIONS.map((option) => (
+                              <SelectItem key={option} value={option}>
+                                {option}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </ControlBlock>
+                      {isSymmetryActive ? (
+                        <>
+                          <SliderField
+                            label="Symmetry Center X"
+                            min={0}
+                            max={1}
+                            step={0.01}
+                            value={activeProjectView.layout.symmetryCenterX}
+                            formatter={formatPercentValue}
+                            onChange={(value) =>
+                              patchProject((project) => ({
+                                ...project,
+                                layout: {
+                                  ...project.layout,
+                                  symmetryCenterX: value,
+                                },
+                              }))
+                            }
+                          />
+                          <SliderField
+                            label="Symmetry Center Y"
+                            min={0}
+                            max={1}
+                            step={0.01}
+                            value={activeProjectView.layout.symmetryCenterY}
+                            formatter={formatPercentValue}
+                            onChange={(value) =>
+                              patchProject((project) => ({
+                                ...project,
+                                layout: {
+                                  ...project.layout,
+                                  symmetryCenterY: value,
+                                },
+                              }))
+                            }
+                          />
+                          <SliderField
+                            className="sm:col-span-2"
+                            label="Clone Drift"
+                            min={0}
+                            max={1}
+                            step={0.01}
+                            value={activeProjectView.layout.symmetryJitter}
+                            formatter={formatPercentValue}
+                            onChange={(value) =>
+                              patchProject((project) => ({
+                                ...project,
+                                layout: {
+                                  ...project.layout,
+                                  symmetryJitter: value,
+                                },
+                              }))
+                            }
+                          />
+                        </>
+                      ) : null}
+                      {isRadialSymmetry ? (
+                        <>
+                          <SliderField
+                            label="Symmetry Angle Offset"
+                            min={-180}
+                            max={180}
+                            step={1}
+                            value={activeProjectView.layout.symmetryAngleOffset}
+                            formatter={formatDegreeValue}
+                            onChange={(value) =>
+                              patchProject((project) => ({
+                                ...project,
+                                layout: {
+                                  ...project.layout,
+                                  symmetryAngleOffset: value,
+                                },
+                              }))
+                            }
+                          />
+                          <SliderField
+                            label="Radial Copies"
+                            min={2}
+                            max={radialCopiesMax}
+                            step={1}
+                            value={Math.min(
+                              activeProjectView.layout.symmetryCopies,
+                              radialCopiesMax,
+                            )}
+                            formatter={(value) => `${Math.round(value)}`}
+                            onChange={(value) =>
+                              patchProject((project) => ({
+                                ...project,
+                                layout: {
+                                  ...project.layout,
+                                  symmetryCopies: Math.min(
+                                    Math.round(value),
+                                    radialCopiesMax,
+                                  ),
+                                },
+                              }))
+                            }
+                          />
+                        </>
+                      ) : null}
+                    </InspectorFieldGrid>
+                  </InspectorGroup>
+                ) : null}
+
+                {!isDrawFamily ? (
+                  <InspectorGroup title="Visibility">
+                    <InspectorFieldGrid>
+                      <SliderField
+                        label="Hide Percentage"
+                        min={0}
+                        max={1}
+                        step={0.01}
+                        value={activeProjectView.layout.hidePercentage}
+                        formatter={(value) => `${Math.round(value * 100)}%`}
+                        onChange={(value) =>
                           patchProject((project) => ({
                             ...project,
                             layout: {
                               ...project.layout,
-                              symmetryMode: value,
-                              symmetryCopies:
-                                value === "radial" &&
-                                project.layout.family === "fractal"
-                                  ? Math.min(
-                                      project.layout.symmetryCopies,
-                                      FRACTAL_RADIAL_SYMMETRY_COPY_LIMIT,
-                                    )
-                                  : project.layout.symmetryCopies,
+                              hidePercentage: value,
                             },
-                          }));
-                        }}
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {SYMMETRY_MODE_OPTIONS.map((option) => (
-                            <SelectItem key={option} value={option}>
-                              {option}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    </ControlBlock>
-                    {isSymmetryActive ? (
-                      <>
-                        <SliderField
-                          label="Symmetry Center X"
-                          min={0}
-                          max={1}
-                          step={0.01}
-                          value={activeProjectView.layout.symmetryCenterX}
-                          formatter={formatPercentValue}
-                          onChange={(value) =>
-                            patchProject((project) => ({
-                              ...project,
-                              layout: {
-                                ...project.layout,
-                                symmetryCenterX: value,
-                              },
-                            }))
-                          }
-                        />
-                        <SliderField
-                          label="Symmetry Center Y"
-                          min={0}
-                          max={1}
-                          step={0.01}
-                          value={activeProjectView.layout.symmetryCenterY}
-                          formatter={formatPercentValue}
-                          onChange={(value) =>
-                            patchProject((project) => ({
-                              ...project,
-                              layout: {
-                                ...project.layout,
-                                symmetryCenterY: value,
-                              },
-                            }))
-                          }
-                        />
-                        <SliderField
-                          className="sm:col-span-2"
-                          label="Clone Drift"
-                          min={0}
-                          max={1}
-                          step={0.01}
-                          value={activeProjectView.layout.symmetryJitter}
-                          formatter={formatPercentValue}
-                          onChange={(value) =>
-                            patchProject((project) => ({
-                              ...project,
-                              layout: {
-                                ...project.layout,
-                                symmetryJitter: value,
-                              },
-                            }))
-                          }
-                        />
-                      </>
-                    ) : null}
-                    {isRadialSymmetry ? (
-                      <>
-                        <SliderField
-                          label="Symmetry Angle Offset"
-                          min={-180}
-                          max={180}
-                          step={1}
-                          value={activeProjectView.layout.symmetryAngleOffset}
-                          formatter={formatDegreeValue}
-                          onChange={(value) =>
-                            patchProject((project) => ({
-                              ...project,
-                              layout: {
-                                ...project.layout,
-                                symmetryAngleOffset: value,
-                              },
-                            }))
-                          }
-                        />
-                        <SliderField
-                          label="Radial Copies"
-                          min={2}
-                          max={radialCopiesMax}
-                          step={1}
-                          value={Math.min(
-                            activeProjectView.layout.symmetryCopies,
-                            radialCopiesMax,
-                          )}
-                          formatter={(value) => `${Math.round(value)}`}
-                          onChange={(value) =>
-                            patchProject((project) => ({
-                              ...project,
-                              layout: {
-                                ...project.layout,
-                                symmetryCopies: Math.min(
-                                  Math.round(value),
-                                  radialCopiesMax,
-                                ),
-                              },
-                            }))
-                          }
-                        />
-                      </>
-                    ) : null}
-                  </InspectorFieldGrid>
-                </InspectorGroup>
-                ) : null}
-
-                {!isDrawFamily ? (
-                <InspectorGroup title="Visibility">
-                  <InspectorFieldGrid>
-                    <SliderField
-                      label="Hide Percentage"
-                      min={0}
-                      max={1}
-                      step={0.01}
-                      value={activeProjectView.layout.hidePercentage}
-                      formatter={(value) => `${Math.round(value * 100)}%`}
-                      onChange={(value) =>
-                        patchProject((project) => ({
-                          ...project,
-                          layout: {
-                            ...project.layout,
-                            hidePercentage: value,
-                          },
-                        }))
-                      }
-                    />
-                    <SliderField
-                      label="Letterbox"
-                      min={0}
-                      max={1}
-                      step={0.01}
-                      value={activeProjectView.layout.letterbox}
-                      formatter={(value) => `${Math.round(value * 100)}%`}
-                      onChange={(value) =>
-                        patchProject((project) => ({
-                          ...project,
-                          layout: {
-                            ...project.layout,
-                            letterbox: value,
-                          },
-                        }))
-                      }
-                    />
-                  </InspectorFieldGrid>
-                </InspectorGroup>
+                          }))
+                        }
+                      />
+                      <SliderField
+                        label="Letterbox"
+                        min={0}
+                        max={1}
+                        step={0.01}
+                        value={activeProjectView.layout.letterbox}
+                        formatter={(value) => `${Math.round(value * 100)}%`}
+                        onChange={(value) =>
+                          patchProject((project) => ({
+                            ...project,
+                            layout: {
+                              ...project.layout,
+                              letterbox: value,
+                            },
+                          }))
+                        }
+                      />
+                    </InspectorFieldGrid>
+                  </InspectorGroup>
                 ) : null}
 
                 <InspectorGroup title="Position">
@@ -1633,6 +1666,24 @@ export function RightSidebar({
                           layout: {
                             ...project.layout,
                             offsetY: value,
+                          },
+                        }))
+                      }
+                    />
+                    <SliderField
+                      className="sm:col-span-2"
+                      label="Rotation"
+                      min={0}
+                      max={360}
+                      step={1}
+                      value={activeProjectView.layout.contentRotation}
+                      formatter={formatDegreeValue}
+                      onChange={(value) =>
+                        patchProject((project) => ({
+                          ...project,
+                          layout: {
+                            ...project.layout,
+                            contentRotation: value,
                           },
                         }))
                       }

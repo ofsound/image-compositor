@@ -146,6 +146,7 @@ export const DEFAULT_LAYOUT: LayoutSettings = {
   letterbox: 0,
   offsetX: 0,
   offsetY: 0,
+  contentRotation: 0,
   wedgeAngle: 120,
   wedgeJitter: 0,
   hollowRatio: 0.48,
@@ -381,6 +382,11 @@ export function normalizeLayoutSettings(
     letterbox: layout?.letterbox ?? DEFAULT_LAYOUT.letterbox,
     offsetX: clamp(layout?.offsetX ?? DEFAULT_LAYOUT.offsetX, -1, 1),
     offsetY: clamp(layout?.offsetY ?? DEFAULT_LAYOUT.offsetY, -1, 1),
+    contentRotation: clamp(
+      layout?.contentRotation ?? DEFAULT_LAYOUT.contentRotation,
+      0,
+      360,
+    ),
     wedgeAngle: layout?.wedgeAngle ?? DEFAULT_LAYOUT.wedgeAngle,
     wedgeJitter: layout?.wedgeJitter ?? DEFAULT_LAYOUT.wedgeJitter,
     hollowRatio: layout?.hollowRatio ?? DEFAULT_LAYOUT.hollowRatio,
@@ -465,7 +471,7 @@ export function normalizeLayoutSettings(
       layout?.fractalRosetteTwist ?? DEFAULT_LAYOUT.fractalRosetteTwist,
     fractalRosetteInnerRadius: clamp(
       layout?.fractalRosetteInnerRadius ??
-        DEFAULT_LAYOUT.fractalRosetteInnerRadius,
+      DEFAULT_LAYOUT.fractalRosetteInnerRadius,
       0,
       0.88,
     ),
@@ -481,19 +487,19 @@ export function normalizeLayoutSettings(
     ),
     fractalBinaryThickness: clamp(
       layout?.fractalBinaryThickness ??
-        DEFAULT_LAYOUT.fractalBinaryThickness,
+      DEFAULT_LAYOUT.fractalBinaryThickness,
       0.04,
       0.32,
     ),
     fractalPythagorasAngle: clamp(
       layout?.fractalPythagorasAngle ??
-        DEFAULT_LAYOUT.fractalPythagorasAngle,
+      DEFAULT_LAYOUT.fractalPythagorasAngle,
       5,
       85,
     ),
     fractalPythagorasScale: clamp(
       layout?.fractalPythagorasScale ??
-        DEFAULT_LAYOUT.fractalPythagorasScale,
+      DEFAULT_LAYOUT.fractalPythagorasScale,
       0.35,
       0.92,
     ),
@@ -590,15 +596,15 @@ function normalizeDrawSettings(
       id: stroke?.id?.trim() || makeId(`stroke_${index + 1}`),
       points: Array.isArray(stroke?.points)
         ? stroke.points
-            .filter(
-              (point): point is { x: number; y: number } =>
-                Boolean(point) &&
-                typeof point.x === "number" &&
-                Number.isFinite(point.x) &&
-                typeof point.y === "number" &&
-                Number.isFinite(point.y),
-            )
-            .map((point) => ({ x: point.x, y: point.y }))
+          .filter(
+            (point): point is { x: number; y: number } =>
+              Boolean(point) &&
+              typeof point.x === "number" &&
+              Number.isFinite(point.x) &&
+              typeof point.y === "number" &&
+              Number.isFinite(point.y),
+          )
+          .map((point) => ({ x: point.x, y: point.y }))
         : [],
     })),
   };

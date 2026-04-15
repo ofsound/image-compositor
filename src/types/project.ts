@@ -222,6 +222,8 @@ export interface LayoutSettings {
   offsetX: number;
   /** Layer content shift as fraction of canvas height, -1…1 (-100%…+100%). */
   offsetY: number;
+  /** Whole-layer content rotation in degrees around the canvas center (0…360). */
+  contentRotation: number;
   wedgeAngle: number;
   wedgeJitter: number;
   hollowRatio: number;

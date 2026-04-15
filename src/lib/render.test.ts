@@ -1377,6 +1377,46 @@ describe("renderProjectToCanvas", () => {
     ]);
   });
 
+  it("rotates layer content about the canvas center on the direct composite path", async () => {
+    const project = createProjectView("Layer Rotation Direct");
+    project.effects.sharpen = 0;
+    project.effects.kaleidoscopeSegments = 1;
+    project.layout.family = "grid";
+    project.layout.columns = 1;
+    project.layout.rows = 1;
+    project.layout.shapeMode = "rect";
+    project.layout.symmetryMode = "none";
+    project.layout.offsetX = 0;
+    project.layout.offsetY = 0;
+    project.layout.contentRotation = 127;
+    project.compositing.overlap = 0;
+    project.effects.rotationJitter = 0;
+    project.effects.scaleJitter = 0;
+    project.effects.displacement = 0;
+    project.effects.distortion = 0;
+
+    const context = createMockContext();
+    const canvas = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn(() => context),
+    } as unknown as HTMLCanvasElement;
+
+    await renderProjectToCanvas(
+      project,
+      [asset],
+      new Map([[asset.id, { asset, bitmap: {} as ImageBitmap }]]),
+      canvas,
+    );
+
+    const expected = (127 * Math.PI) / 180;
+    expect(
+      context.rotate.mock.calls.some(
+        ([angle]) => typeof angle === "number" && Math.abs(angle - expected) < 1e-9,
+      ),
+    ).toBe(true);
+  });
+
   it("applies finish color adjustments and drop shadow during layer compositing", async () => {
     const project = createProjectView("Layer Finish");
     project.effects.sharpen = 0;

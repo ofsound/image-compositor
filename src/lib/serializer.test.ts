@@ -78,6 +78,7 @@ const bundle: ImportedProjectBundle = {
       letterbox: 0,
       offsetX: 0,
       offsetY: 0,
+      contentRotation: 0,
       wedgeAngle: 120,
       wedgeJitter: 0,
       hollowRatio: 0.48,
@@ -207,6 +208,7 @@ const bundle: ImportedProjectBundle = {
           letterbox: 0,
           offsetX: 0,
           offsetY: 0,
+          contentRotation: 0,
           wedgeAngle: 120,
           wedgeJitter: 0,
           hollowRatio: 0.48,
@@ -577,24 +579,24 @@ describe("loadProjectBundle", () => {
       layers: serializeProjectDocument(bundle.projectDoc).layers.map((layer, index) =>
         index === 0
           ? {
-              ...layer,
-              layout: {
-                ...layer.layout,
-                family: "draw",
-              },
-              draw: {
-                brushSize: 192,
-                strokes: [
-                  {
-                    id: "stroke_bundle",
-                    points: [
-                      { x: -20, y: 40 },
-                      { x: 120, y: 160 },
-                    ],
-                  },
-                ],
-              },
-            }
+            ...layer,
+            layout: {
+              ...layer.layout,
+              family: "draw",
+            },
+            draw: {
+              brushSize: 192,
+              strokes: [
+                {
+                  id: "stroke_bundle",
+                  points: [
+                    { x: -20, y: 40 },
+                    { x: 120, y: 160 },
+                  ],
+                },
+              ],
+            },
+          }
           : layer,
       ),
     } as Parameters<typeof normalizeProjectDocument>[0]);

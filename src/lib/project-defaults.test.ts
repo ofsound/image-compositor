@@ -333,6 +333,7 @@ describe("createProjectDocument", () => {
         letterbox: project.layout.letterbox,
         offsetX: project.layout.offsetX,
         offsetY: project.layout.offsetY,
+        contentRotation: project.layout.contentRotation,
         wedgeAngle: project.layout.wedgeAngle,
         wedgeJitter: project.layout.wedgeJitter,
         hollowRatio: project.layout.hollowRatio,

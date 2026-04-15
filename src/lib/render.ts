@@ -571,12 +571,31 @@ function getLayerContentPixelOffset(project: LayerRenderProject) {
   return { ox, oy };
 }
 
+/** T(ox,oy)·T(cx,cy)·R(θ)·T(-cx,-cy): rotate whole layer about canvas center, then shift by offset. */
+function applyLayerContentPositionTransform(
+  context: RenderContext,
+  project: LayerRenderProject,
+) {
+  const { ox, oy } = getLayerContentPixelOffset(project);
+  const deg = clamp(project.layout.contentRotation, 0, 360) % 360;
+  if (deg === 0) {
+    context.translate(ox, oy);
+    return;
+  }
+  const cx = project.canvas.width / 2;
+  const cy = project.canvas.height / 2;
+  const radians = (deg * Math.PI) / 180;
+  context.translate(ox, oy);
+  context.translate(cx, cy);
+  context.rotate(radians);
+  context.translate(-cx, -cy);
+}
+
 function compositeFinishedLayer(
   context: RenderContext,
   layerCanvas: RenderCanvas,
   project: LayerRenderProject,
 ) {
-  const { ox, oy } = getLayerContentPixelOffset(project);
   context.save();
   context.globalCompositeOperation = project.compositing.blendMode;
   context.globalAlpha = clamp(project.compositing.opacity, 0, 1);
@@ -596,7 +615,7 @@ function compositeFinishedLayer(
     context.shadowOffsetY = 0;
   }
 
-  context.translate(ox, oy);
+  applyLayerContentPositionTransform(context, project);
   context.drawImage(layerCanvas, 0, 0);
   context.restore();
 }
@@ -717,9 +736,8 @@ async function renderCompositorLayer(
     layerProject.effects.sharpen > 0;
 
   if (!requiresIsolation) {
-    const { ox, oy } = getLayerContentPixelOffset(layerProject);
     context.save();
-    context.translate(ox, oy);
+    applyLayerContentPositionTransform(context, layerProject);
     await renderLayer(layerProject, layerAssets, bitmaps, context, canvas);
     context.restore();
     return;

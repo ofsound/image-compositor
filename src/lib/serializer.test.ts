@@ -659,4 +659,67 @@ describe("loadProjectBundle", () => {
     expect(loadedVersionLayer.draw.brushSize).toBe(192);
     expect(loadedVersionLayer.draw.strokes[0]?.id).toBe("stroke_bundle");
   });
+
+  it("preserves words layer settings in version 4 bundles", async () => {
+    const zip = new JSZip();
+    const wordsProject = normalizeProjectDocument({
+      ...serializeProjectDocument(bundle.projectDoc),
+      layers: serializeProjectDocument(bundle.projectDoc).layers.map((layer, index) =>
+        index === 0
+          ? {
+            ...layer,
+            layout: {
+              ...layer.layout,
+              family: "words",
+            },
+            words: {
+              mode: "plain-text",
+              fontFamily: "cormorant-garamond",
+              text: "HELLO\nWORLD",
+              textColor: "#224466",
+            },
+          }
+          : layer,
+      ),
+    } as Parameters<typeof normalizeProjectDocument>[0]);
+    const wordsVersion = {
+      ...bundle.versionDocs[0]!,
+      snapshot: normalizeProjectSnapshot({
+        ...bundle.versionDocs[0]!.snapshot,
+        layers: wordsProject.layers,
+        selectedLayerId: wordsProject.selectedLayerId,
+      }),
+    };
+
+    zip.file(
+      "manifest.json",
+      JSON.stringify({
+        ...bundle.manifest,
+        version: 4,
+      }),
+    );
+    zip.file("project.json", JSON.stringify(serializeProjectDocument(wordsProject)));
+    zip.file("versions.json", JSON.stringify([wordsVersion]));
+    zip.file("assets.json", JSON.stringify(bundle.assetDocs));
+    for (const [path, blob] of Object.entries(bundle.assetBlobs)) {
+      zip.file(path, blob);
+    }
+    for (const [path, blob] of Object.entries(bundle.versionBlobs)) {
+      zip.file(path, blob);
+    }
+
+    const loaded = await loadProjectBundle(await zip.generateAsync({ type: "blob" }));
+    const loadedLayer = getProjectView(loaded.projectDoc).layers[0]!;
+    const loadedVersionLayer = getVersionSnapshotLayer(loaded.versionDocs[0]!.snapshot);
+
+    expect(loadedLayer.layout.family).toBe("words");
+    expect(loadedLayer.words).toEqual({
+      mode: "plain-text",
+      fontFamily: "cormorant-garamond",
+      text: "HELLO\nWORLD",
+      textColor: "#224466",
+    });
+    expect(loadedVersionLayer.words.fontFamily).toBe("cormorant-garamond");
+    expect(loadedVersionLayer.words.text).toBe("HELLO\nWORLD");
+  });
 });

@@ -16,6 +16,7 @@ import type {
   RenderPass,
   SourceAssignmentStrategy,
   SourceMappingSettings,
+  WordsSettings,
 } from "@/types/project";
 import { makeId } from "@/lib/id";
 import { getFractalIterationLimit } from "@/lib/layout-utils";
@@ -42,6 +43,7 @@ type LegacyProjectLike = {
   compositing?: LegacyCompositingSettings;
   finish?: Partial<FinishSettings>;
   draw?: Partial<DrawSettings>;
+  words?: Partial<WordsSettings>;
   activeSeed?: number;
   presets?: GeneratorPreset[];
   passes?: RenderPass[];
@@ -90,6 +92,7 @@ export function createLayerRenderProject(
     compositing: structuredClone(layer.compositing),
     finish: structuredClone(layer.finish),
     draw: structuredClone(layer.draw),
+    words: structuredClone(layer.words),
     activeSeed: layer.activeSeed,
     presets: structuredClone(layer.presets),
     passes: structuredClone(layer.passes),
@@ -319,6 +322,13 @@ export const DEFAULT_FINISH: FinishSettings = {
 export const DEFAULT_DRAW: DrawSettings = {
   brushSize: 160,
   strokes: [],
+};
+
+export const DEFAULT_WORDS: WordsSettings = {
+  mode: "image-fill",
+  fontFamily: "dm-sans",
+  text: "TYPE\nHERE",
+  textColor: "#180f08",
 };
 
 export const DEFAULT_EXPORT: ExportSettings = {
@@ -640,6 +650,31 @@ function normalizeDrawSettings(
   };
 }
 
+function normalizeWordsSettings(
+  words: Partial<WordsSettings> | undefined,
+): WordsSettings {
+  return {
+    mode:
+      words?.mode === "plain-text" || words?.mode === "image-fill"
+        ? words.mode
+        : DEFAULT_WORDS.mode,
+    fontFamily:
+      words?.fontFamily === "dm-sans" ||
+      words?.fontFamily === "cormorant-garamond" ||
+      words?.fontFamily === "jetbrains-mono"
+        ? words.fontFamily
+        : DEFAULT_WORDS.fontFamily,
+    text:
+      typeof words?.text === "string" && words.text.length > 0
+        ? words.text
+        : DEFAULT_WORDS.text,
+    textColor:
+      typeof words?.textColor === "string" && words.textColor.length > 0
+        ? words.textColor
+        : DEFAULT_WORDS.textColor,
+  };
+}
+
 export function normalizeCompositorLayer(
   layer: Partial<CompositorLayer> | undefined,
   fallbackCropDistribution: CropDistribution = "center",
@@ -660,6 +695,7 @@ export function normalizeCompositorLayer(
     compositing: normalizeCompositingSettings(layer?.compositing),
     finish: normalizeFinishSettings(layer?.finish, layer?.compositing),
     draw: normalizeDrawSettings(layer?.draw),
+    words: normalizeWordsSettings(layer?.words),
     activeSeed: layer?.activeSeed ?? 187310,
     presets: normalizeLayerPresets(layer?.presets),
     passes: normalizeLayerPasses(layer?.passes),
@@ -688,6 +724,7 @@ function createLegacyLayer(
       compositing: value.compositing,
       finish: value.finish,
       draw: value.draw,
+      words: value.words,
       activeSeed: value.activeSeed,
       presets: value.presets,
       passes: value.passes,
@@ -749,6 +786,7 @@ export function syncLegacyProjectFieldsToSelectedLayer<T extends ProjectSnapshot
       legacySnapshot.finish ?? selectedLayer.finish,
     ) as CompositorLayer["finish"],
     draw: normalizeDrawSettings(legacySnapshot.draw ?? selectedLayer.draw),
+    words: normalizeWordsSettings(legacySnapshot.words ?? selectedLayer.words),
     activeSeed: legacySnapshot.activeSeed ?? selectedLayer.activeSeed,
     presets: structuredClone(legacySnapshot.presets ?? selectedLayer.presets),
     passes: structuredClone(legacySnapshot.passes ?? selectedLayer.passes),
@@ -772,6 +810,7 @@ function hasLegacyRootOverrides(snapshot: LegacySnapshotLike) {
     ("compositing" in snapshot && snapshot.compositing !== undefined) ||
     ("finish" in snapshot && snapshot.finish !== undefined) ||
     ("draw" in snapshot && snapshot.draw !== undefined) ||
+    ("words" in snapshot && snapshot.words !== undefined) ||
     ("activeSeed" in snapshot && snapshot.activeSeed !== undefined) ||
     ("presets" in snapshot && snapshot.presets !== undefined) ||
     ("passes" in snapshot && snapshot.passes !== undefined)
@@ -823,6 +862,7 @@ export function normalizeProjectSnapshot(
             compositing: structuredClone(legacyLayer.compositing),
             finish: structuredClone(legacyLayer.finish),
             draw: structuredClone(legacyLayer.draw),
+            words: structuredClone(legacyLayer.words),
             activeSeed: legacyLayer.activeSeed,
             presets: structuredClone(legacyLayer.presets),
             passes: structuredClone(legacyLayer.passes),

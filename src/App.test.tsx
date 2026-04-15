@@ -87,7 +87,8 @@ function createStoreState(overrides?: {
     | "organic"
     | "flow"
     | "3d"
-    | "fractal";
+    | "fractal"
+    | "words";
   shapeMode?:
     | "rect"
     | "triangle"
@@ -116,6 +117,10 @@ function createStoreState(overrides?: {
     | "rosette"
     | "binary-tree"
     | "pythagoras-tree";
+  wordsMode?: "image-fill" | "plain-text";
+  wordsFontFamily?: "dm-sans" | "cormorant-garamond" | "jetbrains-mono";
+  wordsText?: string;
+  wordsTextColor?: string;
   assets?: SourceAsset[];
   enabledSourceIds?: string[];
   sourceWeights?: Record<string, number>;
@@ -156,6 +161,22 @@ function createStoreState(overrides?: {
 
   if (overrides?.fractalVariant) {
     selectedLayer.layout.fractalVariant = overrides.fractalVariant;
+  }
+
+  if (overrides?.wordsMode) {
+    selectedLayer.words.mode = overrides.wordsMode;
+  }
+
+  if (overrides?.wordsFontFamily) {
+    selectedLayer.words.fontFamily = overrides.wordsFontFamily;
+  }
+
+  if (overrides?.wordsText !== undefined) {
+    selectedLayer.words.text = overrides.wordsText;
+  }
+
+  if (overrides?.wordsTextColor) {
+    selectedLayer.words.textColor = overrides.wordsTextColor;
   }
 
   const assets =
@@ -895,6 +916,74 @@ describe("App conditional sliders", () => {
     expectSliderHidden("Flow Coherence");
     expectSliderHidden("Flow Branch Rate");
     expectSliderHidden("Flow Taper");
+  });
+
+  it("shows words controls with the proper family label while hiding unrelated shape controls", () => {
+    renderApp({
+      family: "words",
+      wordsMode: "plain-text",
+    });
+
+    const layerControls = screen.getByLabelText("Layer Controls");
+    const [familyTrigger] = within(layerControls).getAllByRole("combobox");
+
+    expect(familyTrigger).toHaveTextContent("Words");
+    expect(screen.getByRole("combobox", { name: "Render Mode" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Font" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Words Text")).toBeInTheDocument();
+    expect(screen.getByLabelText("Text Color")).toBeInTheDocument();
+    expect(screen.queryByText("Geometry")).not.toBeInTheDocument();
+    expectSliderHidden("Corner Radius");
+    expectSliderHidden("Grid Angle");
+    expectSliderHidden("Density");
+    expect(screen.queryByText("Brush")).not.toBeInTheDocument();
+  });
+
+  it("commits words mode, font, text, and color changes through project updates", async () => {
+    const state = createStoreState({
+      family: "words",
+      wordsMode: "plain-text",
+    });
+    mockStoreState(state);
+    const user = userEvent.setup();
+
+    render(<App />);
+
+    await user.click(screen.getByRole("combobox", { name: "Render Mode" }));
+    await user.click(await screen.findByRole("option", { name: "Image Fill" }));
+
+    let [[update]] = state.updateProject.mock.calls;
+    let nextProject = createProjectEditorView(update(structuredClone(state.projects[0]!)));
+    expect(nextProject.words.mode).toBe("image-fill");
+
+    state.updateProject.mockClear();
+
+    await user.click(screen.getByRole("combobox", { name: "Font" }));
+    await user.click(await screen.findByRole("option", { name: "Cormorant Garamond" }));
+
+    [[update]] = state.updateProject.mock.calls;
+    nextProject = createProjectEditorView(update(structuredClone(state.projects[0]!)));
+    expect(nextProject.words.fontFamily).toBe("cormorant-garamond");
+
+    state.updateProject.mockClear();
+
+    fireEvent.change(screen.getByLabelText("Words Text"), {
+      target: { value: "STACKED\nLINES" },
+    });
+
+    [[update]] = state.updateProject.mock.calls.slice(-1);
+    nextProject = createProjectEditorView(update(structuredClone(state.projects[0]!)));
+    expect(nextProject.words.text).toBe("STACKED\nLINES");
+
+    state.updateProject.mockClear();
+
+    fireEvent.change(screen.getByLabelText("Text Color"), {
+      target: { value: "#336699" },
+    });
+
+    [[update]] = state.updateProject.mock.calls.slice(-1);
+    nextProject = createProjectEditorView(update(structuredClone(state.projects[0]!)));
+    expect(nextProject.words.textColor).toBe("#336699");
   });
 
   it("shows the hollow ratio control for ring, arc, and mixed geometry", () => {

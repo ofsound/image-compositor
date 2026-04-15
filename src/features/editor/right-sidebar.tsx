@@ -1,6 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { SourceColorField } from "@/components/app/source-color-field";
+import { Textarea } from "@/components/ui/textarea";
 import {
   Select,
   SelectContent,
@@ -38,12 +39,15 @@ import {
   CROP_DISTRIBUTION_OPTIONS,
   FRACTAL_VARIANT_OPTIONS,
   isOption,
+  isOptionValue,
   KALEIDOSCOPE_MIRROR_MODE_OPTIONS,
   LAYOUT_FAMILY_OPTIONS,
   RADIAL_CHILD_ROTATION_OPTIONS,
   SOURCE_ASSIGNMENT_OPTIONS,
   SYMMETRY_MODE_OPTIONS,
   THREE_D_STRUCTURE_OPTIONS,
+  WORDS_FONT_OPTIONS,
+  WORDS_MODE_OPTIONS,
 } from "@/features/editor/right-sidebar-options";
 
 interface RightSidebarProps {
@@ -67,6 +71,7 @@ interface RightSidebarProps {
   isFlowFamily: boolean;
   isThreeDFamily: boolean;
   isFractalFamily: boolean;
+  isWordsFamily: boolean;
   isSymmetryActive: boolean;
   isRadialSymmetry: boolean;
   isToneMapAssignment: boolean;
@@ -96,6 +101,7 @@ export function RightSidebar({
   isFlowFamily,
   isThreeDFamily,
   isFractalFamily,
+  isWordsFamily,
   isSymmetryActive,
   isRadialSymmetry,
   isToneMapAssignment,
@@ -143,7 +149,7 @@ export function RightSidebar({
                       <Select
                         value={activeProjectView.layout.family}
                         onValueChange={(value) => {
-                          if (!isOption(LAYOUT_FAMILY_OPTIONS, value)) return;
+                          if (!isOptionValue(LAYOUT_FAMILY_OPTIONS, value)) return;
                           patchProject((project) => ({
                             ...project,
                             layout: {
@@ -170,8 +176,8 @@ export function RightSidebar({
                         </SelectTrigger>
                         <SelectContent>
                           {LAYOUT_FAMILY_OPTIONS.map((option) => (
-                            <SelectItem key={option} value={option}>
-                              {option}
+                            <SelectItem key={option.value} value={option.value}>
+                              {option.label}
                             </SelectItem>
                           ))}
                         </SelectContent>
@@ -205,7 +211,7 @@ export function RightSidebar({
                         </Select>
                       </ControlBlock>
                     ) : null}
-                    {isRectShapeMode ? (
+                    {!isWordsFamily && isRectShapeMode ? (
                       <SliderField
                         className="sm:col-span-2"
                         label="Corner Radius"
@@ -225,7 +231,7 @@ export function RightSidebar({
                         }
                       />
                     ) : null}
-                    {isWedgeShapeMode ? (
+                    {!isWordsFamily && isWedgeShapeMode ? (
                       <>
                         <SliderField
                           label="Wedge Angle"
@@ -263,7 +269,7 @@ export function RightSidebar({
                         />
                       </>
                     ) : null}
-                    {isHollowShapeMode ? (
+                    {!isWordsFamily && isHollowShapeMode ? (
                       <SliderField
                         className="sm:col-span-2"
                         label="Hollow Ratio"
@@ -322,6 +328,100 @@ export function RightSidebar({
                           Clear Draw Layer
                         </Button>
                       </ControlBlock>
+                    </InspectorFieldGrid>
+                  </InspectorGroup>
+                ) : null}
+
+                {isWordsFamily ? (
+                  <InspectorGroup title="Words">
+                    <InspectorFieldGrid className="sm:grid-cols-2">
+                      <ControlBlock label="Render Mode">
+                        <Select
+                          value={activeProjectView.words.mode}
+                          onValueChange={(value) => {
+                            if (!isOptionValue(WORDS_MODE_OPTIONS, value)) return;
+                            patchProject((project) => ({
+                              ...project,
+                              words: {
+                                ...project.words,
+                                mode: value,
+                              },
+                            }));
+                          }}
+                        >
+                          <SelectTrigger aria-label="Render Mode">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {WORDS_MODE_OPTIONS.map((option) => (
+                              <SelectItem key={option.value} value={option.value}>
+                                {option.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </ControlBlock>
+                      <ControlBlock label="Font">
+                        <Select
+                          value={activeProjectView.words.fontFamily}
+                          onValueChange={(value) => {
+                            if (!isOptionValue(WORDS_FONT_OPTIONS, value)) return;
+                            patchProject((project) => ({
+                              ...project,
+                              words: {
+                                ...project.words,
+                                fontFamily: value,
+                              },
+                            }));
+                          }}
+                        >
+                          <SelectTrigger aria-label="Font">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {WORDS_FONT_OPTIONS.map((option) => (
+                              <SelectItem key={option.value} value={option.value}>
+                                {option.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </ControlBlock>
+                      <ControlBlock label="Text" className="sm:col-span-2">
+                        <Textarea
+                          aria-label="Words Text"
+                          className="min-h-28 resize-y"
+                          value={activeProjectView.words.text}
+                          onChange={(event) => {
+                            const nextText = event.target.value;
+                            patchProject((project) => ({
+                              ...project,
+                              words: {
+                                ...project.words,
+                                text: nextText,
+                              },
+                            }));
+                          }}
+                        />
+                      </ControlBlock>
+                      {activeProjectView.words.mode === "plain-text" ? (
+                        <div className="sm:col-span-2">
+                          <SourceColorField
+                            id="words-text-color"
+                            label="Text Color"
+                            value={activeProjectView.words.textColor}
+                            onChange={(value) =>
+                              patchProject((project) => ({
+                                ...project,
+                                words: {
+                                  ...project.words,
+                                  textColor: value,
+                                },
+                              }))
+                            }
+                          />
+                        </div>
+                      ) : null}
                     </InspectorFieldGrid>
                   </InspectorGroup>
                 ) : null}

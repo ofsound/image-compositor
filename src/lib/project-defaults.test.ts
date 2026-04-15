@@ -110,6 +110,10 @@ describe("createProjectDocument", () => {
     expect(project.finish.noiseMonochrome).toBe(0);
     expect(project.draw.brushSize).toBe(160);
     expect(project.draw.strokes).toEqual([]);
+    expect(project.words.mode).toBe("image-fill");
+    expect(project.words.fontFamily).toBe("dm-sans");
+    expect(project.words.text).toBe("TYPE\nHERE");
+    expect(project.words.textColor).toBe("#180f08");
     expect(project.passes.map((pass) => pass.type)).toEqual([
       "layout",
       "assignment",
@@ -196,6 +200,29 @@ describe("createProjectDocument", () => {
     expect(normalizedLayer.draw.strokes).toHaveLength(1);
     expect(normalizedLayer.draw.strokes[0]?.id.startsWith("stroke_")).toBe(true);
     expect(normalizedLayer.draw.strokes[0]?.points).toEqual([{ x: -24, y: 48 }]);
+  });
+
+  it("normalizes missing words settings to defaults", () => {
+    const project = createProjectDocument("Words Defaults");
+    const layer = project.layers[0]!;
+    const legacyProject = {
+      ...serializeProjectDocument(project),
+      layers: [
+        {
+          ...layer,
+          words: undefined,
+        },
+      ],
+      selectedLayerId: layer.id,
+    } as unknown as ProjectDocument;
+
+    const normalized = normalizeProjectDocument(legacyProject);
+    const normalizedLayer = normalized.layers[0]!;
+
+    expect(normalizedLayer.words.mode).toBe("image-fill");
+    expect(normalizedLayer.words.fontFamily).toBe("dm-sans");
+    expect(normalizedLayer.words.text).toBe("TYPE\nHERE");
+    expect(normalizedLayer.words.textColor).toBe("#180f08");
   });
 
   it("moves legacy root settings into the selected layer and serializes canonically", () => {

@@ -53,10 +53,14 @@ function createMockContext() {
     save: vi.fn(),
     restore: vi.fn(),
     fillRect: vi.fn(),
+    fillText: vi.fn(),
     clearRect: vi.fn(),
     rect: vi.fn(),
     createLinearGradient: vi.fn(() => ({
       addColorStop: vi.fn(),
+    })),
+    measureText: vi.fn((text: string) => ({
+      width: Math.max(text.length, 1) * 120,
     })),
     getImageData: vi.fn(),
     createImageData: vi.fn(),
@@ -74,6 +78,9 @@ function createMockContext() {
     globalAlpha: 1,
     globalAlphaAssignments,
     lineWidth: 1,
+    font: "",
+    textAlign: "start",
+    textBaseline: "alphabetic",
     filterAssignments,
     shadowColorAssignments,
     shadowBlurAssignments,
@@ -271,6 +278,93 @@ describe("renderProjectToCanvas", () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+
+  it("renders plain-text words layers without any source assets", async () => {
+    const project = createProjectView("Words Plain");
+    project.layout.family = "words";
+    project.words.mode = "plain-text";
+    project.words.text = "HELLO\nWORLD";
+    project.words.fontFamily = "jetbrains-mono";
+    project.words.textColor = "#224466";
+    project.layers[0]!.layout.family = "words";
+    project.layers[0]!.words = structuredClone(project.words);
+
+    const mainContext = createMockContext();
+    const createdContexts: ReturnType<typeof createMockContext>[] = [];
+    const canvas = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn(() => mainContext),
+    } as unknown as HTMLCanvasElement;
+    const createElementSpy = vi.spyOn(document, "createElement").mockImplementation(((
+      _tagName: string,
+    ) => {
+      const context = createMockContext();
+      createdContexts.push(context);
+      return {
+        width: 0,
+        height: 0,
+        getContext: vi.fn(() => context),
+      } as unknown as HTMLCanvasElement;
+    }) as never);
+
+    try {
+      await renderProjectToCanvas(project, [], new Map(), canvas);
+    } finally {
+      createElementSpy.mockRestore();
+    }
+
+    expect(createdContexts.some((context) => context.fillText.mock.calls.length > 0)).toBe(true);
+    expect(mainContext.drawImage).toHaveBeenCalled();
+  });
+
+  it("renders image-filled words layers by masking source imagery into the text block", async () => {
+    const project = createProjectView("Words Fill");
+    project.sourceIds = [asset.id];
+    project.layout.family = "words";
+    project.words.mode = "image-fill";
+    project.words.text = "MASK";
+    project.layers[0]!.sourceIds = [asset.id];
+    project.layers[0]!.layout.family = "words";
+    project.layers[0]!.words = structuredClone(project.words);
+
+    const mainContext = createMockContext();
+    const createdContexts: ReturnType<typeof createMockContext>[] = [];
+    const canvas = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn(() => mainContext),
+    } as unknown as HTMLCanvasElement;
+    const createElementSpy = vi.spyOn(document, "createElement").mockImplementation(((
+      _tagName: string,
+    ) => {
+      const context = createMockContext();
+      createdContexts.push(context);
+      return {
+        width: 0,
+        height: 0,
+        getContext: vi.fn(() => context),
+      } as unknown as HTMLCanvasElement;
+    }) as never);
+
+    try {
+      await renderProjectToCanvas(
+        project,
+        [asset],
+        new Map([[asset.id, { asset, bitmap: {} as ImageBitmap }]]),
+        canvas,
+      );
+    } finally {
+      createElementSpy.mockRestore();
+    }
+
+    expect(
+      createdContexts.some((context) =>
+        context.globalCompositeOperationAssignments.includes("destination-in"),
+      ),
+    ).toBe(true);
+    expect(mainContext.drawImage).toHaveBeenCalled();
   });
 
   it("defaults missing rect corner radius values to zero during normalization", () => {

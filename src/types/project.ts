@@ -16,7 +16,13 @@ export type LayoutFamily =
   | "flow"
   | "3d"
   | "fractal"
-  | "draw";
+  | "draw"
+  | "words";
+export type WordsMode = "image-fill" | "plain-text";
+export type WordFontFamily =
+  | "dm-sans"
+  | "cormorant-garamond"
+  | "jetbrains-mono";
 export type FractalVariant =
   | "sierpinski-triangle"
   | "sierpinski-carpet"
@@ -331,6 +337,13 @@ export interface DrawSettings {
   strokes: DrawStroke[];
 }
 
+export interface WordsSettings {
+  mode: WordsMode;
+  fontFamily: WordFontFamily;
+  text: string;
+  textColor: string;
+}
+
 export interface CompositorLayer {
   id: string;
   name: string;
@@ -343,6 +356,7 @@ export interface CompositorLayer {
   compositing: CompositingSettings;
   finish: FinishSettings;
   draw: DrawSettings;
+  words: WordsSettings;
   activeSeed: number;
   presets: GeneratorPreset[];
   passes: RenderPass[];
@@ -440,6 +454,7 @@ export interface LayerRenderProject {
   compositing: CompositingSettings;
   finish: FinishSettings;
   draw: DrawSettings;
+  words: WordsSettings;
   activeSeed: number;
   presets: GeneratorPreset[];
   passes: RenderPass[];

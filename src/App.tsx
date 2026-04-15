@@ -390,6 +390,7 @@ function App() {
   const isThreeDFamily = activeProjectView.layout.family === "3d";
   const isFractalFamily = activeProjectView.layout.family === "fractal";
   const isDrawFamily = activeProjectView.layout.family === "draw";
+  const isWordsFamily = activeProjectView.layout.family === "words";
   const isRectShapeMode = activeProjectView.layout.shapeMode === "rect";
   const isWedgeShapeMode =
     activeProjectView.layout.shapeMode === "arc" ||
@@ -408,9 +409,9 @@ function App() {
   const isKaleidoscopeActive =
     activeProjectView.effects.kaleidoscopeSegments > 1;
   const geometryOptions = getGeometryOptions(activeProjectView.layout.family);
-  const showGeometryControls = !isPatternDrivenFamily(
-    activeProjectView.layout.family,
-  );
+  const showGeometryControls =
+    activeProjectView.layout.family !== "words" &&
+    !isPatternDrivenFamily(activeProjectView.layout.family);
   const geometryValue = geometryOptions.includes(
     activeProjectView.layout.shapeMode,
   )
@@ -745,9 +746,10 @@ function App() {
               isRadialFamily={isRadialFamily}
               isOrganicFamily={isOrganicFamily}
               isFlowFamily={isFlowFamily}
-              isThreeDFamily={isThreeDFamily}
-              isFractalFamily={isFractalFamily}
-              isSymmetryActive={isSymmetryActive}
+        isThreeDFamily={isThreeDFamily}
+        isFractalFamily={isFractalFamily}
+        isWordsFamily={isWordsFamily}
+        isSymmetryActive={isSymmetryActive}
               isRadialSymmetry={isRadialSymmetry}
               isToneMapAssignment={isToneMapAssignment}
               isContrastAssignment={isContrastAssignment}

@@ -2309,7 +2309,7 @@ function generateFractal(context: GeneratorContext) {
   }
 }
 
-const layoutRegistry: Record<Exclude<LayoutFamily, "draw">, (context: GeneratorContext) => LayoutCell[]> = {
+const layoutRegistry: Record<Exclude<LayoutFamily, "draw" | "words">, (context: GeneratorContext) => LayoutCell[]> = {
   grid: generateGrid,
   strips: generateStrips,
   blocks: generateBlocks,
@@ -3507,6 +3507,10 @@ export function buildRenderSlices(
 
   if (project.layout.family === "draw") {
     return buildDrawSlices(project, assets);
+  }
+
+  if (project.layout.family === "words") {
+    return [];
   }
 
   const layoutCells = layoutRegistry[project.layout.family]({ project, assets });

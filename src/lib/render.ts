@@ -15,7 +15,7 @@ import {
   normalizeProjectDocument,
   syncLegacyProjectFieldsToSelectedLayer,
 } from "@/lib/project-defaults";
-import { hashToSeed } from "@/lib/rng";
+import { hashToSeed, mulberry32 } from "@/lib/rng";
 import { clamp } from "@/lib/utils";
 
 export interface AssetBitmapEntry {
@@ -42,9 +42,228 @@ const RENDER_CONTEXT_OPTIONS = {
   alpha: true,
   colorSpace: "srgb",
 } as CanvasRenderingContext2DSettings & { colorSpace?: "srgb" };
+const WORDS_FONT_STACK: Record<LayerRenderProject["words"]["fontFamily"], string> = {
+  "dm-sans": '"DM Sans", system-ui, sans-serif',
+  "cormorant-garamond": '"Cormorant Garamond", Georgia, serif',
+  "jetbrains-mono": '"JetBrains Mono", monospace',
+};
+const WORDS_FONT_WEIGHT: Record<LayerRenderProject["words"]["fontFamily"], number> = {
+  "dm-sans": 600,
+  "cormorant-garamond": 600,
+  "jetbrains-mono": 500,
+};
+const WORDS_MIN_FONT_SIZE = 8;
+const WORDS_LINE_HEIGHT = 0.92;
 
 function getHollowRatio(project: LayerRenderProject) {
   return clamp(project.layout.hollowRatio, 0, 0.95);
+}
+
+function getWordsLines(text: string) {
+  const normalized = text.replace(/\r\n/g, "\n");
+  const lines = normalized.split("\n");
+  return lines.some((line) => line.trim().length > 0) ? lines : [];
+}
+
+function getWordsFont(project: LayerRenderProject, fontSize: number) {
+  return `${WORDS_FONT_WEIGHT[project.words.fontFamily]} ${fontSize}px ${WORDS_FONT_STACK[project.words.fontFamily]}`;
+}
+
+function createWordsMeasurementContext() {
+  return getRenderContext(createRenderCanvas(1, 1));
+}
+
+function getWordsContentRect(project: LayerRenderProject) {
+  return {
+    x: project.canvas.inset,
+    y: project.canvas.inset,
+    width: Math.max(1, project.canvas.width - project.canvas.inset * 2),
+    height: Math.max(1, project.canvas.height - project.canvas.inset * 2),
+  };
+}
+
+function resolveWordsFontSize(
+  project: LayerRenderProject,
+  lines: string[],
+  rect: ReturnType<typeof getWordsContentRect>,
+) {
+  const measureContext = createWordsMeasurementContext();
+  const maxFontSize = Math.max(
+    WORDS_MIN_FONT_SIZE,
+    Math.floor(
+      Math.min(
+        rect.height / Math.max(lines.length * WORDS_LINE_HEIGHT, 1),
+        rect.width,
+      ),
+    ),
+  );
+
+  for (let fontSize = maxFontSize; fontSize >= WORDS_MIN_FONT_SIZE; fontSize -= 2) {
+    measureContext.font = getWordsFont(project, fontSize);
+    const widestLine = Math.max(
+      ...lines.map((line) => measureContext.measureText(line || " ").width),
+    );
+    const totalHeight = fontSize * WORDS_LINE_HEIGHT * lines.length;
+
+    if (widestLine <= rect.width && totalHeight <= rect.height) {
+      return fontSize;
+    }
+  }
+
+  return WORDS_MIN_FONT_SIZE;
+}
+
+function createWordsTextCanvas(
+  project: LayerRenderProject,
+  fillStyle: string,
+) {
+  const lines = getWordsLines(project.words.text);
+  if (lines.length === 0) {
+    return null;
+  }
+
+  const rect = getWordsContentRect(project);
+  const fontSize = resolveWordsFontSize(project, lines, rect);
+  const lineHeight = fontSize * WORDS_LINE_HEIGHT;
+  const totalHeight = lineHeight * lines.length;
+  const centerX = rect.x + rect.width / 2;
+  const startY = rect.y + rect.height / 2 - totalHeight / 2 + lineHeight / 2;
+  const canvas = createRenderCanvas(project.canvas.width, project.canvas.height);
+  const context = getRenderContext(canvas);
+
+  context.font = getWordsFont(project, fontSize);
+  context.textAlign = "center";
+  context.textBaseline = "middle";
+  context.fillStyle = fillStyle;
+
+  lines.forEach((line, index) => {
+    context.fillText(line || " ", centerX, startY + index * lineHeight);
+  });
+
+  return canvas;
+}
+
+function orderWordsAssets(
+  project: LayerRenderProject,
+  assets: SourceAsset[],
+) {
+  if (assets.length < 2) {
+    return [...assets];
+  }
+
+  if (project.sourceMapping.strategy === "round-robin") {
+    return [...assets];
+  }
+
+  if (project.sourceMapping.strategy === "tone-map") {
+    const multiplier = project.sourceMapping.luminanceSort === "ascending" ? 1 : -1;
+    return [...assets].sort((left, right) => multiplier * (left.luminance - right.luminance));
+  }
+
+  if (project.sourceMapping.strategy === "contrast") {
+    return [...assets].sort((left, right) => {
+      const paletteDelta = right.palette.length - left.palette.length;
+      return paletteDelta !== 0 ? paletteDelta : right.luminance - left.luminance;
+    });
+  }
+
+  const shuffled = [...assets];
+  const rng = mulberry32(hashToSeed(`${project.activeSeed}:words:asset-order`));
+  for (let index = shuffled.length - 1; index > 0; index -= 1) {
+    const swapIndex = Math.floor(rng.next() * (index + 1));
+    const current = shuffled[index]!;
+    shuffled[index] = shuffled[swapIndex]!;
+    shuffled[swapIndex] = current;
+  }
+  return shuffled;
+}
+
+function createWordsImageFillCanvas(
+  project: LayerRenderProject,
+  assets: SourceAsset[],
+  bitmaps: Map<string, AssetBitmapEntry>,
+) {
+  const maskCanvas = createWordsTextCanvas(project, "#ffffff");
+  if (!maskCanvas) {
+    return null;
+  }
+
+  const orderedAssets = orderWordsAssets(project, assets).filter((asset) =>
+    bitmaps.has(asset.id),
+  );
+  if (orderedAssets.length === 0) {
+    return null;
+  }
+
+  const fillCanvas = createRenderCanvas(project.canvas.width, project.canvas.height);
+  const fillContext = getRenderContext(fillCanvas);
+  const bandWidth = project.canvas.width / orderedAssets.length;
+
+  orderedAssets.forEach((asset, index) => {
+    const bitmap = bitmaps.get(asset.id)?.bitmap;
+    if (!bitmap) return;
+    fillContext.drawImage(
+      bitmap,
+      index * bandWidth,
+      0,
+      Math.ceil(bandWidth),
+      project.canvas.height,
+    );
+  });
+
+  fillContext.globalCompositeOperation = "destination-in";
+  fillContext.drawImage(maskCanvas, 0, 0);
+
+  return fillCanvas;
+}
+
+function drawWordsCanvas(
+  context: RenderContext,
+  project: LayerRenderProject,
+  contentCanvas: RenderCanvas,
+) {
+  context.save();
+  context.globalAlpha = clamp(project.compositing.opacity, 0, 1);
+  context.globalCompositeOperation = project.compositing.blendMode;
+  context.filter = `blur(${project.effects.blur}px)`;
+  context.drawImage(contentCanvas, 0, 0);
+  context.restore();
+}
+
+async function renderWordsLayer(
+  project: LayerRenderProject,
+  assets: SourceAsset[],
+  bitmaps: Map<string, AssetBitmapEntry>,
+  context: RenderContext,
+  canvas: RenderCanvas,
+) {
+  const contentCanvas =
+    project.words.mode === "plain-text"
+      ? createWordsTextCanvas(project, project.words.textColor)
+      : createWordsImageFillCanvas(project, assets, bitmaps);
+
+  if (!contentCanvas) {
+    return;
+  }
+
+  const kaleidoscopeSourceCanvas =
+    project.effects.kaleidoscopeSegments > 1
+      ? createRenderCanvas(project.canvas.width, project.canvas.height)
+      : null;
+  const kaleidoscopeSourceContext = kaleidoscopeSourceCanvas
+    ? getRenderContext(kaleidoscopeSourceCanvas)
+    : null;
+
+  drawWordsCanvas(context, project, contentCanvas);
+  if (kaleidoscopeSourceContext) {
+    drawWordsCanvas(kaleidoscopeSourceContext, project, contentCanvas);
+  }
+
+  if (kaleidoscopeSourceCanvas) {
+    applyKaleidoscope(context, kaleidoscopeSourceCanvas, project);
+  }
+
+  applySharpen(context, canvas, project.effects.sharpen);
 }
 
 async function loadBitmap(blob: Blob) {
@@ -990,6 +1209,11 @@ async function renderLayer(
   context: RenderContext,
   canvas: RenderCanvas,
 ) {
+  if (project.layout.family === "words") {
+    await renderWordsLayer(project, assets, bitmaps, context, canvas);
+    return;
+  }
+
   const slices = buildRenderSlices(project, assets);
   const kaleidoscopeSourceCanvas =
     project.effects.kaleidoscopeSegments > 1

@@ -15,6 +15,7 @@ import type {
   ProjectDocument,
   RenderPass,
   SourceMappingSettings,
+  WordsSettings,
 } from "@/types/project";
 
 type SelectedLayerEditorFields = {
@@ -25,6 +26,7 @@ type SelectedLayerEditorFields = {
   compositing: CompositingSettings;
   finish: FinishSettings;
   draw: DrawSettings;
+  words: WordsSettings;
   activeSeed: number;
   presets: GeneratorPreset[];
   passes: RenderPass[];
@@ -44,6 +46,7 @@ function createEditorLayer(layer: CompositorLayer) {
     compositing: structuredClone(layer.compositing),
     finish: structuredClone(layer.finish),
     draw: structuredClone(layer.draw),
+    words: structuredClone(layer.words),
     activeSeed: layer.activeSeed,
     presets: structuredClone(layer.presets),
     passes: structuredClone(layer.passes),
@@ -82,6 +85,7 @@ function applyEditorFieldsToLayer(
       compositing: structuredClone(view.compositing),
       finish: structuredClone(view.finish),
       draw: structuredClone(view.draw),
+      words: structuredClone(view.words),
       activeSeed: view.activeSeed,
       presets: structuredClone(view.presets),
       passes: structuredClone(view.passes),

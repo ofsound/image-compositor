@@ -25,7 +25,7 @@ export function isPatternDrivenFamily(family: LayoutFamily) {
 }
 
 export function getGeometryOptions(family: LayoutFamily): GeometryShape[] {
-  if (family === "fractal") {
+  if (family === "fractal" || family === "words") {
     return ["rect"];
   }
 
@@ -49,6 +49,10 @@ export function coerceShapeModeForFamily(
   }
 
   if (family === "fractal") {
+    return "rect";
+  }
+
+  if (family === "words") {
     return "rect";
   }
 

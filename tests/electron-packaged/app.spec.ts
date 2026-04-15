@@ -23,7 +23,7 @@ function resolvePackagedExecutablePath() {
   return executablePath;
 }
 
-test("packaged mac app boots with the app protocol", async ({}, testInfo) => {
+test("packaged mac app boots with the app protocol", async ({ browserName: _browserName }, testInfo) => {
   const executablePath = resolvePackagedExecutablePath();
   const app = await electron.launch({
     executablePath,

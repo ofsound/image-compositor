@@ -21,6 +21,25 @@ export default defineConfig(({ mode }) => ({
   worker: {
     format: "es",
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (
+            id.includes("/node_modules/@dnd-kit/") ||
+            id.includes("/node_modules/@radix-ui/") ||
+            id.includes("/node_modules/lucide-react/") ||
+            id.includes("/node_modules/sonner/") ||
+            id.includes("/node_modules/class-variance-authority/") ||
+            id.includes("/node_modules/clsx/") ||
+            id.includes("/node_modules/tailwind-merge/")
+          ) {
+            return "ui-vendor";
+          }
+        },
+      },
+    },
+  },
   test: {
     environment: "jsdom",
     setupFiles: "./src/test/setup.ts",

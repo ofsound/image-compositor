@@ -587,8 +587,7 @@ describe("App save version flow", () => {
       const input = screen.getByLabelText("Version label");
       expect(input).toHaveValue("Snapshot 10:15:30 AM");
 
-      await user.clear(input);
-      await user.type(input, "  Final Snapshot  ");
+      fireEvent.change(input, { target: { value: "  Final Snapshot  " } });
       await user.click(screen.getByRole("button", { name: "Save version" }));
 
       await waitFor(() =>

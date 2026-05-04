@@ -105,8 +105,11 @@ describe("Slider", () => {
       clientX: 50,
       pointerId: 1,
     });
-    fireEvent.pointerMove(window, { clientX: 70, pointerId: 1 });
-    fireEvent.pointerUp(window, { pointerId: 1 });
+    fireEvent.pointerMove(container.firstElementChild as Element, {
+      clientX: 70,
+      pointerId: 1,
+    });
+    fireEvent.pointerUp(container.firstElementChild as Element, { pointerId: 1 });
 
     expect(onValueChange).not.toHaveBeenCalled();
   });
@@ -154,25 +157,25 @@ describe("Slider", () => {
   });
 
   it("uses full sensitivity during normal pointer drags", () => {
-    const { onValueChange, onValueCommit, thumb } = renderSlider();
+    const { onValueChange, onValueCommit, root, thumb } = renderSlider();
 
     fireEvent.pointerDown(thumb, {
       button: 0,
       clientX: 50,
       pointerId: 1,
     });
-    fireEvent.pointerMove(window, {
+    fireEvent.pointerMove(root, {
       clientX: 60,
       pointerId: 1,
     });
-    fireEvent.pointerUp(window, { pointerId: 1 });
+    fireEvent.pointerUp(root, { pointerId: 1 });
 
     expect(onValueChange).toHaveBeenCalledWith([0.6]);
     expect(onValueCommit).toHaveBeenCalledWith([0.6]);
   });
 
   it("reduces pointer drag sensitivity while shift is held", () => {
-    const { onValueChange, onValueCommit, thumb } = renderSlider();
+    const { onValueChange, onValueCommit, root, thumb } = renderSlider();
 
     fireEvent.pointerDown(thumb, {
       button: 0,
@@ -180,44 +183,46 @@ describe("Slider", () => {
       pointerId: 1,
       shiftKey: true,
     });
-    fireEvent.pointerMove(window, {
+    fireEvent.pointerMove(root, {
       clientX: 60,
       pointerId: 1,
       shiftKey: true,
     });
-    fireEvent.pointerUp(window, { pointerId: 1 });
+    fireEvent.pointerUp(root, { pointerId: 1 });
 
     expect(onValueChange).toHaveBeenCalledWith([0.51]);
+    expect(onValueChange).not.toHaveBeenCalledWith([0.6]);
+    expect(onValueChange).toHaveBeenCalledTimes(1);
     expect(onValueCommit).toHaveBeenCalledWith([0.51]);
   });
 
   it("re-anchors when shift is toggled during a drag so the value does not jump", () => {
-    const { onValueChange, onValueCommit, thumb } = renderSlider();
+    const { onValueChange, onValueCommit, root, thumb } = renderSlider();
 
     fireEvent.pointerDown(thumb, {
       button: 0,
       clientX: 50,
       pointerId: 1,
     });
-    fireEvent.pointerMove(window, {
+    fireEvent.pointerMove(root, {
       clientX: 60,
       pointerId: 1,
     });
     expect(onValueChange).toHaveBeenLastCalledWith([0.6]);
 
-    fireEvent.pointerMove(window, {
+    fireEvent.pointerMove(root, {
       clientX: 70,
       pointerId: 1,
       shiftKey: true,
     });
     expect(onValueChange).toHaveBeenCalledTimes(1);
 
-    fireEvent.pointerMove(window, {
+    fireEvent.pointerMove(root, {
       clientX: 80,
       pointerId: 1,
       shiftKey: true,
     });
-    fireEvent.pointerUp(window, { pointerId: 1 });
+    fireEvent.pointerUp(root, { pointerId: 1 });
 
     expect(onValueChange).toHaveBeenLastCalledWith([0.61]);
     expect(onValueCommit).toHaveBeenCalledWith([0.61]);
@@ -231,7 +236,7 @@ describe("Slider", () => {
       clientX: 80,
       pointerId: 1,
     });
-    fireEvent.pointerUp(window, { pointerId: 1 });
+    fireEvent.pointerUp(root, { pointerId: 1 });
 
     expect(onValueChange).toHaveBeenCalledWith([0.8]);
     expect(onValueCommit).toHaveBeenCalledWith([0.8]);

@@ -30,7 +30,10 @@ export const Slider = React.forwardRef<
       max = 100,
       min = 0,
       onDoubleClick,
+      onPointerCancel,
       onPointerDown,
+      onPointerMove,
+      onPointerUp,
       onValueChange,
       onValueCommit,
       orientation = "horizontal",
@@ -113,26 +116,8 @@ export const Slider = React.forwardRef<
       [dir, inverted, max, min, orientation],
     );
 
-    const handleDragEnd = React.useCallback(
-      (pointerId: number) => {
-        const root = rootRef.current;
-        const session = dragSessionRef.current;
-        if (!root || !session || session.pointerId !== pointerId) {
-          return;
-        }
-
-        root.releasePointerCapture?.(pointerId);
-        dragSessionRef.current = null;
-
-        if (session.lastValue !== session.initialValue) {
-          onValueCommit?.([session.lastValue]);
-        }
-      },
-      [onValueCommit],
-    );
-
-    const handleWindowPointerMove = React.useCallback(
-      (event: PointerEvent) => {
+    const updateDragValue = React.useCallback(
+      (event: PointerEvent | React.PointerEvent) => {
         const session = dragSessionRef.current;
         if (!session || event.pointerId !== session.pointerId) {
           return;
@@ -167,30 +152,22 @@ export const Slider = React.forwardRef<
       [emitValueChange, getValueFromPointer, max, min, step],
     );
 
-    React.useEffect(() => {
-      const ownerWindow = rootRef.current?.ownerDocument.defaultView;
-      if (!ownerWindow) {
-        return;
-      }
+    const finishDrag = React.useCallback(
+      (event: React.PointerEvent) => {
+        const session = dragSessionRef.current;
+        if (!session || session.pointerId !== event.pointerId) {
+          return;
+        }
 
-      const handlePointerMove = (event: PointerEvent) => {
-        handleWindowPointerMove(event);
-      };
+        event.currentTarget.releasePointerCapture?.(event.pointerId);
+        dragSessionRef.current = null;
 
-      const handlePointerUp = (event: PointerEvent) => {
-        handleDragEnd(event.pointerId);
-      };
-
-      ownerWindow.addEventListener("pointermove", handlePointerMove);
-      ownerWindow.addEventListener("pointerup", handlePointerUp);
-      ownerWindow.addEventListener("pointercancel", handlePointerUp);
-
-      return () => {
-        ownerWindow.removeEventListener("pointermove", handlePointerMove);
-        ownerWindow.removeEventListener("pointerup", handlePointerUp);
-        ownerWindow.removeEventListener("pointercancel", handlePointerUp);
-      };
-    }, [handleDragEnd, handleWindowPointerMove]);
+        if (session.lastValue !== session.initialValue) {
+          onValueCommit?.([session.lastValue]);
+        }
+      },
+      [onValueCommit],
+    );
 
     const handlePointerDown: NonNullable<SliderProps["onPointerDown"]> =
       React.useCallback((event) => {
@@ -243,8 +220,60 @@ export const Slider = React.forwardRef<
         step,
       ]);
 
+    const handlePointerMove: NonNullable<SliderProps["onPointerMove"]> =
+      React.useCallback((event) => {
+        onPointerMove?.(event);
+        const session = dragSessionRef.current;
+        if (!session || session.pointerId !== event.pointerId) {
+          return;
+        }
+
+        if (event.defaultPrevented) {
+          return;
+        }
+
+        event.preventDefault();
+        updateDragValue(event);
+      }, [onPointerMove, updateDragValue]);
+
+    const handlePointerUp: NonNullable<SliderProps["onPointerUp"]> =
+      React.useCallback((event) => {
+        onPointerUp?.(event);
+        const session = dragSessionRef.current;
+        if (!session || session.pointerId !== event.pointerId) {
+          return;
+        }
+
+        if (event.defaultPrevented) {
+          return;
+        }
+
+        event.preventDefault();
+        finishDrag(event);
+      }, [finishDrag, onPointerUp]);
+
+    const handlePointerCancel: NonNullable<SliderProps["onPointerCancel"]> =
+      React.useCallback((event) => {
+        onPointerCancel?.(event);
+        const session = dragSessionRef.current;
+        if (!session || session.pointerId !== event.pointerId) {
+          return;
+        }
+
+        if (event.defaultPrevented) {
+          return;
+        }
+
+        event.preventDefault();
+        finishDrag(event);
+      }, [finishDrag, onPointerCancel]);
+
     const handleValueChange = React.useCallback(
       (nextValues: number[]) => {
+        if (dragSessionRef.current) {
+          return;
+        }
+
         if (!isControlled) {
           setUncontrolledValue(nextValues);
         }
@@ -308,7 +337,10 @@ export const Slider = React.forwardRef<
         max={max}
         min={min}
         onDoubleClick={handleDoubleClick}
+        onPointerCancel={handlePointerCancel}
         onPointerDown={handlePointerDown}
+        onPointerMove={handlePointerMove}
+        onPointerUp={handlePointerUp}
         onValueChange={handleValueChange}
         onValueCommit={onValueCommit}
         orientation={orientation}

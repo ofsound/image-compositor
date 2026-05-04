@@ -1,6 +1,6 @@
+import { useRef, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { SourceColorField } from "@/components/app/source-color-field";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -36,8 +36,14 @@ import {
   DEFAULT_EFFECTS,
   DEFAULT_FINISH,
   DEFAULT_LAYOUT,
+  DEFAULT_SVG_GEOMETRY,
   DEFAULT_SOURCE_MAPPING,
 } from "@/lib/project-defaults";
+import {
+  readSvgGeometryFile,
+  SVG_GEOMETRY_FIT_OPTIONS,
+  SVG_GEOMETRY_MIRROR_OPTIONS,
+} from "@/lib/svg-geometry";
 import {
   FRACTAL_RADIAL_SYMMETRY_COPY_LIMIT,
   getFractalIterationLimit,
@@ -70,6 +76,7 @@ interface RightSidebarProps {
   inspectorLayerName: string;
   isDrawFamily: boolean;
   isTextShapeMode: boolean;
+  isSvgShapeMode: boolean;
   isRectShapeMode: boolean;
   isWedgeShapeMode: boolean;
   isHollowShapeMode: boolean;
@@ -101,6 +108,7 @@ export function RightSidebar({
   inspectorLayerName,
   isDrawFamily,
   isTextShapeMode,
+  isSvgShapeMode,
   isRectShapeMode,
   isWedgeShapeMode,
   isHollowShapeMode,
@@ -122,6 +130,9 @@ export function RightSidebar({
   geometryOptions,
   geometryValue,
 }: RightSidebarProps) {
+  const svgUploadInputRef = useRef<HTMLInputElement>(null);
+  const [svgUploadError, setSvgUploadError] = useState<string | null>(null);
+
   if (previewExpanded) return null;
 
   const fractalIterationMax = getFractalIterationLimit(
@@ -150,55 +161,6 @@ export function RightSidebar({
                 </div>
                 <div className="mt-1 text-sm font-medium text-text">
                   Editing {inspectorLayerName}
-                </div>
-                <div className="mt-3 space-y-1 border-t border-border-subtle pt-2.5">
-                  <label
-                    htmlFor="layer-variation-seed"
-                    className="font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-text-muted"
-                  >
-                    Variation seed
-                  </label>
-                  <Input
-                    id="layer-variation-seed"
-                    key={activeProjectView.activeSeed}
-                    className="h-8 font-mono text-xs tabular-nums"
-                    defaultValue={String(activeProjectView.activeSeed)}
-                    inputMode="numeric"
-                    aria-describedby="layer-variation-seed-hint"
-                    onBlur={(event) => {
-                      const parsed = Number.parseInt(
-                        event.currentTarget.value.trim(),
-                        10,
-                      );
-                      const clamped = Number.isFinite(parsed)
-                        ? Math.max(
-                            0,
-                            Math.min(999_999_999, Math.floor(parsed)),
-                          )
-                        : null;
-                      if (clamped === null) {
-                        event.currentTarget.value = String(
-                          activeProjectView.activeSeed,
-                        );
-                        return;
-                      }
-                      if (clamped === activeProjectView.activeSeed) {
-                        event.currentTarget.value = String(clamped);
-                        return;
-                      }
-                      patchProject((project) => ({
-                        ...project,
-                        activeSeed: clamped,
-                      }));
-                    }}
-                  />
-                  <p
-                    id="layer-variation-seed-hint"
-                    className="text-[10px] leading-snug text-text-muted"
-                  >
-                    Layout randomness for this layer. Randomize updates this (and
-                    other visible layers when scoped to visible).
-                  </p>
                 </div>
               </div>
 
@@ -271,7 +233,7 @@ export function RightSidebar({
                         </Select>
                       </ControlBlock>
                     ) : null}
-                    {!isWordsFamily && !isTextShapeMode && isRectShapeMode ? (
+                    {!isWordsFamily && !isTextShapeMode && !isSvgShapeMode && isRectShapeMode ? (
                       <SliderField
                         className="sm:col-span-2"
                         label="Corner Radius"
@@ -292,7 +254,7 @@ export function RightSidebar({
                         }
                       />
                     ) : null}
-                    {!isWordsFamily && !isTextShapeMode && isWedgeShapeMode ? (
+                    {!isWordsFamily && !isTextShapeMode && !isSvgShapeMode && isWedgeShapeMode ? (
                       <>
                         <SliderField
                           label="Wedge Angle"
@@ -332,7 +294,7 @@ export function RightSidebar({
                         />
                       </>
                     ) : null}
-                    {!isWordsFamily && !isTextShapeMode && isHollowShapeMode ? (
+                    {!isWordsFamily && !isTextShapeMode && !isSvgShapeMode && isHollowShapeMode ? (
                       <SliderField
                         className="sm:col-span-2"
                         label="Hollow Ratio"
@@ -393,6 +355,291 @@ export function RightSidebar({
                           Clear Draw Layer
                         </Button>
                       </ControlBlock>
+                    </InspectorFieldGrid>
+                  </InspectorGroup>
+                ) : null}
+
+                {isSvgShapeMode ? (
+                  <InspectorGroup title="SVG">
+                    <InspectorFieldGrid className="sm:grid-cols-2">
+                      <ControlBlock label="Shape File" className="sm:col-span-2">
+                        <input
+                          ref={svgUploadInputRef}
+                          type="file"
+                          accept=".svg,image/svg+xml"
+                          className="hidden"
+                          onChange={(event) => {
+                            const file = event.currentTarget.files?.[0];
+                            event.currentTarget.value = "";
+                            if (!file) return;
+
+                            void readSvgGeometryFile(file)
+                              .then(({ fileName, markup }) => {
+                                setSvgUploadError(null);
+                                patchProject((project) => ({
+                                  ...project,
+                                  svgGeometry: {
+                                    ...project.svgGeometry,
+                                    fileName,
+                                    markup,
+                                  },
+                                }));
+                              })
+                              .catch((error) => {
+                                setSvgUploadError(
+                                  error instanceof Error
+                                    ? error.message
+                                    : "Could not read SVG geometry.",
+                                );
+                              });
+                          }}
+                        />
+                        <div className="grid grid-cols-[1fr_auto] gap-2">
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={() => svgUploadInputRef.current?.click()}
+                          >
+                            {activeProjectView.svgGeometry.markup
+                              ? "Replace SVG"
+                              : "Upload SVG"}
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            disabled={!activeProjectView.svgGeometry.markup}
+                            onClick={() => {
+                              setSvgUploadError(null);
+                              patchProject((project) => ({
+                                ...project,
+                                svgGeometry: {
+                                  ...project.svgGeometry,
+                                  fileName: null,
+                                  markup: null,
+                                },
+                              }));
+                            }}
+                          >
+                            Remove
+                          </Button>
+                        </div>
+                        <div className="rounded-md bg-surface-muted px-3 py-2 text-xs text-text-muted">
+                          {activeProjectView.svgGeometry.fileName ??
+                            "No SVG uploaded. SVG geometry will render empty."}
+                        </div>
+                        {svgUploadError ? (
+                          <div className="rounded-md border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-700 dark:text-red-300">
+                            {svgUploadError}
+                          </div>
+                        ) : !activeProjectView.svgGeometry.markup ? (
+                          <div className="rounded-md border border-border-subtle bg-surface-sunken px-3 py-2 text-xs text-text-muted">
+                            Upload a valid SVG to use this geometry mode.
+                          </div>
+                        ) : null}
+                      </ControlBlock>
+
+                      <ControlBlock label="Fit">
+                        <Select
+                          value={activeProjectView.svgGeometry.fit}
+                          onValueChange={(value) => {
+                            if (!isOption(SVG_GEOMETRY_FIT_OPTIONS, value)) return;
+                            patchProject((project) => ({
+                              ...project,
+                              svgGeometry: {
+                                ...project.svgGeometry,
+                                fit: value,
+                              },
+                            }));
+                          }}
+                        >
+                          <SelectTrigger aria-label="SVG Fit">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {SVG_GEOMETRY_FIT_OPTIONS.map((option) => (
+                              <SelectItem key={option} value={option}>
+                                {option}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </ControlBlock>
+                      <ControlBlock label="Mirror">
+                        <Select
+                          value={activeProjectView.svgGeometry.mirrorMode}
+                          onValueChange={(value) => {
+                            if (!isOption(SVG_GEOMETRY_MIRROR_OPTIONS, value)) return;
+                            patchProject((project) => ({
+                              ...project,
+                              svgGeometry: {
+                                ...project.svgGeometry,
+                                mirrorMode: value,
+                              },
+                            }));
+                          }}
+                        >
+                          <SelectTrigger aria-label="SVG Mirror">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {SVG_GEOMETRY_MIRROR_OPTIONS.map((option) => (
+                              <SelectItem key={option} value={option}>
+                                {option}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </ControlBlock>
+                      <SliderField
+                        label="Padding"
+                        min={0}
+                        max={0.45}
+                        step={0.01}
+                        value={activeProjectView.svgGeometry.padding}
+                        defaultValue={DEFAULT_SVG_GEOMETRY.padding}
+                        formatter={(value) => `${Math.round(value * 100)}%`}
+                        onChange={(value) =>
+                          patchProject((project) => ({
+                            ...project,
+                            svgGeometry: {
+                              ...project.svgGeometry,
+                              padding: value,
+                            },
+                          }))
+                        }
+                      />
+                      <SliderField
+                        label="Threshold"
+                        min={0}
+                        max={1}
+                        step={0.01}
+                        value={activeProjectView.svgGeometry.threshold}
+                        defaultValue={DEFAULT_SVG_GEOMETRY.threshold}
+                        formatter={(value) => `${Math.round(value * 100)}%`}
+                        onChange={(value) =>
+                          patchProject((project) => ({
+                            ...project,
+                            svgGeometry: {
+                              ...project.svgGeometry,
+                              threshold: value,
+                            },
+                          }))
+                        }
+                      />
+                      <SliderField
+                        label="Grow / Shrink"
+                        min={-32}
+                        max={32}
+                        step={1}
+                        value={activeProjectView.svgGeometry.morphology}
+                        defaultValue={DEFAULT_SVG_GEOMETRY.morphology}
+                        formatter={(value) => `${Math.round(value)} px`}
+                        onChange={(value) =>
+                          patchProject((project) => ({
+                            ...project,
+                            svgGeometry: {
+                              ...project.svgGeometry,
+                              morphology: value,
+                            },
+                          }))
+                        }
+                      />
+                      <SliderField
+                        label="Random Rotation"
+                        min={0}
+                        max={180}
+                        step={1}
+                        value={activeProjectView.svgGeometry.randomRotation}
+                        defaultValue={DEFAULT_SVG_GEOMETRY.randomRotation}
+                        formatter={(value) => `${Math.round(value)}°`}
+                        onChange={(value) =>
+                          patchProject((project) => ({
+                            ...project,
+                            svgGeometry: {
+                              ...project.svgGeometry,
+                              randomRotation: value,
+                            },
+                          }))
+                        }
+                      />
+                      <ControlBlock label="Invert">
+                        <div className="flex items-center justify-between rounded-md bg-surface-muted px-3 py-2.5">
+                          <span className="text-xs text-text-muted">
+                            Fill outside alpha
+                          </span>
+                          <Switch
+                            checked={activeProjectView.svgGeometry.invert}
+                            onCheckedChange={(checked) =>
+                              patchProject((project) => ({
+                                ...project,
+                                svgGeometry: {
+                                  ...project.svgGeometry,
+                                  invert: checked,
+                                },
+                              }))
+                            }
+                          />
+                        </div>
+                      </ControlBlock>
+                      <ControlBlock label="Tile Repeat">
+                        <div className="flex items-center justify-between rounded-md bg-surface-muted px-3 py-2.5">
+                          <span className="text-xs text-text-muted">
+                            Repeat inside slice
+                          </span>
+                          <Switch
+                            checked={activeProjectView.svgGeometry.repeatEnabled}
+                            onCheckedChange={(checked) =>
+                              patchProject((project) => ({
+                                ...project,
+                                svgGeometry: {
+                                  ...project.svgGeometry,
+                                  repeatEnabled: checked,
+                                },
+                              }))
+                            }
+                          />
+                        </div>
+                      </ControlBlock>
+                      <SliderField
+                        label="Tile Scale"
+                        min={0.08}
+                        max={1}
+                        step={0.01}
+                        value={activeProjectView.svgGeometry.repeatScale}
+                        defaultValue={DEFAULT_SVG_GEOMETRY.repeatScale}
+                        disabled={!activeProjectView.svgGeometry.repeatEnabled}
+                        formatter={(value) => `${Math.round(value * 100)}%`}
+                        onChange={(value) =>
+                          patchProject((project) => ({
+                            ...project,
+                            svgGeometry: {
+                              ...project.svgGeometry,
+                              repeatScale: value,
+                            },
+                          }))
+                        }
+                      />
+                      <SliderField
+                        label="Tile Gap"
+                        min={0}
+                        max={0.8}
+                        step={0.01}
+                        value={activeProjectView.svgGeometry.repeatGap}
+                        defaultValue={DEFAULT_SVG_GEOMETRY.repeatGap}
+                        disabled={!activeProjectView.svgGeometry.repeatEnabled}
+                        formatter={(value) => `${Math.round(value * 100)}%`}
+                        onChange={(value) =>
+                          patchProject((project) => ({
+                            ...project,
+                            svgGeometry: {
+                              ...project.svgGeometry,
+                              repeatGap: value,
+                            },
+                          }))
+                        }
+                      />
                     </InspectorFieldGrid>
                   </InspectorGroup>
                 ) : null}

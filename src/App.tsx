@@ -395,6 +395,7 @@ function App() {
   const isDrawFamily = activeProjectView.layout.family === "draw";
   const isWordsFamily = activeProjectView.layout.family === "words";
   const isTextShapeMode = activeProjectView.layout.shapeMode === "text";
+  const isSvgShapeMode = activeProjectView.layout.shapeMode === "svg";
   const isRectShapeMode = activeProjectView.layout.shapeMode === "rect";
   const isWedgeShapeMode =
     activeProjectView.layout.shapeMode === "arc" ||
@@ -780,6 +781,7 @@ function App() {
               hasDrawStrokes={activeProjectView.draw.strokes.length > 0}
               inspectorLayerName={inspectorLayerName}
               isDrawFamily={isDrawFamily}
+              isSvgShapeMode={isSvgShapeMode}
               isRectShapeMode={isRectShapeMode}
               isWedgeShapeMode={isWedgeShapeMode}
               isHollowShapeMode={isHollowShapeMode}

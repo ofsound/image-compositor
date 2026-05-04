@@ -5,6 +5,9 @@ import type {
   CropDistribution,
   DrawSettings,
   EffectSettings,
+  ElementModulationPattern,
+  ElementModulationSettings,
+  ElementModulationTarget,
   ExportSettings,
   FinishSettings,
   GeneratorPreset,
@@ -16,6 +19,7 @@ import type {
   RenderPass,
   SourceAssignmentStrategy,
   SourceMappingSettings,
+  SvgGeometrySettings,
   WordsSettings,
 } from "@/types/project";
 import { makeId } from "@/lib/id";
@@ -25,6 +29,7 @@ import { clamp } from "@/lib/utils";
 
 type LegacyEffectSettings = Partial<EffectSettings> & {
   mirror?: boolean;
+  elementModulations?: Partial<Record<ElementModulationTarget, Partial<ElementModulationSettings>>>;
 };
 
 type LegacyCompositingSettings = Partial<CompositingSettings> & {
@@ -44,6 +49,7 @@ type LegacyProjectLike = {
   finish?: Partial<FinishSettings>;
   draw?: Partial<DrawSettings>;
   words?: Partial<WordsSettings>;
+  svgGeometry?: Partial<SvgGeometrySettings>;
   activeSeed?: number;
   presets?: GeneratorPreset[];
   passes?: RenderPass[];
@@ -93,6 +99,7 @@ export function createLayerRenderProject(
     finish: structuredClone(layer.finish),
     draw: structuredClone(layer.draw),
     words: structuredClone(layer.words),
+    svgGeometry: structuredClone(layer.svgGeometry),
     activeSeed: layer.activeSeed,
     presets: structuredClone(layer.presets),
     passes: structuredClone(layer.passes),
@@ -234,6 +241,90 @@ function normalizeSourceAssignmentStrategy(
   return DEFAULT_SOURCE_MAPPING.strategy;
 }
 
+export const ELEMENT_MODULATION_TARGETS: ElementModulationTarget[] = [
+  "rotation",
+  "scale",
+  "displacementX",
+  "displacementY",
+  "opacity",
+  "distortion",
+  "wedgeSweep",
+  "threeDZ",
+  "threeDTwist",
+  "symmetryDrift",
+];
+
+const ELEMENT_MODULATION_PATTERNS: ElementModulationPattern[] = [
+  "sine",
+  "triangle",
+  "saw",
+  "checker",
+  "linear",
+  "rings",
+  "spiral",
+  "depth",
+];
+
+function createDefaultElementModulation(): ElementModulationSettings {
+  return {
+    enabled: false,
+    pattern: "sine",
+    amount: 0,
+    frequency: 1,
+    phase: 0,
+    originX: 0.5,
+    originY: 0.5,
+    axisAngle: 0,
+  };
+}
+
+export function createDefaultElementModulations(): Record<
+  ElementModulationTarget,
+  ElementModulationSettings
+> {
+  return Object.fromEntries(
+    ELEMENT_MODULATION_TARGETS.map((target) => [
+      target,
+      createDefaultElementModulation(),
+    ]),
+  ) as Record<ElementModulationTarget, ElementModulationSettings>;
+}
+
+function normalizeElementModulationPattern(
+  value: ElementModulationPattern | undefined,
+) {
+  return value && ELEMENT_MODULATION_PATTERNS.includes(value) ? value : "sine";
+}
+
+function normalizeElementModulationSettings(
+  settings: Partial<ElementModulationSettings> | undefined,
+): ElementModulationSettings {
+  const defaults = createDefaultElementModulation();
+  return {
+    enabled: settings?.enabled ?? defaults.enabled,
+    pattern: normalizeElementModulationPattern(settings?.pattern),
+    amount: clamp(settings?.amount ?? defaults.amount, -1000, 1000),
+    frequency: clamp(settings?.frequency ?? defaults.frequency, 0, 64),
+    phase: clamp(settings?.phase ?? defaults.phase, -360, 360),
+    originX: clamp(settings?.originX ?? defaults.originX, 0, 1),
+    originY: clamp(settings?.originY ?? defaults.originY, 0, 1),
+    axisAngle: clamp(settings?.axisAngle ?? defaults.axisAngle, -360, 360),
+  };
+}
+
+export function normalizeElementModulations(
+  modulations:
+    | Partial<Record<ElementModulationTarget, Partial<ElementModulationSettings>>>
+    | undefined,
+): Record<ElementModulationTarget, ElementModulationSettings> {
+  return Object.fromEntries(
+    ELEMENT_MODULATION_TARGETS.map((target) => [
+      target,
+      normalizeElementModulationSettings(modulations?.[target]),
+    ]),
+  ) as Record<ElementModulationTarget, ElementModulationSettings>;
+}
+
 export const DEFAULT_EFFECTS: EffectSettings = {
   blur: 0,
   sharpen: 0,
@@ -249,6 +340,7 @@ export const DEFAULT_EFFECTS: EffectSettings = {
   scaleJitter: 0,
   displacement: 0,
   distortion: 0,
+  elementModulations: createDefaultElementModulations(),
 };
 
 function normalizeKaleidoscopeMirrorMode(
@@ -293,6 +385,7 @@ export function normalizeEffectSettings(
     scaleJitter: effects?.scaleJitter ?? DEFAULT_EFFECTS.scaleJitter,
     displacement: effects?.displacement ?? DEFAULT_EFFECTS.displacement,
     distortion: effects?.distortion ?? DEFAULT_EFFECTS.distortion,
+    elementModulations: normalizeElementModulations(effects?.elementModulations),
   };
 }
 
@@ -329,6 +422,21 @@ export const DEFAULT_WORDS: WordsSettings = {
   fontFamily: "dm-sans",
   text: "TYPE\nHERE",
   textColor: "#180f08",
+};
+
+export const DEFAULT_SVG_GEOMETRY: SvgGeometrySettings = {
+  fileName: null,
+  markup: null,
+  fit: "contain",
+  padding: 0,
+  threshold: 0.05,
+  invert: false,
+  morphology: 0,
+  repeatEnabled: false,
+  repeatScale: 0.45,
+  repeatGap: 0.08,
+  randomRotation: 0,
+  mirrorMode: "none",
 };
 
 export const DEFAULT_EXPORT: ExportSettings = {
@@ -675,6 +783,66 @@ function normalizeWordsSettings(
   };
 }
 
+function normalizeSvgGeometrySettings(
+  svgGeometry: Partial<SvgGeometrySettings> | undefined,
+): SvgGeometrySettings {
+  const fit = svgGeometry?.fit;
+  const mirrorMode = svgGeometry?.mirrorMode;
+
+  return {
+    fileName:
+      typeof svgGeometry?.fileName === "string" &&
+      svgGeometry.fileName.trim().length > 0
+        ? svgGeometry.fileName
+        : DEFAULT_SVG_GEOMETRY.fileName,
+    markup:
+      typeof svgGeometry?.markup === "string" &&
+      svgGeometry.markup.trim().length > 0
+        ? svgGeometry.markup
+        : DEFAULT_SVG_GEOMETRY.markup,
+    fit:
+      fit === "contain" || fit === "cover" || fit === "stretch"
+        ? fit
+        : DEFAULT_SVG_GEOMETRY.fit,
+    padding: clamp(svgGeometry?.padding ?? DEFAULT_SVG_GEOMETRY.padding, 0, 0.45),
+    threshold: clamp(
+      svgGeometry?.threshold ?? DEFAULT_SVG_GEOMETRY.threshold,
+      0,
+      1,
+    ),
+    invert: svgGeometry?.invert ?? DEFAULT_SVG_GEOMETRY.invert,
+    morphology: clamp(
+      svgGeometry?.morphology ?? DEFAULT_SVG_GEOMETRY.morphology,
+      -32,
+      32,
+    ),
+    repeatEnabled:
+      svgGeometry?.repeatEnabled ?? DEFAULT_SVG_GEOMETRY.repeatEnabled,
+    repeatScale: clamp(
+      svgGeometry?.repeatScale ?? DEFAULT_SVG_GEOMETRY.repeatScale,
+      0.08,
+      1,
+    ),
+    repeatGap: clamp(
+      svgGeometry?.repeatGap ?? DEFAULT_SVG_GEOMETRY.repeatGap,
+      0,
+      0.8,
+    ),
+    randomRotation: clamp(
+      svgGeometry?.randomRotation ?? DEFAULT_SVG_GEOMETRY.randomRotation,
+      0,
+      180,
+    ),
+    mirrorMode:
+      mirrorMode === "none" ||
+      mirrorMode === "x" ||
+      mirrorMode === "y" ||
+      mirrorMode === "alternate"
+        ? mirrorMode
+        : DEFAULT_SVG_GEOMETRY.mirrorMode,
+  };
+}
+
 export function normalizeCompositorLayer(
   layer: Partial<CompositorLayer> | undefined,
   fallbackCropDistribution: CropDistribution = "center",
@@ -696,6 +864,7 @@ export function normalizeCompositorLayer(
     finish: normalizeFinishSettings(layer?.finish, layer?.compositing),
     draw: normalizeDrawSettings(layer?.draw),
     words: normalizeWordsSettings(layer?.words),
+    svgGeometry: normalizeSvgGeometrySettings(layer?.svgGeometry),
     activeSeed: layer?.activeSeed ?? 187310,
     presets: normalizeLayerPresets(layer?.presets),
     passes: normalizeLayerPasses(layer?.passes),
@@ -725,6 +894,7 @@ function createLegacyLayer(
       finish: value.finish,
       draw: value.draw,
       words: value.words,
+      svgGeometry: value.svgGeometry,
       activeSeed: value.activeSeed,
       presets: value.presets,
       passes: value.passes,
@@ -787,6 +957,9 @@ export function syncLegacyProjectFieldsToSelectedLayer<T extends ProjectSnapshot
     ) as CompositorLayer["finish"],
     draw: normalizeDrawSettings(legacySnapshot.draw ?? selectedLayer.draw),
     words: normalizeWordsSettings(legacySnapshot.words ?? selectedLayer.words),
+    svgGeometry: normalizeSvgGeometrySettings(
+      legacySnapshot.svgGeometry ?? selectedLayer.svgGeometry,
+    ),
     activeSeed: legacySnapshot.activeSeed ?? selectedLayer.activeSeed,
     presets: structuredClone(legacySnapshot.presets ?? selectedLayer.presets),
     passes: structuredClone(legacySnapshot.passes ?? selectedLayer.passes),
@@ -811,6 +984,7 @@ function hasLegacyRootOverrides(snapshot: LegacySnapshotLike) {
     ("finish" in snapshot && snapshot.finish !== undefined) ||
     ("draw" in snapshot && snapshot.draw !== undefined) ||
     ("words" in snapshot && snapshot.words !== undefined) ||
+    ("svgGeometry" in snapshot && snapshot.svgGeometry !== undefined) ||
     ("activeSeed" in snapshot && snapshot.activeSeed !== undefined) ||
     ("presets" in snapshot && snapshot.presets !== undefined) ||
     ("passes" in snapshot && snapshot.passes !== undefined)
@@ -863,6 +1037,7 @@ export function normalizeProjectSnapshot(
             finish: structuredClone(legacyLayer.finish),
             draw: structuredClone(legacyLayer.draw),
             words: structuredClone(legacyLayer.words),
+            svgGeometry: structuredClone(legacyLayer.svgGeometry),
             activeSeed: legacyLayer.activeSeed,
             presets: structuredClone(legacyLayer.presets),
             passes: structuredClone(legacyLayer.passes),

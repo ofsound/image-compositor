@@ -98,6 +98,7 @@ function createStoreState(overrides?: {
     | "arc"
     | "wedge"
     | "text"
+    | "svg"
     | "mixed";
   symmetryMode?: "none" | "mirror-x" | "mirror-y" | "quad" | "radial";
   density?: number;
@@ -887,10 +888,13 @@ describe("App conditional sliders", () => {
     expect(getGeometryOptions("organic")).toContain("arc");
     expect(getGeometryOptions("organic")).toContain("rect");
     expect(getGeometryOptions("organic")).toContain("text");
+    expect(getGeometryOptions("organic")).toContain("svg");
     expect(getGeometryOptions("flow")).toContain("arc");
     expect(getGeometryOptions("flow")).toContain("text");
+    expect(getGeometryOptions("flow")).toContain("svg");
     expect(getGeometryOptions("3d")).not.toContain("interlock");
     expect(getGeometryOptions("3d")).toContain("text");
+    expect(getGeometryOptions("3d")).toContain("svg");
     expect(getGeometryOptions("fractal")).toEqual([
       "mixed",
       "rect",
@@ -900,6 +904,7 @@ describe("App conditional sliders", () => {
       "arc",
       "wedge",
       "text",
+      "svg",
     ]);
     expect(getGeometryOptions("fractal")).not.toContain("interlock");
   });
@@ -972,7 +977,28 @@ describe("App conditional sliders", () => {
     expectSliderHidden("Hollow Ratio");
   });
 
-  it("shows geometry controls for fractal including text", async () => {
+  it("shows svg geometry controls without text controls", () => {
+    renderApp({
+      family: "grid",
+      shapeMode: "svg",
+    });
+
+    expect(screen.getByText("Shape File")).toBeInTheDocument();
+    expect(screen.getByText("Upload SVG")).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "SVG Fit" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "SVG Mirror" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Padding")).toBeInTheDocument();
+    expect(screen.getByLabelText("Threshold")).toBeInTheDocument();
+    expect(screen.getByLabelText("Grow / Shrink")).toBeInTheDocument();
+    expect(screen.getByLabelText("Random Rotation")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Words Text")).not.toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "Font" })).not.toBeInTheDocument();
+    expectSliderHidden("Corner Radius");
+    expectSliderHidden("Wedge Angle");
+    expectSliderHidden("Hollow Ratio");
+  });
+
+  it("shows geometry controls for fractal including text and svg", async () => {
     const user = userEvent.setup();
     renderApp({
       family: "fractal",
@@ -990,6 +1016,7 @@ describe("App conditional sliders", () => {
     expect(await screen.findByRole("option", { name: "arc" })).toBeInTheDocument();
     expect(await screen.findByRole("option", { name: "wedge" })).toBeInTheDocument();
     expect(await screen.findByRole("option", { name: "text" })).toBeInTheDocument();
+    expect(await screen.findByRole("option", { name: "svg" })).toBeInTheDocument();
   });
 
   it("commits words mode, font, text, and color changes through project updates", async () => {

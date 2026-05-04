@@ -1,4 +1,6 @@
 import type {
+  ElementModulationSettings,
+  ElementModulationTarget,
   FractalVariant,
   GeometryShape,
   LayerRenderProject,
@@ -33,7 +35,7 @@ interface GeneratorContext {
 }
 
 type ConcreteGeometryShape = Exclude<GeometryShape, "mixed">;
-type MixedCycleShape = Exclude<GeometryShape, "mixed" | "interlock" | "text">;
+type MixedCycleShape = Exclude<GeometryShape, "mixed" | "interlock" | "text" | "svg">;
 
 interface LayoutCell extends RenderRect {
   shape: ConcreteGeometryShape;
@@ -45,6 +47,12 @@ interface LayoutCell extends RenderRect {
   rotationX?: number;
   rotationY?: number;
   depthValue?: number;
+  layoutRow?: number;
+  layoutColumn?: number;
+  layoutRing?: number;
+  layoutSegment?: number;
+  layoutIndex?: number;
+  layoutCount?: number;
 }
 
 interface AssignmentTarget {
@@ -87,9 +95,172 @@ const MAX_BLOCK_SPLIT_OFFSET = 0.18;
 const ORGANIC_VARIATION_MAX = 4_096;
 const THREE_D_DISTRIBUTION_MAX = 4_096;
 const FRACTAL_MAX_SLICES = 1_200;
+const DEFAULT_MODULATION_COUNT = 1;
 
 function degToRad(degrees: number) {
   return (degrees * Math.PI) / 180;
+}
+
+function positiveModulo(value: number, divisor: number) {
+  return ((value % divisor) + divisor) % divisor;
+}
+
+function cycle01(value: number) {
+  return positiveModulo(value, 1);
+}
+
+function triangleWave(value: number) {
+  const cycle = cycle01(value);
+  return 1 - Math.abs(cycle * 2 - 1) * 2;
+}
+
+function sawWave(value: number) {
+  return cycle01(value) * 2 - 1;
+}
+
+interface ElementModulationInput {
+  cell?: LayoutCell;
+  index: number;
+  count?: number;
+  normalizedX?: number;
+  normalizedY?: number;
+  depthValue?: number;
+}
+
+interface ElementModulationCoordinates {
+  normalizedX: number;
+  normalizedY: number;
+  originX: number;
+  originY: number;
+  axisProjection: number;
+  distance: number;
+  angleTurn: number;
+  index: number;
+  count: number;
+  row: number | null;
+  column: number | null;
+  ring: number | null;
+  segment: number | null;
+  depth: number;
+}
+
+function getElementModulationCoordinates(
+  project: LayerRenderProject,
+  settings: ElementModulationSettings,
+  input: ElementModulationInput,
+): ElementModulationCoordinates {
+  const inset = project.canvas.inset;
+  const width = Math.max(project.canvas.width - inset * 2, 1);
+  const height = Math.max(project.canvas.height - inset * 2, 1);
+  const center = input.cell ? getRectCenter(input.cell) : null;
+  const normalizedX = clamp(
+    input.normalizedX ?? (center ? (center.x - inset) / width : 0.5),
+    0,
+    1,
+  );
+  const normalizedY = clamp(
+    input.normalizedY ?? (center ? (center.y - inset) / height : 0.5),
+    0,
+    1,
+  );
+  const originX = clamp(settings.originX, 0, 1);
+  const originY = clamp(settings.originY, 0, 1);
+  const dx = normalizedX - originX;
+  const dy = normalizedY - originY;
+  const axis = degToRad(settings.axisAngle);
+  const axisProjection = dx * Math.cos(axis) + dy * Math.sin(axis) + 0.5;
+  const maxDistance = Math.SQRT2;
+  const distance = clamp(Math.hypot(dx, dy) / maxDistance, 0, 1);
+  const angleTurn = positiveModulo(Math.atan2(dy, dx) / (Math.PI * 2), 1);
+  const count = Math.max(1, input.count ?? input.cell?.layoutCount ?? DEFAULT_MODULATION_COUNT);
+
+  return {
+    normalizedX,
+    normalizedY,
+    originX,
+    originY,
+    axisProjection,
+    distance,
+    angleTurn,
+    index: input.cell?.layoutIndex ?? input.index,
+    count,
+    row: input.cell?.layoutRow ?? null,
+    column: input.cell?.layoutColumn ?? null,
+    ring: input.cell?.layoutRing ?? null,
+    segment: input.cell?.layoutSegment ?? null,
+    depth: clamp(input.depthValue ?? input.cell?.depthValue ?? 0.5, 0, 1),
+  };
+}
+
+function evaluateElementModulationPattern(
+  settings: ElementModulationSettings,
+  coordinates: ElementModulationCoordinates,
+) {
+  const frequency = Math.max(0, settings.frequency);
+  const phase = settings.phase / 360;
+  const indexPosition =
+    coordinates.count <= 1 ? 0 : coordinates.index / (coordinates.count - 1);
+  const axisValue = coordinates.axisProjection * frequency + phase;
+
+  switch (settings.pattern) {
+    case "triangle":
+      return triangleWave(axisValue);
+    case "saw":
+      return sawWave(axisValue);
+    case "checker": {
+      const order =
+        coordinates.row !== null && coordinates.column !== null
+          ? coordinates.row + coordinates.column
+          : coordinates.ring !== null && coordinates.segment !== null
+            ? coordinates.ring + coordinates.segment
+            : coordinates.index;
+      return positiveModulo(Math.floor(order * Math.max(1, frequency) + phase), 2) === 0
+        ? -1
+        : 1;
+    }
+    case "linear":
+      return clamp((coordinates.axisProjection - 0.5) * 2 * Math.max(1, frequency), -1, 1);
+    case "rings":
+      return Math.sin(Math.PI * 2 * (coordinates.distance * frequency + phase));
+    case "spiral":
+      return Math.sin(
+        Math.PI * 2 * (coordinates.distance * frequency + coordinates.angleTurn + phase),
+      );
+    case "depth":
+      return clamp((coordinates.depth - 0.5) * 2, -1, 1);
+    case "sine":
+    default:
+      return Math.sin(Math.PI * 2 * (axisValue || indexPosition * frequency + phase));
+  }
+}
+
+function getElementModulationSignal(
+  project: LayerRenderProject,
+  target: ElementModulationTarget,
+  input: ElementModulationInput,
+) {
+  const settings = project.effects.elementModulations[target];
+  if (!settings?.enabled || settings.amount === 0) {
+    return 0;
+  }
+
+  return evaluateElementModulationPattern(
+    settings,
+    getElementModulationCoordinates(project, settings, input),
+  );
+}
+
+function getElementModulationDelta(
+  project: LayerRenderProject,
+  target: ElementModulationTarget,
+  input: ElementModulationInput,
+) {
+  const settings = project.effects.elementModulations[target];
+  if (!settings?.enabled || settings.amount === 0) {
+    return 0;
+  }
+
+  return settings.amount * getElementModulationSignal(project, target, input);
 }
 
 function assignShape(
@@ -3402,7 +3573,7 @@ function createRenderSliceFromCell(
           1 + overlapSize / Math.max(cell.width, cell.height, 1),
         )
       : null;
-  if (cell.shape === "text") {
+  if (cell.shape === "text" || cell.shape === "svg") {
     const rotationNoise = (rng.next() - 0.5) * project.effects.rotationJitter;
     const scaleNoise = clamp(
       1 + (rng.next() - 0.5) * project.effects.scaleJitter,
@@ -3417,7 +3588,7 @@ function createRenderSliceFromCell(
 
     return {
       id: `slice_${index}`,
-      shape: "text",
+      shape: cell.shape,
       assetId: asset.id,
       rect: quadPoints
         ? getBoundsForPoints(quadPoints)
@@ -3556,7 +3727,7 @@ function mapFractalGeometryCells(
     return layoutCells;
   }
 
-  if (project.layout.shapeMode !== "text") {
+  if (project.layout.shapeMode !== "text" && project.layout.shapeMode !== "svg") {
     if (project.layout.shapeMode === "rect") {
       return layoutCells;
     }
@@ -3577,7 +3748,7 @@ function mapFractalGeometryCells(
 
   return layoutCells.map<LayoutCell>((cell) => ({
     ...cell,
-    shape: "text",
+    shape: project.layout.shapeMode as "text" | "svg",
     clipRect: undefined,
     clipPathPoints: undefined,
   }));

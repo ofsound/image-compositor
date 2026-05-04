@@ -30,14 +30,14 @@ export function getGeometryOptions(family: LayoutFamily): GeometryShape[] {
   }
 
   if (family === "fractal") {
-    return ["mixed", "rect", "triangle", "blob", "ring", "arc", "wedge", "text"];
+    return ["mixed", "rect", "triangle", "blob", "ring", "arc", "wedge", "text", "svg"];
   }
 
   return family === "grid"
-    ? ["mixed", "rect", "triangle", "interlock", "ring", "arc", "wedge", "text"]
+    ? ["mixed", "rect", "triangle", "interlock", "ring", "arc", "wedge", "text", "svg"]
     : family === "organic"
-      ? ["blob", "rect", "mixed", "ring", "arc", "wedge", "text"]
-      : ["mixed", "rect", "triangle", "ring", "arc", "wedge", "text"];
+      ? ["blob", "rect", "mixed", "ring", "arc", "wedge", "text", "svg"]
+      : ["mixed", "rect", "triangle", "ring", "arc", "wedge", "text", "svg"];
 }
 
 export function coerceShapeModeForFamily(

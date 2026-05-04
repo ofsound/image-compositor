@@ -115,6 +115,18 @@ describe("createProjectDocument", () => {
     expect(project.words.fontFamily).toBe("dm-sans");
     expect(project.words.text).toBe("TYPE\nHERE");
     expect(project.words.textColor).toBe("#180f08");
+    expect(project.svgGeometry.markup).toBeNull();
+    expect(project.svgGeometry.fileName).toBeNull();
+    expect(project.svgGeometry.fit).toBe("contain");
+    expect(project.svgGeometry.padding).toBe(0);
+    expect(project.svgGeometry.threshold).toBe(0.05);
+    expect(project.svgGeometry.invert).toBe(false);
+    expect(project.svgGeometry.morphology).toBe(0);
+    expect(project.svgGeometry.repeatEnabled).toBe(false);
+    expect(project.svgGeometry.repeatScale).toBe(0.45);
+    expect(project.svgGeometry.repeatGap).toBe(0.08);
+    expect(project.svgGeometry.randomRotation).toBe(0);
+    expect(project.svgGeometry.mirrorMode).toBe("none");
     expect(project.passes.map((pass) => pass.type)).toEqual([
       "layout",
       "assignment",
@@ -224,6 +236,28 @@ describe("createProjectDocument", () => {
     expect(normalizedLayer.words.fontFamily).toBe("dm-sans");
     expect(normalizedLayer.words.text).toBe("TYPE\nHERE");
     expect(normalizedLayer.words.textColor).toBe("#180f08");
+  });
+
+  it("normalizes missing svg geometry settings to defaults", () => {
+    const project = createProjectDocument("SVG Geometry Defaults");
+    const layer = project.layers[0]!;
+    const legacyProject = {
+      ...serializeProjectDocument(project),
+      layers: [
+        {
+          ...layer,
+          svgGeometry: undefined,
+        },
+      ],
+      selectedLayerId: layer.id,
+    } as unknown as ProjectDocument;
+
+    const normalized = normalizeProjectDocument(legacyProject);
+    const normalizedLayer = normalized.layers[0]!;
+
+    expect(normalizedLayer.svgGeometry.markup).toBeNull();
+    expect(normalizedLayer.svgGeometry.fit).toBe("contain");
+    expect(normalizedLayer.svgGeometry.repeatEnabled).toBe(false);
   });
 
   it("moves legacy root settings into the selected layer and serializes canonically", () => {

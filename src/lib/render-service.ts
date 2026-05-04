@@ -109,6 +109,7 @@ export function getLayerThumbnailSignature(
       finish: layer.finish,
       draw: layer.draw,
       words: layer.words,
+      svgGeometry: layer.svgGeometry,
       activeSeed: layer.activeSeed,
       presets: layer.presets,
       passes: layer.passes,

@@ -7,6 +7,7 @@ export type GeometryShape =
   | "arc"
   | "wedge"
   | "text"
+  | "svg"
   | "mixed";
 export type LayoutFamily =
   | "grid"
@@ -70,6 +71,26 @@ export type BlendMode =
   | "difference"
   | "color-dodge"
   | "luminosity";
+export type ElementModulationPattern =
+  | "sine"
+  | "triangle"
+  | "saw"
+  | "checker"
+  | "linear"
+  | "rings"
+  | "spiral"
+  | "depth";
+export type ElementModulationTarget =
+  | "rotation"
+  | "scale"
+  | "displacementX"
+  | "displacementY"
+  | "opacity"
+  | "distortion"
+  | "wedgeSweep"
+  | "threeDZ"
+  | "threeDTwist"
+  | "symmetryDrift";
 
 export interface BaseSourceAsset {
   id: string;
@@ -298,6 +319,18 @@ export interface EffectSettings {
   scaleJitter: number;
   displacement: number;
   distortion: number;
+  elementModulations: Record<ElementModulationTarget, ElementModulationSettings>;
+}
+
+export interface ElementModulationSettings {
+  enabled: boolean;
+  pattern: ElementModulationPattern;
+  amount: number;
+  frequency: number;
+  phase: number;
+  originX: number;
+  originY: number;
+  axisAngle: number;
 }
 
 export interface CompositingSettings {
@@ -345,6 +378,24 @@ export interface WordsSettings {
   textColor: string;
 }
 
+export type SvgGeometryFit = "contain" | "cover" | "stretch";
+export type SvgGeometryMirrorMode = "none" | "x" | "y" | "alternate";
+
+export interface SvgGeometrySettings {
+  fileName: string | null;
+  markup: string | null;
+  fit: SvgGeometryFit;
+  padding: number;
+  threshold: number;
+  invert: boolean;
+  morphology: number;
+  repeatEnabled: boolean;
+  repeatScale: number;
+  repeatGap: number;
+  randomRotation: number;
+  mirrorMode: SvgGeometryMirrorMode;
+}
+
 export interface CompositorLayer {
   id: string;
   name: string;
@@ -358,6 +409,7 @@ export interface CompositorLayer {
   finish: FinishSettings;
   draw: DrawSettings;
   words: WordsSettings;
+  svgGeometry: SvgGeometrySettings;
   activeSeed: number;
   presets: GeneratorPreset[];
   passes: RenderPass[];
@@ -456,6 +508,7 @@ export interface LayerRenderProject {
   finish: FinishSettings;
   draw: DrawSettings;
   words: WordsSettings;
+  svgGeometry: SvgGeometrySettings;
   activeSeed: number;
   presets: GeneratorPreset[];
   passes: RenderPass[];

@@ -37,8 +37,11 @@ interface TrianglePoint {
 const FULL_CIRCLE_RADIANS = Math.PI * 2;
 const MAX_RGB_NOISE_DELTA = 28;
 const MAX_MONO_NOISE_DELTA = 24;
+const SVG_MASK_CACHE_LIMIT = 96;
 
 const bitmapCache = new WeakMap<Blob, Promise<ImageBitmap>>();
+const svgImageCache = new Map<string, Promise<HTMLImageElement>>();
+const svgMaskCanvasCache = new Map<string, Promise<RenderCanvas | null>>();
 const RENDER_CONTEXT_OPTIONS = {
   alpha: true,
   colorSpace: "srgb",
@@ -166,6 +169,333 @@ function createWordsTextCanvas(
   );
 }
 
+function getSvgMaskCacheKey(
+  project: LayerRenderProject,
+  width: number,
+  height: number,
+  seedKey: string,
+) {
+  const { svgGeometry } = project;
+  return JSON.stringify({
+    markup: svgGeometry.markup,
+    fit: svgGeometry.fit,
+    padding: svgGeometry.padding,
+    threshold: svgGeometry.threshold,
+    invert: svgGeometry.invert,
+    morphology: svgGeometry.morphology,
+    repeatEnabled: svgGeometry.repeatEnabled,
+    repeatScale: svgGeometry.repeatScale,
+    repeatGap: svgGeometry.repeatGap,
+    randomRotation: svgGeometry.randomRotation,
+    mirrorMode: svgGeometry.mirrorMode,
+    width,
+    height,
+    seedKey,
+  });
+}
+
+async function loadSvgImage(markup: string) {
+  if (!svgImageCache.has(markup)) {
+    svgImageCache.set(
+      markup,
+      new Promise<HTMLImageElement>((resolve, reject) => {
+        const image = new Image();
+        const url = URL.createObjectURL(
+          new Blob([markup], { type: "image/svg+xml" }),
+        );
+
+        const cleanup = () => {
+          URL.revokeObjectURL(url);
+        };
+
+        image.onload = () => {
+          cleanup();
+          resolve(image);
+        };
+        image.onerror = () => {
+          cleanup();
+          reject(new Error("The SVG geometry image could not be decoded."));
+        };
+        image.src = url;
+      }),
+    );
+  }
+  return svgImageCache.get(markup)!;
+}
+
+function getFitRect(
+  fit: LayerRenderProject["svgGeometry"]["fit"],
+  sourceWidth: number,
+  sourceHeight: number,
+  targetWidth: number,
+  targetHeight: number,
+) {
+  if (fit === "stretch") {
+    return { x: 0, y: 0, width: targetWidth, height: targetHeight };
+  }
+
+  const sourceRatio = sourceWidth / Math.max(sourceHeight, 1);
+  const targetRatio = targetWidth / Math.max(targetHeight, 1);
+  const scale =
+    fit === "cover"
+      ? targetRatio > sourceRatio
+        ? targetWidth / Math.max(sourceWidth, 1)
+        : targetHeight / Math.max(sourceHeight, 1)
+      : targetRatio < sourceRatio
+        ? targetWidth / Math.max(sourceWidth, 1)
+        : targetHeight / Math.max(sourceHeight, 1);
+  const width = sourceWidth * scale;
+  const height = sourceHeight * scale;
+
+  return {
+    x: (targetWidth - width) / 2,
+    y: (targetHeight - height) / 2,
+    width,
+    height,
+  };
+}
+
+function getSeededRotation(maxDegrees: number, seedKey: string) {
+  if (maxDegrees <= 0) return 0;
+  const rng = mulberry32(hashToSeed(seedKey));
+  return ((rng.next() * 2 - 1) * maxDegrees * Math.PI) / 180;
+}
+
+function applySvgMirror(
+  context: RenderContext,
+  mode: LayerRenderProject["svgGeometry"]["mirrorMode"],
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  alternate = false,
+) {
+  const mirrorX = mode === "x" || (mode === "alternate" && alternate);
+  const mirrorY = mode === "y";
+  if (!mirrorX && !mirrorY) return;
+
+  context.translate(x + width / 2, y + height / 2);
+  context.scale(mirrorX ? -1 : 1, mirrorY ? -1 : 1);
+  context.translate(-(x + width / 2), -(y + height / 2));
+}
+
+function drawSvgTile(
+  context: RenderContext,
+  image: HTMLImageElement,
+  project: LayerRenderProject,
+  rect: RenderRect,
+  seedKey: string,
+  alternate = false,
+) {
+  const rotation = getSeededRotation(
+    project.svgGeometry.randomRotation,
+    seedKey,
+  );
+
+  context.save();
+  context.translate(rect.x + rect.width / 2, rect.y + rect.height / 2);
+  context.rotate(rotation);
+  context.translate(-(rect.x + rect.width / 2), -(rect.y + rect.height / 2));
+  applySvgMirror(
+    context,
+    project.svgGeometry.mirrorMode,
+    rect.x,
+    rect.y,
+    rect.width,
+    rect.height,
+    alternate,
+  );
+  context.drawImage(image, rect.x, rect.y, rect.width, rect.height);
+  context.restore();
+}
+
+function drawSvgMaskBitmap(
+  context: RenderContext,
+  image: HTMLImageElement,
+  project: LayerRenderProject,
+  width: number,
+  height: number,
+  seedKey: string,
+) {
+  const padding = clamp(project.svgGeometry.padding, 0, 0.45);
+  const contentX = width * padding;
+  const contentY = height * padding;
+  const contentWidth = Math.max(1, width - contentX * 2);
+  const contentHeight = Math.max(1, height - contentY * 2);
+
+  if (!project.svgGeometry.repeatEnabled) {
+    const fitRect = getFitRect(
+      project.svgGeometry.fit,
+      image.naturalWidth || image.width,
+      image.naturalHeight || image.height,
+      contentWidth,
+      contentHeight,
+    );
+    drawSvgTile(
+      context,
+      image,
+      project,
+      {
+        x: contentX + fitRect.x,
+        y: contentY + fitRect.y,
+        width: fitRect.width,
+        height: fitRect.height,
+      },
+      seedKey,
+    );
+    return;
+  }
+
+  const baseSize = Math.max(1, Math.min(contentWidth, contentHeight));
+  const tileSize = Math.max(1, baseSize * clamp(project.svgGeometry.repeatScale, 0.08, 1));
+  const gap = baseSize * clamp(project.svgGeometry.repeatGap, 0, 0.8);
+  const stride = Math.max(1, tileSize + gap);
+  const columns = Math.ceil(contentWidth / stride) + 2;
+  const rows = Math.ceil(contentHeight / stride) + 2;
+  const startX = contentX - stride;
+  const startY = contentY - stride;
+
+  for (let row = 0; row < rows; row += 1) {
+    for (let column = 0; column < columns; column += 1) {
+      const x = startX + column * stride;
+      const y = startY + row * stride;
+      const fitRect = getFitRect(
+        project.svgGeometry.fit,
+        image.naturalWidth || image.width,
+        image.naturalHeight || image.height,
+        tileSize,
+        tileSize,
+      );
+      drawSvgTile(
+        context,
+        image,
+        project,
+        {
+          x: x + fitRect.x,
+          y: y + fitRect.y,
+          width: fitRect.width,
+          height: fitRect.height,
+        },
+        `${seedKey}:${row}:${column}`,
+        (row + column) % 2 === 1,
+      );
+    }
+  }
+}
+
+function applyAlphaThreshold(
+  imageData: ImageData,
+  threshold: number,
+  invert: boolean,
+) {
+  const data = imageData.data;
+  const thresholdValue = clamp(threshold, 0, 1) * 255;
+
+  for (let index = 0; index < data.length; index += 4) {
+    const sourceAlpha = data[index + 3] ?? 0;
+    const alpha = invert ? 255 - sourceAlpha : sourceAlpha;
+    const solidAlpha = alpha > thresholdValue ? 255 : 0;
+    data[index] = 255;
+    data[index + 1] = 255;
+    data[index + 2] = 255;
+    data[index + 3] = solidAlpha;
+  }
+}
+
+function applyMorphologyToAlpha(
+  imageData: ImageData,
+  width: number,
+  height: number,
+  amount: number,
+) {
+  const radius = Math.min(32, Math.round(Math.abs(amount)));
+  if (radius === 0) return;
+
+  const grow = amount > 0;
+  const source = imageData.data;
+  const horizontal = new Uint8ClampedArray(width * height);
+  const output = new Uint8ClampedArray(width * height);
+
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      let value = grow ? 0 : 255;
+      for (
+        let sampleX = Math.max(0, x - radius);
+        sampleX <= Math.min(width - 1, x + radius);
+        sampleX += 1
+      ) {
+        const alpha = source[(y * width + sampleX) * 4 + 3] ?? 0;
+        value = grow ? Math.max(value, alpha) : Math.min(value, alpha);
+      }
+      horizontal[y * width + x] = value;
+    }
+  }
+
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      let value = grow ? 0 : 255;
+      for (
+        let sampleY = Math.max(0, y - radius);
+        sampleY <= Math.min(height - 1, y + radius);
+        sampleY += 1
+      ) {
+        const alpha = horizontal[sampleY * width + x] ?? 0;
+        value = grow ? Math.max(value, alpha) : Math.min(value, alpha);
+      }
+      output[y * width + x] = value;
+    }
+  }
+
+  for (let index = 0; index < output.length; index += 1) {
+    source[index * 4 + 3] = output[index]!;
+  }
+}
+
+async function createSvgMaskCanvas(
+  project: LayerRenderProject,
+  width: number,
+  height: number,
+  seedKey: string,
+) {
+  const { markup } = project.svgGeometry;
+  if (!markup) return null;
+
+  const cacheKey = getSvgMaskCacheKey(project, width, height, seedKey);
+  if (!svgMaskCanvasCache.has(cacheKey)) {
+    svgMaskCanvasCache.set(
+      cacheKey,
+      (async () => {
+        const image = await loadSvgImage(markup);
+        const canvas = createRenderCanvas(width, height);
+        const context = getRenderContext(canvas);
+        drawSvgMaskBitmap(context, image, project, width, height, seedKey);
+        const imageData = context.getImageData(0, 0, width, height);
+        applyAlphaThreshold(
+          imageData,
+          project.svgGeometry.threshold,
+          project.svgGeometry.invert,
+        );
+        applyMorphologyToAlpha(
+          imageData,
+          width,
+          height,
+          project.svgGeometry.morphology,
+        );
+        context.putImageData(imageData, 0, 0);
+        return canvas;
+      })(),
+    );
+    if (svgMaskCanvasCache.size > SVG_MASK_CACHE_LIMIT) {
+      const oldestKey = svgMaskCanvasCache.keys().next().value;
+      if (oldestKey) {
+        svgMaskCanvasCache.delete(oldestKey);
+      }
+    }
+  }
+
+  return svgMaskCanvasCache.get(cacheKey)!;
+}
+
 function orderWordsAssets(
   project: LayerRenderProject,
   assets: SourceAsset[],
@@ -278,6 +608,57 @@ function renderTextSliceSurface(
     "#ffffff",
     { x: 0, y: 0, width, height },
     { x: 0, y: 0, width, height },
+  );
+
+  if (!maskCanvas) {
+    return surface;
+  }
+
+  surfaceContext.drawImage(
+    bitmap,
+    sourceX,
+    sourceY,
+    sourceWidth,
+    sourceHeight,
+    0,
+    0,
+    width,
+    height,
+  );
+  surfaceContext.globalCompositeOperation = "destination-in";
+  surfaceContext.drawImage(maskCanvas, 0, 0);
+  surfaceContext.globalCompositeOperation = "source-over";
+  applySliceFogOverlay(
+    surfaceContext,
+    project,
+    slice.fogAmount,
+    { x: 0, y: 0, width, height },
+  );
+
+  return surface;
+}
+
+async function renderSvgSliceSurface(
+  slice: RenderSlice,
+  bitmap: ImageBitmap,
+  asset: SourceAsset,
+  project: LayerRenderProject,
+) {
+  const targetRect = slice.imageRect ?? slice.rect;
+  const width = Math.max(1, Math.ceil(targetRect.width));
+  const height = Math.max(1, Math.ceil(targetRect.height));
+  const surface = createRenderCanvas(width, height);
+  const surfaceContext = getRenderContext(surface);
+  const { sourceX, sourceY, sourceWidth, sourceHeight } = getSourceRect(
+    slice,
+    asset,
+    project,
+  );
+  const maskCanvas = await createSvgMaskCanvas(
+    project,
+    width,
+    height,
+    `${project.activeSeed}:${slice.id}`,
   );
 
   if (!maskCanvas) {
@@ -625,7 +1006,7 @@ function drawCanvasTriangle(
   context.restore();
 }
 
-function renderSliceSurface(
+async function renderSliceSurface(
   slice: RenderSlice,
   bitmap: ImageBitmap,
   asset: SourceAsset,
@@ -633,6 +1014,10 @@ function renderSliceSurface(
 ) {
   if (slice.shape === "text") {
     return renderTextSliceSurface(slice, bitmap, asset, project);
+  }
+
+  if (slice.shape === "svg") {
+    return renderSvgSliceSurface(slice, bitmap, asset, project);
   }
 
   const width = Math.max(1, Math.ceil(slice.rect.width));
@@ -686,7 +1071,7 @@ function renderSliceSurface(
   return surface;
 }
 
-function drawWarpedSlice(
+async function drawWarpedSlice(
   context: RenderContext,
   slice: RenderSlice,
   bitmap: ImageBitmap,
@@ -697,7 +1082,7 @@ function drawWarpedSlice(
     return false;
   }
 
-  const surface = renderSliceSurface(slice, bitmap, asset, project);
+  const surface = await renderSliceSurface(slice, bitmap, asset, project);
   const width = surface.width;
   const height = surface.height;
   const [p0, p1, p2, p3] = slice.quadPoints as [
@@ -983,13 +1368,16 @@ async function drawSlice(
   context.globalCompositeOperation = slice.blendMode;
   context.filter = `blur(${project.effects.blur}px)`;
 
-  if (drawWarpedSlice(context, slice, bitmap, asset, project)) {
+  if (await drawWarpedSlice(context, slice, bitmap, asset, project)) {
     context.restore();
     return;
   }
 
-  if (slice.shape === "text") {
-    const surface = renderTextSliceSurface(slice, bitmap, asset, project);
+  if (slice.shape === "text" || slice.shape === "svg") {
+    const surface =
+      slice.shape === "text"
+        ? renderTextSliceSurface(slice, bitmap, asset, project)
+        : await renderSvgSliceSurface(slice, bitmap, asset, project);
 
     context.save();
     context.translate(centerX, centerY);

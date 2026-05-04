@@ -1,4 +1,6 @@
 import type {
+  CurveAttractorType,
+  CurveVariant,
   FractalVariant,
   GradientDirection,
   GradientMode,
@@ -19,6 +21,16 @@ export function formatFractalVariantLabel(variant: FractalVariant) {
     .split("-")
     .map((part) => part[0]!.toUpperCase() + part.slice(1))
     .join(" ");
+}
+
+export function formatCurveVariantLabel(variant: CurveVariant) {
+  if (variant === "strange-attractor") return "Strange Attractor";
+  return variant[0]!.toUpperCase() + variant.slice(1);
+}
+
+export function formatCurveAttractorTypeLabel(type: CurveAttractorType) {
+  if (type === "rossler") return "Rossler";
+  return type[0]!.toUpperCase() + type.slice(1);
 }
 
 export function formatPercentValue(value: number) {

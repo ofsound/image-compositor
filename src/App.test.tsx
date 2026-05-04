@@ -88,6 +88,7 @@ function createStoreState(overrides?: {
     | "flow"
     | "3d"
     | "fractal"
+    | "curves"
     | "words";
   shapeMode?:
     | "rect"
@@ -119,6 +120,14 @@ function createStoreState(overrides?: {
     | "rosette"
     | "binary-tree"
     | "pythagoras-tree";
+  curveVariant?:
+    | "lissajous"
+    | "epicycloid"
+    | "hypotrochoid"
+    | "harmonograph"
+    | "superformula"
+    | "phyllotaxis"
+    | "strange-attractor";
   wordsMode?: "image-fill" | "plain-text";
   wordsFontFamily?: "dm-sans" | "cormorant-garamond" | "jetbrains-mono";
   wordsText?: string;
@@ -163,6 +172,10 @@ function createStoreState(overrides?: {
 
   if (overrides?.fractalVariant) {
     selectedLayer.layout.fractalVariant = overrides.fractalVariant;
+  }
+
+  if (overrides?.curveVariant) {
+    selectedLayer.layout.curveVariant = overrides.curveVariant;
   }
 
   if (overrides?.wordsMode) {
@@ -908,7 +921,19 @@ describe("App conditional sliders", () => {
       "text",
       "svg",
     ]);
+    expect(getGeometryOptions("curves")).toEqual([
+      "mixed",
+      "rect",
+      "triangle",
+      "blob",
+      "ring",
+      "arc",
+      "wedge",
+      "text",
+      "svg",
+    ]);
     expect(getGeometryOptions("fractal")).not.toContain("interlock");
+    expect(getGeometryOptions("curves")).not.toContain("interlock");
   });
 
   it("coerces interlock back to triangle when leaving grid", () => {
@@ -922,6 +947,9 @@ describe("App conditional sliders", () => {
     expect(coerceShapeModeForFamily("fractal", "arc")).toBe("arc");
     expect(coerceShapeModeForFamily("fractal", "blob")).toBe("blob");
     expect(coerceShapeModeForFamily("fractal", "text")).toBe("text");
+    expect(coerceShapeModeForFamily("curves", "arc")).toBe("arc");
+    expect(coerceShapeModeForFamily("curves", "blob")).toBe("blob");
+    expect(coerceShapeModeForFamily("curves", "text")).toBe("text");
   });
 
   it("shows the flow controls only for the flow family", () => {
@@ -1229,6 +1257,43 @@ describe("App conditional sliders", () => {
     expectSliderEnabled("Length Decay");
     expectSliderEnabled("Branch Thickness");
     expectSliderHidden("Petals");
+  });
+
+  it("shows shared and lissajous controls for the curves family", () => {
+    renderApp({
+      family: "curves",
+      symmetryMode: "none",
+      strategy: "random",
+      curveVariant: "lissajous",
+    });
+
+    expect(screen.getByLabelText("Curve Variant")).toBeInTheDocument();
+    expectSliderEnabled("Samples");
+    expectSliderEnabled("Cell Size");
+    expectSliderEnabled("Scale X");
+    expectSliderEnabled("Scale Y");
+    expectSliderEnabled("Curve Rotation");
+    expectSliderEnabled("Frequency X");
+    expectSliderEnabled("Frequency Y");
+    expectSliderEnabled("Curve Phase");
+    expectSliderEnabled("Loops");
+  });
+
+  it("shows variant-specific curve controls for strange attractors", () => {
+    renderApp({
+      family: "curves",
+      symmetryMode: "none",
+      strategy: "random",
+      curveVariant: "strange-attractor",
+    });
+
+    expect(screen.getByLabelText("Attractor")).toBeInTheDocument();
+    expectSliderEnabled("Step");
+    expectSliderEnabled("Attractor Scale");
+    expectSliderEnabled("Yaw");
+    expectSliderEnabled("Pitch");
+    expectSliderEnabled("Camera Distance");
+    expectSliderHidden("Frequency X");
   });
 
   it("shows layer 3d finish controls and stores the enable toggle", async () => {

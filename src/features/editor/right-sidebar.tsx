@@ -28,6 +28,8 @@ import type {
 import { coerceShapeModeForFamily } from "@/lib/layout-utils";
 import {
   DENSITY_UI_SCALE,
+  formatCurveAttractorTypeLabel,
+  formatCurveVariantLabel,
   formatFractalVariantLabel,
   ORGANIC_DISTRIBUTION_MAX,
   THREE_D_DISTRIBUTION_MAX,
@@ -57,6 +59,8 @@ import { Switch } from "@/components/ui/switch";
 import {
   BLEND_MODE_OPTIONS,
   CROP_DISTRIBUTION_OPTIONS,
+  CURVE_ATTRACTOR_TYPE_OPTIONS,
+  CURVE_VARIANT_OPTIONS,
   FRACTAL_VARIANT_OPTIONS,
   isOption,
   isOptionValue,
@@ -93,6 +97,7 @@ interface RightSidebarProps {
   isFlowFamily: boolean;
   isThreeDFamily: boolean;
   isFractalFamily: boolean;
+  isCurvesFamily: boolean;
   isWordsFamily: boolean;
   isSymmetryActive: boolean;
   isRadialSymmetry: boolean;
@@ -203,6 +208,7 @@ export function RightSidebar({
   isFlowFamily,
   isThreeDFamily,
   isFractalFamily,
+  isCurvesFamily,
   isWordsFamily,
   isSymmetryActive,
   isRadialSymmetry,
@@ -2058,6 +2064,572 @@ export function RightSidebar({
                                 layout: {
                                   ...project.layout,
                                   fractalPythagorasLean: value,
+                                },
+                              }))
+                            }
+                          />
+                        </>
+                      ) : null}
+                    </InspectorFieldGrid>
+                  </InspectorGroup>
+                ) : null}
+
+                {isCurvesFamily ? (
+                  <InspectorGroup title="Curves" className="xl:col-span-2">
+                    <InspectorFieldGrid className="sm:grid-cols-2">
+                      <ControlBlock
+                        label="Curve Variant"
+                        className="sm:col-span-2"
+                      >
+                        <Select
+                          value={activeProjectView.layout.curveVariant}
+                          onValueChange={(value) => {
+                            if (!isOption(CURVE_VARIANT_OPTIONS, value)) return;
+                            patchProject((project) => ({
+                              ...project,
+                              layout: {
+                                ...project.layout,
+                                curveVariant: value,
+                                shapeMode: "rect",
+                              },
+                            }));
+                          }}
+                        >
+                          <SelectTrigger aria-label="Curve Variant">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {CURVE_VARIANT_OPTIONS.map((option) => (
+                              <SelectItem key={option} value={option}>
+                                {formatCurveVariantLabel(option)}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </ControlBlock>
+                      <SliderField
+                        label="Samples"
+                        min={8}
+                        max={1600}
+                        step={1}
+                        value={activeProjectView.layout.curveSamples}
+                        defaultValue={DEFAULT_LAYOUT.curveSamples}
+                        formatter={(value) => `${Math.round(value)}`}
+                        onChange={(value) =>
+                          patchProject((project) => ({
+                            ...project,
+                            layout: {
+                              ...project.layout,
+                              curveSamples: Math.round(value),
+                            },
+                          }))
+                        }
+                      />
+                      <SliderField
+                        label="Cell Size"
+                        min={0.003}
+                        max={0.2}
+                        step={0.001}
+                        value={activeProjectView.layout.curveCellSize}
+                        defaultValue={DEFAULT_LAYOUT.curveCellSize}
+                        formatter={formatPercentValue}
+                        onChange={(value) =>
+                          patchProject((project) => ({
+                            ...project,
+                            layout: {
+                              ...project.layout,
+                              curveCellSize: value,
+                            },
+                          }))
+                        }
+                      />
+                      <SliderField
+                        label="Scale X"
+                        min={0.1}
+                        max={1.4}
+                        step={0.01}
+                        value={activeProjectView.layout.curveScaleX}
+                        defaultValue={DEFAULT_LAYOUT.curveScaleX}
+                        formatter={formatPercentValue}
+                        onChange={(value) =>
+                          patchProject((project) => ({
+                            ...project,
+                            layout: {
+                              ...project.layout,
+                              curveScaleX: value,
+                            },
+                          }))
+                        }
+                      />
+                      <SliderField
+                        label="Scale Y"
+                        min={0.1}
+                        max={1.4}
+                        step={0.01}
+                        value={activeProjectView.layout.curveScaleY}
+                        defaultValue={DEFAULT_LAYOUT.curveScaleY}
+                        formatter={formatPercentValue}
+                        onChange={(value) =>
+                          patchProject((project) => ({
+                            ...project,
+                            layout: {
+                              ...project.layout,
+                              curveScaleY: value,
+                            },
+                          }))
+                        }
+                      />
+                      <SliderField
+                        label="Curve Rotation"
+                        min={-180}
+                        max={180}
+                        step={1}
+                        value={activeProjectView.layout.curveRotation}
+                        defaultValue={DEFAULT_LAYOUT.curveRotation}
+                        formatter={formatDegreeValue}
+                        onChange={(value) =>
+                          patchProject((project) => ({
+                            ...project,
+                            layout: {
+                              ...project.layout,
+                              curveRotation: value,
+                            },
+                          }))
+                        }
+                      />
+                      <ControlBlock label="Align to Tangent">
+                        <div className="flex items-center justify-between rounded-md bg-surface-muted px-3 py-2.5">
+                          <span className="text-xs text-text-muted">
+                            Rotate cells
+                          </span>
+                          <Switch
+                            checked={activeProjectView.layout.curveAlignToTangent}
+                            onCheckedChange={(checked) =>
+                              patchProject((project) => ({
+                                ...project,
+                                layout: {
+                                  ...project.layout,
+                                  curveAlignToTangent: checked,
+                                },
+                              }))
+                            }
+                          />
+                        </div>
+                      </ControlBlock>
+                      {activeProjectView.layout.curveVariant === "lissajous" ||
+                      activeProjectView.layout.curveVariant === "harmonograph" ? (
+                        <>
+                          <SliderField
+                            label="Frequency X"
+                            min={0.25}
+                            max={12}
+                            step={0.25}
+                            value={activeProjectView.layout.curveFrequencyX}
+                            defaultValue={DEFAULT_LAYOUT.curveFrequencyX}
+                            formatter={(value) => value.toFixed(2)}
+                            onChange={(value) =>
+                              patchProject((project) => ({
+                                ...project,
+                                layout: {
+                                  ...project.layout,
+                                  curveFrequencyX: value,
+                                },
+                              }))
+                            }
+                          />
+                          <SliderField
+                            label="Frequency Y"
+                            min={0.25}
+                            max={12}
+                            step={0.25}
+                            value={activeProjectView.layout.curveFrequencyY}
+                            defaultValue={DEFAULT_LAYOUT.curveFrequencyY}
+                            formatter={(value) => value.toFixed(2)}
+                            onChange={(value) =>
+                              patchProject((project) => ({
+                                ...project,
+                                layout: {
+                                  ...project.layout,
+                                  curveFrequencyY: value,
+                                },
+                              }))
+                            }
+                          />
+                          <SliderField
+                            label="Curve Phase"
+                            min={-360}
+                            max={360}
+                            step={1}
+                            value={activeProjectView.layout.curvePhase}
+                            defaultValue={DEFAULT_LAYOUT.curvePhase}
+                            formatter={formatDegreeValue}
+                            onChange={(value) =>
+                              patchProject((project) => ({
+                                ...project,
+                                layout: {
+                                  ...project.layout,
+                                  curvePhase: value,
+                                },
+                              }))
+                            }
+                          />
+                          <SliderField
+                            label="Loops"
+                            min={0.25}
+                            max={12}
+                            step={0.25}
+                            value={activeProjectView.layout.curveLoops}
+                            defaultValue={DEFAULT_LAYOUT.curveLoops}
+                            formatter={(value) => value.toFixed(2)}
+                            onChange={(value) =>
+                              patchProject((project) => ({
+                                ...project,
+                                layout: {
+                                  ...project.layout,
+                                  curveLoops: value,
+                                },
+                              }))
+                            }
+                          />
+                        </>
+                      ) : null}
+                      {activeProjectView.layout.curveVariant === "harmonograph" ? (
+                        <SliderField
+                          className="sm:col-span-2"
+                          label="Damping"
+                          min={0}
+                          max={0.4}
+                          step={0.01}
+                          value={activeProjectView.layout.curveDamping}
+                          defaultValue={DEFAULT_LAYOUT.curveDamping}
+                          formatter={formatPercentValue}
+                          onChange={(value) =>
+                            patchProject((project) => ({
+                              ...project,
+                              layout: {
+                                ...project.layout,
+                                curveDamping: value,
+                              },
+                            }))
+                          }
+                        />
+                      ) : null}
+                      {activeProjectView.layout.curveVariant === "epicycloid" ||
+                      activeProjectView.layout.curveVariant === "hypotrochoid" ? (
+                        <>
+                          <SliderField
+                            label="Loops"
+                            min={0.25}
+                            max={12}
+                            step={0.25}
+                            value={activeProjectView.layout.curveLoops}
+                            defaultValue={DEFAULT_LAYOUT.curveLoops}
+                            formatter={(value) => value.toFixed(2)}
+                            onChange={(value) =>
+                              patchProject((project) => ({
+                                ...project,
+                                layout: {
+                                  ...project.layout,
+                                  curveLoops: value,
+                                },
+                              }))
+                            }
+                          />
+                          <SliderField
+                            label="Gear Ratio"
+                            min={0.05}
+                            max={0.95}
+                            step={0.01}
+                            value={activeProjectView.layout.curveGearRatio}
+                            defaultValue={DEFAULT_LAYOUT.curveGearRatio}
+                            formatter={formatPercentValue}
+                            onChange={(value) =>
+                              patchProject((project) => ({
+                                ...project,
+                                layout: {
+                                  ...project.layout,
+                                  curveGearRatio: value,
+                                },
+                              }))
+                            }
+                          />
+                          <SliderField
+                            className="sm:col-span-2"
+                            label="Pen Offset"
+                            min={0.1}
+                            max={2.5}
+                            step={0.01}
+                            value={activeProjectView.layout.curvePenOffset}
+                            defaultValue={DEFAULT_LAYOUT.curvePenOffset}
+                            formatter={(value) => `${value.toFixed(2)}x`}
+                            onChange={(value) =>
+                              patchProject((project) => ({
+                                ...project,
+                                layout: {
+                                  ...project.layout,
+                                  curvePenOffset: value,
+                                },
+                              }))
+                            }
+                          />
+                        </>
+                      ) : null}
+                      {activeProjectView.layout.curveVariant === "superformula" ? (
+                        <>
+                          <SliderField
+                            label="Loops"
+                            min={0.25}
+                            max={12}
+                            step={0.25}
+                            value={activeProjectView.layout.curveLoops}
+                            defaultValue={DEFAULT_LAYOUT.curveLoops}
+                            formatter={(value) => value.toFixed(2)}
+                            onChange={(value) =>
+                              patchProject((project) => ({
+                                ...project,
+                                layout: {
+                                  ...project.layout,
+                                  curveLoops: value,
+                                },
+                              }))
+                            }
+                          />
+                          <SliderField
+                            label="M"
+                            min={0}
+                            max={16}
+                            step={0.25}
+                            value={activeProjectView.layout.curveSuperformulaM}
+                            defaultValue={DEFAULT_LAYOUT.curveSuperformulaM}
+                            formatter={(value) => value.toFixed(2)}
+                            onChange={(value) =>
+                              patchProject((project) => ({
+                                ...project,
+                                layout: {
+                                  ...project.layout,
+                                  curveSuperformulaM: value,
+                                },
+                              }))
+                            }
+                          />
+                          <SliderField
+                            label="N1"
+                            min={0.1}
+                            max={8}
+                            step={0.01}
+                            value={activeProjectView.layout.curveSuperformulaN1}
+                            defaultValue={DEFAULT_LAYOUT.curveSuperformulaN1}
+                            formatter={(value) => value.toFixed(2)}
+                            onChange={(value) =>
+                              patchProject((project) => ({
+                                ...project,
+                                layout: {
+                                  ...project.layout,
+                                  curveSuperformulaN1: value,
+                                },
+                              }))
+                            }
+                          />
+                          <SliderField
+                            label="N2"
+                            min={0.1}
+                            max={8}
+                            step={0.01}
+                            value={activeProjectView.layout.curveSuperformulaN2}
+                            defaultValue={DEFAULT_LAYOUT.curveSuperformulaN2}
+                            formatter={(value) => value.toFixed(2)}
+                            onChange={(value) =>
+                              patchProject((project) => ({
+                                ...project,
+                                layout: {
+                                  ...project.layout,
+                                  curveSuperformulaN2: value,
+                                },
+                              }))
+                            }
+                          />
+                          <SliderField
+                            className="sm:col-span-2"
+                            label="N3"
+                            min={0.1}
+                            max={8}
+                            step={0.01}
+                            value={activeProjectView.layout.curveSuperformulaN3}
+                            defaultValue={DEFAULT_LAYOUT.curveSuperformulaN3}
+                            formatter={(value) => value.toFixed(2)}
+                            onChange={(value) =>
+                              patchProject((project) => ({
+                                ...project,
+                                layout: {
+                                  ...project.layout,
+                                  curveSuperformulaN3: value,
+                                },
+                              }))
+                            }
+                          />
+                        </>
+                      ) : null}
+                      {activeProjectView.layout.curveVariant === "phyllotaxis" ? (
+                        <>
+                          <SliderField
+                            label="Divergence"
+                            min={0}
+                            max={360}
+                            step={0.1}
+                            value={activeProjectView.layout.curvePhyllotaxisAngle}
+                            defaultValue={DEFAULT_LAYOUT.curvePhyllotaxisAngle}
+                            formatter={formatDegreeValue}
+                            onChange={(value) =>
+                              patchProject((project) => ({
+                                ...project,
+                                layout: {
+                                  ...project.layout,
+                                  curvePhyllotaxisAngle: value,
+                                },
+                              }))
+                            }
+                          />
+                          <SliderField
+                            label="Growth"
+                            min={0.2}
+                            max={1.8}
+                            step={0.01}
+                            value={activeProjectView.layout.curvePhyllotaxisGrowth}
+                            defaultValue={DEFAULT_LAYOUT.curvePhyllotaxisGrowth}
+                            formatter={(value) => `${value.toFixed(2)}x`}
+                            onChange={(value) =>
+                              patchProject((project) => ({
+                                ...project,
+                                layout: {
+                                  ...project.layout,
+                                  curvePhyllotaxisGrowth: value,
+                                },
+                              }))
+                            }
+                          />
+                        </>
+                      ) : null}
+                      {activeProjectView.layout.curveVariant ===
+                      "strange-attractor" ? (
+                        <>
+                          <ControlBlock label="Attractor" className="sm:col-span-2">
+                            <Select
+                              value={activeProjectView.layout.curveAttractorType}
+                              onValueChange={(value) => {
+                                if (!isOption(CURVE_ATTRACTOR_TYPE_OPTIONS, value))
+                                  return;
+                                patchProject((project) => ({
+                                  ...project,
+                                  layout: {
+                                    ...project.layout,
+                                    curveAttractorType: value,
+                                  },
+                                }));
+                              }}
+                            >
+                              <SelectTrigger aria-label="Attractor">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {CURVE_ATTRACTOR_TYPE_OPTIONS.map((option) => (
+                                  <SelectItem key={option} value={option}>
+                                    {formatCurveAttractorTypeLabel(option)}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </ControlBlock>
+                          <SliderField
+                            label="Step"
+                            min={0.001}
+                            max={0.03}
+                            step={0.001}
+                            value={activeProjectView.layout.curveAttractorStep}
+                            defaultValue={DEFAULT_LAYOUT.curveAttractorStep}
+                            formatter={(value) => value.toFixed(3)}
+                            onChange={(value) =>
+                              patchProject((project) => ({
+                                ...project,
+                                layout: {
+                                  ...project.layout,
+                                  curveAttractorStep: value,
+                                },
+                              }))
+                            }
+                          />
+                          <SliderField
+                            label="Attractor Scale"
+                            min={0.1}
+                            max={2}
+                            step={0.01}
+                            value={activeProjectView.layout.curveAttractorScale}
+                            defaultValue={DEFAULT_LAYOUT.curveAttractorScale}
+                            formatter={(value) => `${value.toFixed(2)}x`}
+                            onChange={(value) =>
+                              patchProject((project) => ({
+                                ...project,
+                                layout: {
+                                  ...project.layout,
+                                  curveAttractorScale: value,
+                                },
+                              }))
+                            }
+                          />
+                          <SliderField
+                            label="Yaw"
+                            min={-180}
+                            max={180}
+                            step={1}
+                            value={activeProjectView.layout.curveAttractorYaw}
+                            defaultValue={DEFAULT_LAYOUT.curveAttractorYaw}
+                            formatter={formatDegreeValue}
+                            onChange={(value) =>
+                              patchProject((project) => ({
+                                ...project,
+                                layout: {
+                                  ...project.layout,
+                                  curveAttractorYaw: value,
+                                },
+                              }))
+                            }
+                          />
+                          <SliderField
+                            label="Pitch"
+                            min={-89}
+                            max={89}
+                            step={1}
+                            value={activeProjectView.layout.curveAttractorPitch}
+                            defaultValue={DEFAULT_LAYOUT.curveAttractorPitch}
+                            formatter={formatDegreeValue}
+                            onChange={(value) =>
+                              patchProject((project) => ({
+                                ...project,
+                                layout: {
+                                  ...project.layout,
+                                  curveAttractorPitch: value,
+                                },
+                              }))
+                            }
+                          />
+                          <SliderField
+                            className="sm:col-span-2"
+                            label="Camera Distance"
+                            min={1.2}
+                            max={8}
+                            step={0.1}
+                            value={
+                              activeProjectView.layout.curveAttractorCameraDistance
+                            }
+                            defaultValue={
+                              DEFAULT_LAYOUT.curveAttractorCameraDistance
+                            }
+                            formatter={(value) => value.toFixed(1)}
+                            onChange={(value) =>
+                              patchProject((project) => ({
+                                ...project,
+                                layout: {
+                                  ...project.layout,
+                                  curveAttractorCameraDistance: value,
                                 },
                               }))
                             }

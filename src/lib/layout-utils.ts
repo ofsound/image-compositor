@@ -21,7 +21,7 @@ export function getFractalIterationLimit(variant: FractalVariant) {
 }
 
 export function isPatternDrivenFamily(family: LayoutFamily) {
-  return family === "fractal";
+  return family === "fractal" || family === "curves";
 }
 
 export function getGeometryOptions(family: LayoutFamily): GeometryShape[] {
@@ -29,7 +29,7 @@ export function getGeometryOptions(family: LayoutFamily): GeometryShape[] {
     return ["rect"];
   }
 
-  if (family === "fractal") {
+  if (family === "fractal" || family === "curves") {
     return ["mixed", "rect", "triangle", "blob", "ring", "arc", "wedge", "text", "svg"];
   }
 
@@ -52,7 +52,7 @@ export function coerceShapeModeForFamily(
     return "blob";
   }
 
-  if (family === "fractal") {
+  if (family === "fractal" || family === "curves") {
     return "rect";
   }
 

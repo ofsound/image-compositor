@@ -504,6 +504,51 @@ describe("renderProjectToCanvas", () => {
     expect(mainContext.drawImage).toHaveBeenCalled();
   });
 
+  it("renders curve text geometry using the shared phrase settings", async () => {
+    const project = createProjectView("Curves Text Geometry");
+    project.layout.family = "curves";
+    project.layout.shapeMode = "text";
+    project.layout.curveSamples = 48;
+    project.words.text = "CURVES";
+    project.layers[0]!.layout.family = "curves";
+    project.layers[0]!.layout.shapeMode = "text";
+    project.layers[0]!.layout.curveSamples = 48;
+    project.layers[0]!.words = structuredClone(project.words);
+
+    const mainContext = createMockContext();
+    const createdContexts: ReturnType<typeof createMockContext>[] = [];
+    const canvas = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn(() => mainContext),
+    } as unknown as HTMLCanvasElement;
+    const createElementSpy = vi.spyOn(document, "createElement").mockImplementation(((
+      _tagName: string,
+    ) => {
+      const context = createMockContext();
+      createdContexts.push(context);
+      return {
+        width: 0,
+        height: 0,
+        getContext: vi.fn(() => context),
+      } as unknown as HTMLCanvasElement;
+    }) as never);
+
+    try {
+      await renderProjectToCanvas(
+        project,
+        [asset],
+        new Map([[asset.id, { asset, bitmap: {} as ImageBitmap }]]),
+        canvas,
+      );
+    } finally {
+      createElementSpy.mockRestore();
+    }
+
+    expect(createdContexts.some((context) => context.fillText.mock.calls.length > 0)).toBe(true);
+    expect(mainContext.drawImage).toHaveBeenCalled();
+  });
+
   it("defaults missing rect corner radius values to zero during normalization", () => {
     const project = createProjectView("Normalize Radius");
     const snapshot = structuredClone(project);

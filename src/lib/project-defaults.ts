@@ -202,12 +202,64 @@ export const DEFAULT_LAYOUT: LayoutSettings = {
   fractalPythagorasAngle: 42,
   fractalPythagorasScale: 0.7,
   fractalPythagorasLean: 0,
+  curveVariant: "lissajous",
+  curveSamples: 240,
+  curveCellSize: 0.045,
+  curveScaleX: 0.92,
+  curveScaleY: 0.92,
+  curveRotation: 0,
+  curveAlignToTangent: true,
+  curveFrequencyX: 3,
+  curveFrequencyY: 2,
+  curvePhase: 90,
+  curveLoops: 1,
+  curveGearRatio: 0.35,
+  curvePenOffset: 1,
+  curveDamping: 0.08,
+  curveSuperformulaM: 6,
+  curveSuperformulaN1: 0.35,
+  curveSuperformulaN2: 1.7,
+  curveSuperformulaN3: 1.7,
+  curvePhyllotaxisAngle: 137.5,
+  curvePhyllotaxisGrowth: 0.9,
+  curveAttractorType: "lorenz",
+  curveAttractorStep: 0.006,
+  curveAttractorScale: 0.72,
+  curveAttractorYaw: 32,
+  curveAttractorPitch: -18,
+  curveAttractorCameraDistance: 2.8,
 };
 
 function normalizeStripAngle(layout: Partial<LayoutSettings> | undefined) {
   if (layout?.stripAngle !== undefined) return layout.stripAngle;
   if (layout?.stripOrientation === "horizontal") return 90;
   return DEFAULT_LAYOUT.stripAngle;
+}
+
+function normalizeCurveVariant(value: LayoutSettings["curveVariant"] | undefined) {
+  if (
+    value === "lissajous" ||
+    value === "epicycloid" ||
+    value === "hypotrochoid" ||
+    value === "harmonograph" ||
+    value === "superformula" ||
+    value === "phyllotaxis" ||
+    value === "strange-attractor"
+  ) {
+    return value;
+  }
+
+  return DEFAULT_LAYOUT.curveVariant;
+}
+
+function normalizeCurveAttractorType(
+  value: LayoutSettings["curveAttractorType"] | undefined,
+) {
+  if (value === "lorenz" || value === "rossler" || value === "thomas") {
+    return value;
+  }
+
+  return DEFAULT_LAYOUT.curveAttractorType;
 }
 
 export const DEFAULT_SOURCE_MAPPING: SourceMappingSettings = {
@@ -663,6 +715,126 @@ export function normalizeLayoutSettings(
       layout?.fractalPythagorasLean ?? DEFAULT_LAYOUT.fractalPythagorasLean,
       -1,
       1,
+    ),
+    curveVariant: normalizeCurveVariant(layout?.curveVariant),
+    curveSamples: clamp(
+      Math.round(layout?.curveSamples ?? DEFAULT_LAYOUT.curveSamples),
+      8,
+      1_600,
+    ),
+    curveCellSize: clamp(
+      layout?.curveCellSize ?? DEFAULT_LAYOUT.curveCellSize,
+      0.003,
+      0.2,
+    ),
+    curveScaleX: clamp(
+      layout?.curveScaleX ?? DEFAULT_LAYOUT.curveScaleX,
+      0.1,
+      1.4,
+    ),
+    curveScaleY: clamp(
+      layout?.curveScaleY ?? DEFAULT_LAYOUT.curveScaleY,
+      0.1,
+      1.4,
+    ),
+    curveRotation: clamp(
+      layout?.curveRotation ?? DEFAULT_LAYOUT.curveRotation,
+      -180,
+      180,
+    ),
+    curveAlignToTangent:
+      layout?.curveAlignToTangent ?? DEFAULT_LAYOUT.curveAlignToTangent,
+    curveFrequencyX: clamp(
+      layout?.curveFrequencyX ?? DEFAULT_LAYOUT.curveFrequencyX,
+      0.25,
+      12,
+    ),
+    curveFrequencyY: clamp(
+      layout?.curveFrequencyY ?? DEFAULT_LAYOUT.curveFrequencyY,
+      0.25,
+      12,
+    ),
+    curvePhase: clamp(
+      layout?.curvePhase ?? DEFAULT_LAYOUT.curvePhase,
+      -360,
+      360,
+    ),
+    curveLoops: clamp(
+      layout?.curveLoops ?? DEFAULT_LAYOUT.curveLoops,
+      0.25,
+      12,
+    ),
+    curveGearRatio: clamp(
+      layout?.curveGearRatio ?? DEFAULT_LAYOUT.curveGearRatio,
+      0.05,
+      0.95,
+    ),
+    curvePenOffset: clamp(
+      layout?.curvePenOffset ?? DEFAULT_LAYOUT.curvePenOffset,
+      0.1,
+      2.5,
+    ),
+    curveDamping: clamp(
+      layout?.curveDamping ?? DEFAULT_LAYOUT.curveDamping,
+      0,
+      0.4,
+    ),
+    curveSuperformulaM: clamp(
+      layout?.curveSuperformulaM ?? DEFAULT_LAYOUT.curveSuperformulaM,
+      0,
+      16,
+    ),
+    curveSuperformulaN1: clamp(
+      layout?.curveSuperformulaN1 ?? DEFAULT_LAYOUT.curveSuperformulaN1,
+      0.1,
+      8,
+    ),
+    curveSuperformulaN2: clamp(
+      layout?.curveSuperformulaN2 ?? DEFAULT_LAYOUT.curveSuperformulaN2,
+      0.1,
+      8,
+    ),
+    curveSuperformulaN3: clamp(
+      layout?.curveSuperformulaN3 ?? DEFAULT_LAYOUT.curveSuperformulaN3,
+      0.1,
+      8,
+    ),
+    curvePhyllotaxisAngle: clamp(
+      layout?.curvePhyllotaxisAngle ?? DEFAULT_LAYOUT.curvePhyllotaxisAngle,
+      0,
+      360,
+    ),
+    curvePhyllotaxisGrowth: clamp(
+      layout?.curvePhyllotaxisGrowth ?? DEFAULT_LAYOUT.curvePhyllotaxisGrowth,
+      0.2,
+      1.8,
+    ),
+    curveAttractorType: normalizeCurveAttractorType(layout?.curveAttractorType),
+    curveAttractorStep: clamp(
+      layout?.curveAttractorStep ?? DEFAULT_LAYOUT.curveAttractorStep,
+      0.001,
+      0.03,
+    ),
+    curveAttractorScale: clamp(
+      layout?.curveAttractorScale ?? DEFAULT_LAYOUT.curveAttractorScale,
+      0.1,
+      2,
+    ),
+    curveAttractorYaw: clamp(
+      layout?.curveAttractorYaw ?? DEFAULT_LAYOUT.curveAttractorYaw,
+      -180,
+      180,
+    ),
+    curveAttractorPitch: clamp(
+      layout?.curveAttractorPitch ?? DEFAULT_LAYOUT.curveAttractorPitch,
+      -89,
+      89,
+    ),
+    curveAttractorCameraDistance: clamp(
+      layout?.curveAttractorCameraDistance ??
+        DEFAULT_LAYOUT.curveAttractorCameraDistance,
+      1.2,
+      8,
     ),
   };
 }

@@ -1,4 +1,5 @@
 import type {
+  CurveVariant,
   ElementModulationSettings,
   ElementModulationTarget,
   FractalVariant,
@@ -95,6 +96,7 @@ const MAX_BLOCK_SPLIT_OFFSET = 0.18;
 const ORGANIC_VARIATION_MAX = 4_096;
 const THREE_D_DISTRIBUTION_MAX = 4_096;
 const FRACTAL_MAX_SLICES = 1_200;
+const CURVE_MAX_SLICES = 1_600;
 const DEFAULT_MODULATION_COUNT = 1;
 
 function degToRad(degrees: number) {
@@ -271,7 +273,7 @@ function assignShape(
   const cycle: MixedCycleShape[] =
     family === "organic"
       ? ["blob", "ring", "arc", "wedge"]
-      : family === "fractal"
+      : family === "fractal" || family === "curves"
         ? ["rect", "triangle", "blob", "ring", "arc", "wedge"]
         : ["rect", "triangle", "ring", "arc", "wedge"];
   return cycle[index % cycle.length]!;
@@ -2566,6 +2568,314 @@ function generateFractal(context: GeneratorContext) {
   }
 }
 
+interface CurveSample {
+  x: number;
+  y: number;
+  depthValue?: number;
+}
+
+function getEffectiveCurveSampleCount(project: LayerRenderProject) {
+  const requested = clamp(Math.round(project.layout.curveSamples), 8, CURVE_MAX_SLICES);
+  const multiplier = getSymmetryMultiplier(project);
+  return Math.max(8, Math.min(requested, Math.floor(CURVE_MAX_SLICES / multiplier)));
+}
+
+function getCurveTMax(project: LayerRenderProject) {
+  return Math.PI * 2 * clamp(project.layout.curveLoops, 0.25, 12);
+}
+
+function buildLissajousSamples(project: LayerRenderProject, count: number) {
+  const samples: CurveSample[] = [];
+  const frequencyX = project.layout.curveFrequencyX;
+  const frequencyY = project.layout.curveFrequencyY;
+  const phase = degToRad(project.layout.curvePhase);
+  const tMax = getCurveTMax(project);
+
+  for (let index = 0; index < count; index += 1) {
+    const t = (index / Math.max(count - 1, 1)) * tMax;
+    samples.push({
+      x: Math.sin(frequencyX * t + phase),
+      y: Math.sin(frequencyY * t),
+    });
+  }
+
+  return samples;
+}
+
+function buildRouletteSamples(
+  project: LayerRenderProject,
+  count: number,
+  variant: Extract<CurveVariant, "epicycloid" | "hypotrochoid">,
+) {
+  const samples: CurveSample[] = [];
+  const radius = clamp(project.layout.curveGearRatio, 0.05, 0.95);
+  const penOffset = radius * clamp(project.layout.curvePenOffset, 0.1, 2.5);
+  const tMax = getCurveTMax(project);
+
+  for (let index = 0; index < count; index += 1) {
+    const t = (index / Math.max(count - 1, 1)) * tMax;
+    if (variant === "epicycloid") {
+      samples.push({
+        x: (1 + radius) * Math.cos(t) - penOffset * Math.cos(((1 + radius) / radius) * t),
+        y: (1 + radius) * Math.sin(t) - penOffset * Math.sin(((1 + radius) / radius) * t),
+      });
+    } else {
+      samples.push({
+        x: (1 - radius) * Math.cos(t) + penOffset * Math.cos(((1 - radius) / radius) * t),
+        y: (1 - radius) * Math.sin(t) - penOffset * Math.sin(((1 - radius) / radius) * t),
+      });
+    }
+  }
+
+  return samples;
+}
+
+function buildHarmonographSamples(project: LayerRenderProject, count: number) {
+  const samples: CurveSample[] = [];
+  const frequencyX = project.layout.curveFrequencyX;
+  const frequencyY = project.layout.curveFrequencyY;
+  const phase = degToRad(project.layout.curvePhase);
+  const damping = project.layout.curveDamping;
+  const tMax = getCurveTMax(project) * 2;
+
+  for (let index = 0; index < count; index += 1) {
+    const t = (index / Math.max(count - 1, 1)) * tMax;
+    const falloffA = Math.exp(-damping * t);
+    const falloffB = Math.exp(-damping * 0.74 * t);
+    samples.push({
+      x:
+        Math.sin(frequencyX * t + phase) * falloffA +
+        0.42 * Math.sin((frequencyX + 0.73) * t) * falloffB,
+      y:
+        Math.sin(frequencyY * t) * falloffA +
+        0.42 * Math.sin((frequencyY + 1.13) * t + phase / 2) * falloffB,
+    });
+  }
+
+  return samples;
+}
+
+function buildSuperformulaSamples(project: LayerRenderProject, count: number) {
+  const samples: CurveSample[] = [];
+  const m = project.layout.curveSuperformulaM;
+  const n1 = Math.max(0.1, project.layout.curveSuperformulaN1);
+  const n2 = Math.max(0.1, project.layout.curveSuperformulaN2);
+  const n3 = Math.max(0.1, project.layout.curveSuperformulaN3);
+  const tMax = getCurveTMax(project);
+
+  for (let index = 0; index < count; index += 1) {
+    const theta = (index / Math.max(count - 1, 1)) * tMax - tMax / 2;
+    const left = Math.abs(Math.cos((m * theta) / 4)) ** n2;
+    const right = Math.abs(Math.sin((m * theta) / 4)) ** n3;
+    const radius = (left + right) ** (-1 / n1);
+    samples.push({
+      x: radius * Math.cos(theta),
+      y: radius * Math.sin(theta),
+    });
+  }
+
+  return samples;
+}
+
+function buildPhyllotaxisSamples(project: LayerRenderProject, count: number) {
+  const samples: CurveSample[] = [];
+  const angle = degToRad(project.layout.curvePhyllotaxisAngle);
+  const growth = project.layout.curvePhyllotaxisGrowth;
+
+  for (let index = 0; index < count; index += 1) {
+    const normalized = count <= 1 ? 0 : index / (count - 1);
+    const radius = (normalized ** 0.5) * growth;
+    const theta = index * angle;
+    samples.push({
+      x: radius * Math.cos(theta),
+      y: radius * Math.sin(theta),
+      depthValue: normalized,
+    });
+  }
+
+  return samples;
+}
+
+function getNextAttractorPoint(point: Point3D, project: LayerRenderProject): Point3D {
+  const step = project.layout.curveAttractorStep;
+
+  if (project.layout.curveAttractorType === "rossler") {
+    const a = 0.2;
+    const b = 0.2;
+    const c = 5.7;
+    return {
+      x: point.x + (-point.y - point.z) * step,
+      y: point.y + (point.x + a * point.y) * step,
+      z: point.z + (b + point.z * (point.x - c)) * step,
+    };
+  }
+
+  if (project.layout.curveAttractorType === "thomas") {
+    const b = 0.208186;
+    return {
+      x: point.x + (Math.sin(point.y) - b * point.x) * step,
+      y: point.y + (Math.sin(point.z) - b * point.y) * step,
+      z: point.z + (Math.sin(point.x) - b * point.z) * step,
+    };
+  }
+
+  const sigma = 10;
+  const rho = 28;
+  const beta = 8 / 3;
+  return {
+    x: point.x + sigma * (point.y - point.x) * step,
+    y: point.y + (point.x * (rho - point.z) - point.y) * step,
+    z: point.z + (point.x * point.y - beta * point.z) * step,
+  };
+}
+
+function buildStrangeAttractorSamples(project: LayerRenderProject, count: number) {
+  const burnIn = 120;
+  const rawPoints: Point3D[] = [];
+  let point: Point3D =
+    project.layout.curveAttractorType === "thomas"
+      ? { x: 1.1, y: -1, z: 0.7 }
+      : { x: 0.1, y: 0, z: 0 };
+
+  for (let index = 0; index < count + burnIn; index += 1) {
+    point = getNextAttractorPoint(point, project);
+    if (!Number.isFinite(point.x) || !Number.isFinite(point.y) || !Number.isFinite(point.z)) {
+      break;
+    }
+    if (index >= burnIn) {
+      rawPoints.push(point);
+    }
+  }
+
+  if (rawPoints.length === 0) {
+    return [{ x: 0, y: 0, depthValue: 0.5 }];
+  }
+
+  const bounds = {
+    minX: Math.min(...rawPoints.map((entry) => entry.x)),
+    maxX: Math.max(...rawPoints.map((entry) => entry.x)),
+    minY: Math.min(...rawPoints.map((entry) => entry.y)),
+    maxY: Math.max(...rawPoints.map((entry) => entry.y)),
+    minZ: Math.min(...rawPoints.map((entry) => entry.z)),
+    maxZ: Math.max(...rawPoints.map((entry) => entry.z)),
+  };
+  const center = {
+    x: (bounds.minX + bounds.maxX) / 2,
+    y: (bounds.minY + bounds.maxY) / 2,
+    z: (bounds.minZ + bounds.maxZ) / 2,
+  };
+  const span = Math.max(
+    bounds.maxX - bounds.minX,
+    bounds.maxY - bounds.minY,
+    bounds.maxZ - bounds.minZ,
+    1,
+  );
+  const yaw = degToRad(project.layout.curveAttractorYaw);
+  const pitch = degToRad(project.layout.curveAttractorPitch);
+  const cameraDistance = project.layout.curveAttractorCameraDistance;
+  const attractorScale = project.layout.curveAttractorScale;
+  const projected = rawPoints.map((entry) => {
+    const normalized = rotatePoint3D(
+      {
+        x: ((entry.x - center.x) / span) * attractorScale,
+        y: ((entry.y - center.y) / span) * attractorScale,
+        z: ((entry.z - center.z) / span) * attractorScale,
+      },
+      yaw,
+      pitch,
+    );
+    const perspective = cameraDistance / Math.max(0.2, cameraDistance + normalized.z);
+    return {
+      x: normalized.x * perspective,
+      y: normalized.y * perspective,
+      z: normalized.z,
+    };
+  });
+  const minDepth = Math.min(...projected.map((entry) => entry.z));
+  const maxDepth = Math.max(...projected.map((entry) => entry.z));
+  const depthSpan = Math.max(maxDepth - minDepth, 0.0001);
+
+  return projected.map((entry) => ({
+    x: entry.x,
+    y: entry.y,
+    depthValue: clamp((entry.z - minDepth) / depthSpan, 0, 1),
+  }));
+}
+
+function buildCurveSamples(project: LayerRenderProject, count: number): CurveSample[] {
+  switch (project.layout.curveVariant) {
+    case "lissajous":
+      return buildLissajousSamples(project, count);
+    case "epicycloid":
+      return buildRouletteSamples(project, count, "epicycloid");
+    case "hypotrochoid":
+      return buildRouletteSamples(project, count, "hypotrochoid");
+    case "harmonograph":
+      return buildHarmonographSamples(project, count);
+    case "superformula":
+      return buildSuperformulaSamples(project, count);
+    case "phyllotaxis":
+      return buildPhyllotaxisSamples(project, count);
+    case "strange-attractor":
+      return buildStrangeAttractorSamples(project, count);
+  }
+}
+
+function createCurveCellsFromSamples(
+  project: LayerRenderProject,
+  samples: CurveSample[],
+) {
+  const finiteSamples = samples.filter(
+    (sample) => Number.isFinite(sample.x) && Number.isFinite(sample.y),
+  );
+  if (finiteSamples.length === 0) return [];
+
+  const rotation = degToRad(project.layout.curveRotation);
+  const rotatedSamples = finiteSamples.map((sample) => ({
+    ...sample,
+    x: sample.x * Math.cos(rotation) - sample.y * Math.sin(rotation),
+    y: sample.x * Math.sin(rotation) + sample.y * Math.cos(rotation),
+  }));
+  const bounds = getBoundsForPoints(rotatedSamples);
+  const innerRect = getInsetCanvasRect(project);
+  const center = getRectCenter(innerRect);
+  const targetWidth = innerRect.width * project.layout.curveScaleX;
+  const targetHeight = innerRect.height * project.layout.curveScaleY;
+  const scaleX = targetWidth / Math.max(bounds.width, 0.0001);
+  const scaleY = targetHeight / Math.max(bounds.height, 0.0001);
+  const cellSize = Math.max(
+    2,
+    Math.min(innerRect.width, innerRect.height) * project.layout.curveCellSize,
+  );
+  const pointToCanvas = (sample: CurveSample) => ({
+    x: center.x + (sample.x - (bounds.x + bounds.width / 2)) * scaleX,
+    y: center.y + (sample.y - (bounds.y + bounds.height / 2)) * scaleY,
+  });
+  const points = rotatedSamples.map(pointToCanvas);
+
+  return points.map<LayoutCell>((point, index) => {
+    const previous = points[Math.max(0, index - 1)] ?? point;
+    const next = points[Math.min(points.length - 1, index + 1)] ?? point;
+    const tangentAngle =
+      project.layout.curveAlignToTangent && points.length > 1
+        ? Math.atan2(next.y - previous.y, next.x - previous.x)
+        : 0;
+    return {
+      ...createRotatedRectCell(point, cellSize, cellSize, tangentAngle),
+      layoutIndex: index,
+      layoutCount: points.length,
+      layoutSegment: index,
+      depthValue: rotatedSamples[index]?.depthValue,
+    };
+  });
+}
+
+function generateCurves(context: GeneratorContext) {
+  const { project } = context;
+  const count = getEffectiveCurveSampleCount(project);
+  return createCurveCellsFromSamples(project, buildCurveSamples(project, count));
+}
+
 const layoutRegistry: Record<Exclude<LayoutFamily, "draw" | "words">, (context: GeneratorContext) => LayoutCell[]> = {
   grid: generateGrid,
   strips: generateStrips,
@@ -2575,6 +2885,7 @@ const layoutRegistry: Record<Exclude<LayoutFamily, "draw" | "words">, (context: 
   flow: generateFlow,
   "3d": generateThreeD,
   fractal: generateFractal,
+  curves: generateCurves,
 };
 
 function normalizeRank(index: number, total: number) {
@@ -3634,6 +3945,13 @@ function resolveLayerRenderProject(
   return input;
 }
 
+function isDepthAwareCell(project: LayerRenderProject, cell: LayoutCell) {
+  return (
+    (project.layout.family === "3d" || project.layout.family === "curves") &&
+    cell.depthValue !== undefined
+  );
+}
+
 function createRenderSliceFromCell(
   cell: LayoutCell,
   index: number,
@@ -3687,8 +4005,8 @@ function createRenderSliceFromCell(
       displacement * (rng.next() - 0.5) +
       getElementModulationDelta(project, "displacementY", modulationInput);
     const opacityBase =
-      project.layout.family === "3d" && cell.depthValue !== undefined
-        ? project.compositing.opacity * lerp(0.72, 1, cell.depthValue)
+      isDepthAwareCell(project, cell)
+        ? project.compositing.opacity * lerp(0.72, 1, cell.depthValue ?? 0.5)
         : project.compositing.opacity;
     const opacity = clamp(
       opacityBase + getElementModulationDelta(project, "opacity", modulationInput) / 100,
@@ -3702,8 +4020,8 @@ function createRenderSliceFromCell(
       2,
     );
     const fogAmount =
-      project.layout.family === "3d" && cell.depthValue !== undefined
-        ? lerp(0, 0.22, (1 - cell.depthValue) ** 1.35)
+      isDepthAwareCell(project, cell)
+        ? lerp(0, 0.22, (1 - (cell.depthValue ?? 0.5)) ** 1.35)
         : 0;
 
     return {
@@ -3779,8 +4097,8 @@ function createRenderSliceFromCell(
     displacement * (rng.next() - 0.5) +
     getElementModulationDelta(project, "displacementY", modulationInput);
   const opacityBase =
-    project.layout.family === "3d" && cell.depthValue !== undefined
-      ? project.compositing.opacity * lerp(0.72, 1, cell.depthValue)
+    isDepthAwareCell(project, cell)
+      ? project.compositing.opacity * lerp(0.72, 1, cell.depthValue ?? 0.5)
       : project.compositing.opacity;
   const opacity = clamp(
     opacityBase + getElementModulationDelta(project, "opacity", modulationInput) / 100,
@@ -3794,8 +4112,8 @@ function createRenderSliceFromCell(
     2,
   );
   const fogAmount =
-    project.layout.family === "3d" && cell.depthValue !== undefined
-      ? lerp(0, 0.22, (1 - cell.depthValue) ** 1.35)
+    isDepthAwareCell(project, cell)
+      ? lerp(0, 0.22, (1 - (cell.depthValue ?? 0.5)) ** 1.35)
       : 0;
 
   return {
@@ -3858,11 +4176,11 @@ function createBlobCellFromBounds(
   };
 }
 
-function mapFractalGeometryCells(
+function mapPatternGeometryCells(
   layoutCells: LayoutCell[],
   project: LayerRenderProject,
 ) {
-  if (project.layout.family !== "fractal") {
+  if (project.layout.family !== "fractal" && project.layout.family !== "curves") {
     return layoutCells;
   }
 
@@ -4009,7 +4327,7 @@ export function buildRenderSlices(
     return [];
   }
 
-  const layoutCells = mapFractalGeometryCells(
+  const layoutCells = mapPatternGeometryCells(
     layoutRegistry[project.layout.family]({ project, assets }),
     project,
   );

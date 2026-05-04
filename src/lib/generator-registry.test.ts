@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { buildRenderSlices } from "@/lib/generator-registry";
 import { createProjectDocument } from "@/lib/project-defaults";
 import { createProjectEditorView } from "@/lib/project-editor-view";
-import type { ImageSourceAsset, SourceAsset } from "@/types/project";
+import type { CurveVariant, ImageSourceAsset, SourceAsset } from "@/types/project";
 
 const assets: SourceAsset[] = [
   {
@@ -2432,4 +2432,169 @@ describe("buildRenderSlices", () => {
       ).toBe(true);
     },
   );
+
+  it.each([
+    "lissajous",
+    "epicycloid",
+    "hypotrochoid",
+    "harmonograph",
+    "superformula",
+    "phyllotaxis",
+    "strange-attractor",
+  ] as const)("builds deterministic slices for curve variant %s", (variant) => {
+    const project = createProjectView(`Curves ${variant}`);
+    project.sourceIds = [assets[0]!.id, assets[1]!.id];
+    project.layout.family = "curves";
+    project.layout.curveVariant = variant;
+    project.layout.curveSamples = 96;
+
+    const first = buildRenderSlices(project, assets);
+    const second = buildRenderSlices(project, assets);
+
+    expect(first).toEqual(second);
+    expect(first.length).toBe(96);
+  });
+
+  it.each(["triangle", "blob", "ring", "arc", "wedge"] as const)(
+    "applies %s geometry to curve cells",
+    (shapeMode) => {
+      const project = createProjectView(`Curves ${shapeMode} Geometry`);
+      project.sourceIds = [assets[0]!.id];
+      project.layout.family = "curves";
+      project.layout.shapeMode = shapeMode;
+      project.layout.curveVariant = "lissajous";
+      project.layout.curveSamples = 48;
+
+      const slices = buildRenderSlices(project, [assets[0]!]);
+
+      expect(slices).toHaveLength(48);
+      expect(slices.every((slice) => slice.shape === shapeMode)).toBe(true);
+    },
+  );
+
+  it("cycles mixed geometry through creative curve slice masks", () => {
+    const project = createProjectView("Curves Mixed Geometry");
+    project.sourceIds = [assets[0]!.id];
+    project.layout.family = "curves";
+    project.layout.shapeMode = "mixed";
+    project.layout.curveVariant = "lissajous";
+    project.layout.curveSamples = 48;
+
+    const slices = buildRenderSlices(project, [assets[0]!]);
+    const shapes = new Set(slices.map((slice) => slice.shape));
+
+    expect(shapes).toEqual(
+      new Set(["rect", "triangle", "blob", "ring", "arc", "wedge"]),
+    );
+  });
+
+  it.each([
+    ["lissajous", (project: ReturnType<typeof createProjectView>) => {
+      project.layout.curveFrequencyX += 1;
+      project.layout.curvePhase += 30;
+    }],
+    ["epicycloid", (project: ReturnType<typeof createProjectView>) => {
+      project.layout.curveGearRatio = 0.52;
+      project.layout.curvePenOffset = 1.6;
+    }],
+    ["hypotrochoid", (project: ReturnType<typeof createProjectView>) => {
+      project.layout.curveGearRatio = 0.62;
+      project.layout.curvePenOffset = 1.8;
+    }],
+    ["harmonograph", (project: ReturnType<typeof createProjectView>) => {
+      project.layout.curveDamping = 0.22;
+    }],
+    ["superformula", (project: ReturnType<typeof createProjectView>) => {
+      project.layout.curveSuperformulaM = 9;
+      project.layout.curveSuperformulaN1 = 1.2;
+    }],
+    ["phyllotaxis", (project: ReturnType<typeof createProjectView>) => {
+      project.layout.curvePhyllotaxisAngle = 111;
+    }],
+    ["strange-attractor", (project: ReturnType<typeof createProjectView>) => {
+      project.layout.curveAttractorYaw = -42;
+      project.layout.curveAttractorPitch = 28;
+    }],
+  ] as Array<[CurveVariant, (project: ReturnType<typeof createProjectView>) => void]>)(
+    "changes curve output when %s controls change",
+    (variant, mutate) => {
+      const project = createProjectView(`Curves ${variant} Controls`);
+      project.sourceIds = [assets[0]!.id];
+      project.layout.family = "curves";
+      project.layout.curveVariant = variant;
+      project.layout.curveSamples = 80;
+
+      const baseline = buildRenderSlices(project, [assets[0]!]);
+      mutate(project);
+      const changed = buildRenderSlices(project, [assets[0]!]);
+
+      expect(changed.map((slice) => slice.rect)).not.toEqual(
+        baseline.map((slice) => slice.rect),
+      );
+    },
+  );
+
+  it.each([
+    "lissajous",
+    "epicycloid",
+    "hypotrochoid",
+    "harmonograph",
+    "superformula",
+    "phyllotaxis",
+    "strange-attractor",
+  ] as const)("keeps %s curve slices inside the inset canvas", (variant) => {
+    const project = createProjectView(`Curves Bounds ${variant}`);
+    project.sourceIds = [assets[0]!.id];
+    project.layout.family = "curves";
+    project.layout.curveVariant = variant;
+    project.layout.curveSamples = 120;
+    project.layout.curveRotation = 32;
+    project.layout.curveScaleX = 0.86;
+    project.layout.curveScaleY = 0.74;
+
+    const slices = buildRenderSlices(project, [assets[0]!]);
+    const left = project.canvas.inset;
+    const right = project.canvas.width - project.canvas.inset;
+    const top = project.canvas.inset;
+    const bottom = project.canvas.height - project.canvas.inset;
+
+    expect(
+      slices.every((slice) => {
+        const points =
+          slice.quadPoints ??
+          slice.clipPathPoints ??
+          [
+            { x: slice.rect.x, y: slice.rect.y },
+            { x: slice.rect.x + slice.rect.width, y: slice.rect.y },
+            {
+              x: slice.rect.x + slice.rect.width,
+              y: slice.rect.y + slice.rect.height,
+            },
+            { x: slice.rect.x, y: slice.rect.y + slice.rect.height },
+          ];
+
+        return points.every(
+          (point) =>
+            point.x >= left - 1 &&
+            point.x <= right + 1 &&
+            point.y >= top - 1 &&
+            point.y <= bottom + 1,
+        );
+      }),
+    ).toBe(true);
+  });
+
+  it("sorts strange attractor curve slices by projected depth", () => {
+    const project = createProjectView("Curves Attractor Depth");
+    project.sourceIds = [assets[0]!.id];
+    project.layout.family = "curves";
+    project.layout.curveVariant = "strange-attractor";
+    project.layout.curveSamples = 96;
+
+    const slices = buildRenderSlices(project, [assets[0]!]);
+    const depths = slices.map((slice) => slice.depth);
+
+    expect(new Set(depths.map((depth) => depth.toFixed(3))).size).toBeGreaterThan(8);
+    expect(depths).toEqual([...depths].sort((a, b) => a - b));
+  });
 });

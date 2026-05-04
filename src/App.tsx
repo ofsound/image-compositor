@@ -393,6 +393,7 @@ function App() {
   const isFlowFamily = activeProjectView.layout.family === "flow";
   const isThreeDFamily = activeProjectView.layout.family === "3d";
   const isFractalFamily = activeProjectView.layout.family === "fractal";
+  const isCurvesFamily = activeProjectView.layout.family === "curves";
   const isDrawFamily = activeProjectView.layout.family === "draw";
   const isWordsFamily = activeProjectView.layout.family === "words";
   const isTextShapeMode = activeProjectView.layout.shapeMode === "text";
@@ -795,6 +796,7 @@ function App() {
               isFlowFamily={isFlowFamily}
         isThreeDFamily={isThreeDFamily}
         isFractalFamily={isFractalFamily}
+        isCurvesFamily={isCurvesFamily}
         isWordsFamily={isWordsFamily}
         isTextShapeMode={isTextShapeMode}
         isSymmetryActive={isSymmetryActive}

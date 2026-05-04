@@ -18,6 +18,7 @@ export type LayoutFamily =
   | "flow"
   | "3d"
   | "fractal"
+  | "curves"
   | "draw"
   | "words";
 export type WordsMode = "image-fill" | "plain-text";
@@ -33,6 +34,15 @@ export type FractalVariant =
   | "rosette"
   | "binary-tree"
   | "pythagoras-tree";
+export type CurveVariant =
+  | "lissajous"
+  | "epicycloid"
+  | "hypotrochoid"
+  | "harmonograph"
+  | "superformula"
+  | "phyllotaxis"
+  | "strange-attractor";
+export type CurveAttractorType = "lorenz" | "rossler" | "thomas";
 export type RadialChildRotationMode = "none" | "tangent" | "outward";
 export type ThreeDStructureMode = "sphere" | "torus" | "attractor";
 export type KaleidoscopeMirrorMode =
@@ -294,6 +304,32 @@ export interface LayoutSettings {
   fractalPythagorasAngle: number;
   fractalPythagorasScale: number;
   fractalPythagorasLean: number;
+  curveVariant: CurveVariant;
+  curveSamples: number;
+  curveCellSize: number;
+  curveScaleX: number;
+  curveScaleY: number;
+  curveRotation: number;
+  curveAlignToTangent: boolean;
+  curveFrequencyX: number;
+  curveFrequencyY: number;
+  curvePhase: number;
+  curveLoops: number;
+  curveGearRatio: number;
+  curvePenOffset: number;
+  curveDamping: number;
+  curveSuperformulaM: number;
+  curveSuperformulaN1: number;
+  curveSuperformulaN2: number;
+  curveSuperformulaN3: number;
+  curvePhyllotaxisAngle: number;
+  curvePhyllotaxisGrowth: number;
+  curveAttractorType: CurveAttractorType;
+  curveAttractorStep: number;
+  curveAttractorScale: number;
+  curveAttractorYaw: number;
+  curveAttractorPitch: number;
+  curveAttractorCameraDistance: number;
 }
 
 export interface SourceMappingSettings {

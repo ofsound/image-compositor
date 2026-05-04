@@ -1,6 +1,8 @@
 import type {
   BlendMode,
   CropDistribution,
+  CurveAttractorType,
+  CurveVariant,
   FractalVariant,
   GeometryShape,
   KaleidoscopeMirrorMode,
@@ -27,6 +29,7 @@ export const LAYOUT_FAMILY_OPTIONS: LabeledOption<LayoutFamily>[] = [
   { value: "flow", label: "Flow" },
   { value: "3d", label: "3D" },
   { value: "fractal", label: "Fractal" },
+  { value: "curves", label: "Curves" },
   { value: "draw", label: "Draw" },
   { value: "words", label: "Words" },
 ];
@@ -50,6 +53,22 @@ export const FRACTAL_VARIANT_OPTIONS: FractalVariant[] = [
   "rosette",
   "binary-tree",
   "pythagoras-tree",
+];
+
+export const CURVE_VARIANT_OPTIONS: CurveVariant[] = [
+  "lissajous",
+  "epicycloid",
+  "hypotrochoid",
+  "harmonograph",
+  "superformula",
+  "phyllotaxis",
+  "strange-attractor",
+];
+
+export const CURVE_ATTRACTOR_TYPE_OPTIONS: CurveAttractorType[] = [
+  "lorenz",
+  "rossler",
+  "thomas",
 ];
 
 export const RADIAL_CHILD_ROTATION_OPTIONS: RadialChildRotationMode[] = [

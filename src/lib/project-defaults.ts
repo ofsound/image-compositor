@@ -83,7 +83,7 @@ export function createLayerRenderProject(
   return {
     canvas: {
       ...structuredClone(project.canvas),
-      inset: layer.inset,
+      inset: DEFAULT_LAYER_INSET,
     },
     sourceIds: structuredClone(layer.sourceIds),
     layout: structuredClone(layer.layout),
@@ -99,7 +99,7 @@ export function createLayerRenderProject(
   };
 }
 
-export const DEFAULT_LAYER_INSET = 48;
+export const DEFAULT_LAYER_INSET = 0;
 
 export const DEFAULT_CANVAS: CanvasSettings = {
   width: 3000,
@@ -117,7 +117,7 @@ export function normalizeCanvasSettings(
     height: canvas?.height ?? DEFAULT_CANVAS.height,
     background: canvas?.background ?? DEFAULT_CANVAS.background,
     backgroundAlpha: canvas?.backgroundAlpha ?? DEFAULT_CANVAS.backgroundAlpha,
-    inset: canvas?.inset ?? DEFAULT_CANVAS.inset,
+    inset: DEFAULT_CANVAS.inset,
   };
 }
 
@@ -684,7 +684,7 @@ export function normalizeCompositorLayer(
     id: layer?.id ?? makeId("layer"),
     name: layer?.name?.trim() || fallbackName,
     visible: layer?.visible ?? true,
-    inset: layer?.inset ?? DEFAULT_LAYER_INSET,
+    inset: DEFAULT_LAYER_INSET,
     sourceIds: structuredClone(layer?.sourceIds ?? []),
     layout: normalizeLayoutSettings(layer?.layout),
     sourceMapping: normalizeSourceMapping(
@@ -716,7 +716,7 @@ function createLegacyLayer(
     {
       name: "Layer 1",
       visible: true,
-      inset: value.canvas?.inset ?? DEFAULT_LAYER_INSET,
+      inset: DEFAULT_LAYER_INSET,
       sourceIds: value.sourceIds ?? [],
       layout: value.layout,
       sourceMapping: value.sourceMapping,
@@ -768,7 +768,7 @@ export function syncLegacyProjectFieldsToSelectedLayer<T extends ProjectSnapshot
 
   const nextSelectedLayer: CompositorLayer = {
     ...selectedLayer,
-    inset: legacySnapshot.canvas?.inset ?? selectedLayer.inset,
+    inset: DEFAULT_LAYER_INSET,
     sourceIds: structuredClone(legacySnapshot.sourceIds ?? selectedLayer.sourceIds),
     layout: structuredClone(
       legacySnapshot.layout ?? selectedLayer.layout,
@@ -854,7 +854,7 @@ export function normalizeProjectSnapshot(
         index === selectedLayerIndex
           ? {
             ...layer,
-            inset: legacyLayer.inset,
+            inset: DEFAULT_LAYER_INSET,
             sourceIds: structuredClone(legacyLayer.sourceIds),
             layout: structuredClone(legacyLayer.layout),
             sourceMapping: structuredClone(legacyLayer.sourceMapping),

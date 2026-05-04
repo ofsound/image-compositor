@@ -176,6 +176,7 @@ function App() {
     setActiveProject,
     selectLayer,
     addLayer,
+    duplicateLayer,
     deleteLayer,
     appendDrawStroke,
     clearDrawLayer,
@@ -711,6 +712,7 @@ function App() {
               updateSourceWeight={updateSourceWeight}
               toggleAssetEnabled={toggleAssetEnabled}
               addLayer={addLayer}
+              duplicateLayer={duplicateLayer}
               selectLayer={selectLayer}
               toggleLayerVisibility={toggleLayerVisibility}
               deleteLayer={deleteLayer}

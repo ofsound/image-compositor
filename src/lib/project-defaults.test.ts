@@ -33,6 +33,7 @@ describe("createProjectDocument", () => {
     expect(project.title).toBe("Study");
     expect(project.id.startsWith("project_")).toBe(true);
     expect(project.deletedAt).toBeNull();
+    expect(project.canvas.inset).toBe(0);
     expect(project.sourceIds).toEqual([]);
     expect(project.sourceMapping.cropDistribution).toBe("distributed");
     expect(project.sourceMapping.sourceWeights).toEqual({});
@@ -283,6 +284,25 @@ describe("createProjectDocument", () => {
     } as unknown as ProjectDocument;
 
     expect(normalizeProjectDocument(legacyProject).canvas.backgroundAlpha).toBe(0);
+  });
+
+  it("normalizes legacy inset values to zero", () => {
+    const project = createProjectDocument("Legacy Inset");
+    const legacyProject = {
+      ...project,
+      canvas: {
+        ...project.canvas,
+        inset: 48,
+      },
+      layers: project.layers.map((layer) => ({
+        ...layer,
+        inset: 48,
+      })),
+    } as ProjectDocument;
+
+    const normalized = normalizeProjectDocument(legacyProject);
+    expect(normalized.canvas.inset).toBe(0);
+    expect(normalized.layers.every((layer) => layer.inset === 0)).toBe(true);
   });
 
   it("normalizes legacy projects without letterbox to zero", () => {

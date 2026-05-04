@@ -36,6 +36,7 @@ export function useWorkspaceActions() {
       setActiveProject: state.setActiveProject,
       selectLayer: state.selectLayer,
       addLayer: state.addLayer,
+      duplicateLayer: state.duplicateLayer,
       deleteLayer: state.deleteLayer,
       appendDrawStroke: state.appendDrawStroke,
       clearDrawLayer: state.clearDrawLayer,

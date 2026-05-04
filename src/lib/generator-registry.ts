@@ -33,7 +33,7 @@ interface GeneratorContext {
 }
 
 type ConcreteGeometryShape = Exclude<GeometryShape, "mixed">;
-type MixedCycleShape = Exclude<GeometryShape, "mixed" | "interlock" | "blob" | "text">;
+type MixedCycleShape = Exclude<GeometryShape, "mixed" | "interlock" | "text">;
 
 interface LayoutCell extends RenderRect {
   shape: ConcreteGeometryShape;
@@ -99,10 +99,12 @@ function assignShape(
 ) {
   if (shapeMode === "interlock") return "triangle";
   if (shapeMode !== "mixed") return shapeMode;
-  const cycle: ConcreteGeometryShape[] =
+  const cycle: MixedCycleShape[] =
     family === "organic"
       ? ["blob", "ring", "arc", "wedge"]
-      : (["rect", "triangle", "ring", "arc", "wedge"] as MixedCycleShape[]);
+      : family === "fractal"
+        ? ["rect", "triangle", "blob", "ring", "arc", "wedge"]
+        : ["rect", "triangle", "ring", "arc", "wedge"];
   return cycle[index % cycle.length]!;
 }
 
@@ -590,6 +592,15 @@ function getInsetCanvasCorners(project: LayerRenderProject): Point[] {
     { x: right, y: bottom },
     { x: left, y: bottom },
   ];
+}
+
+function getInsetCanvasRect(project: LayerRenderProject): RenderRect {
+  return {
+    x: project.canvas.inset,
+    y: project.canvas.inset,
+    width: project.canvas.width - project.canvas.inset * 2,
+    height: project.canvas.height - project.canvas.inset * 2,
+  };
 }
 
 function normalizeStripThicknesses(
@@ -1727,8 +1738,8 @@ function generateThreeD(context: GeneratorContext) {
     const heightFactor = 0.78 + cellRng.next() * 0.24;
     const scaleNoise = clamp(
       1 + (cellRng.next() - 0.5) * effects.scaleJitter,
-      0.2,
-      2,
+      0.05,
+      2.5,
     );
     const halfWidthWorld = (baseCardSize * widthFactor * scaleNoise) / 2;
     const halfHeightWorld = (baseCardSize * heightFactor * scaleNoise) / 2;
@@ -3349,7 +3360,11 @@ function createRenderSliceFromCell(
       : null;
   if (cell.shape === "text") {
     const rotationNoise = (rng.next() - 0.5) * project.effects.rotationJitter;
-    const scaleNoise = 1 + (rng.next() - 0.5) * project.effects.scaleJitter;
+    const scaleNoise = clamp(
+      1 + (rng.next() - 0.5) * project.effects.scaleJitter,
+      0.05,
+      2.5,
+    );
     const displacement = project.effects.displacement * (rng.next() - 0.5);
     const fogAmount =
       project.layout.family === "3d" && cell.depthValue !== undefined
@@ -3415,7 +3430,11 @@ function createRenderSliceFromCell(
           height: cell.height + overlapSize,
         };
   const rotationNoise = (rng.next() - 0.5) * project.effects.rotationJitter;
-  const scaleNoise = 1 + (rng.next() - 0.5) * project.effects.scaleJitter;
+  const scaleNoise = clamp(
+    1 + (rng.next() - 0.5) * project.effects.scaleJitter,
+    0.05,
+    2.5,
+  );
   const displacement = project.effects.displacement * (rng.next() - 0.5);
   const fogAmount =
     project.layout.family === "3d" && cell.depthValue !== undefined
@@ -3455,12 +3474,61 @@ function createRenderSliceFromCell(
   };
 }
 
-function mapTextGeometryCells(
+function createBlobCellFromBounds(
+  cell: LayoutCell,
+  project: LayerRenderProject,
+  index: number,
+) {
+  const center = {
+    x: cell.x + cell.width / 2,
+    y: cell.y + cell.height / 2,
+  };
+  const radiusX = Math.max(1, cell.width / 2);
+  const radiusY = Math.max(1, cell.height / 2);
+  const insetRect = getInsetCanvasRect(project);
+  const rng = mulberry32(hashToSeed(`${project.activeSeed}:fractal-blob:${index}`));
+  const clipPathPoints = buildOrganicBlobPoints(
+    center,
+    radiusX,
+    radiusY,
+    cell.rotation ?? cell.clipRotation ?? 0,
+    insetRect,
+    rng,
+  );
+
+  return {
+    ...cell,
+    ...getBoundsForPoints(clipPathPoints),
+    shape: "blob" as const,
+    clipPathPoints,
+  };
+}
+
+function mapFractalGeometryCells(
   layoutCells: LayoutCell[],
   project: LayerRenderProject,
 ) {
-  if (project.layout.shapeMode !== "text") {
+  if (project.layout.family !== "fractal") {
     return layoutCells;
+  }
+
+  if (project.layout.shapeMode !== "text") {
+    if (project.layout.shapeMode === "rect") {
+      return layoutCells;
+    }
+
+    return layoutCells.map<LayoutCell>((cell, index) => {
+      const shape = assignShape(index, project.layout.shapeMode, project.layout.family);
+      if (shape === "blob") {
+        return createBlobCellFromBounds(cell, project, index);
+      }
+
+      return {
+        ...cell,
+        shape,
+        clipPathPoints: undefined,
+      };
+    });
   }
 
   return layoutCells.map<LayoutCell>((cell) => ({
@@ -3577,7 +3645,7 @@ export function buildRenderSlices(
     return [];
   }
 
-  const layoutCells = mapTextGeometryCells(
+  const layoutCells = mapFractalGeometryCells(
     layoutRegistry[project.layout.family]({ project, assets }),
     project,
   );

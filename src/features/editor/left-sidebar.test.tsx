@@ -66,6 +66,7 @@ describe("LeftSidebar", () => {
         updateSourceWeight={updateSourceWeight}
         toggleAssetEnabled={vi.fn()}
         addLayer={vi.fn()}
+        duplicateLayer={vi.fn()}
         selectLayer={vi.fn()}
         toggleLayerVisibility={vi.fn()}
         deleteLayer={vi.fn()}

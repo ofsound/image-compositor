@@ -347,8 +347,9 @@ describe("buildRenderSlices", () => {
     );
 
     expect(slices).toHaveLength(2);
-    expect(slices[0]?.rect.width).toBeCloseTo(1440, 4);
-    expect(slices[1]?.rect.width).toBeCloseTo(1440, 4);
+    const expectedWidth = (project.canvas.width - project.canvas.inset * 2) / 2 - 12;
+    expect(slices[0]?.rect.width).toBeCloseTo(expectedWidth, 4);
+    expect(slices[1]?.rect.width).toBeCloseTo(expectedWidth, 4);
     expect(slices[0]?.rect.height).toBeCloseTo(slices[1]?.rect.height ?? 0, 4);
   });
 
@@ -2041,6 +2042,42 @@ describe("buildRenderSlices", () => {
 
     expect(first).toEqual(second);
     expect(first.length).toBeGreaterThan(0);
+  });
+
+  it.each(["triangle", "blob", "ring", "arc", "wedge"] as const)(
+    "applies %s geometry to fractal cells",
+    (shapeMode) => {
+      const project = createProjectView(`Fractal ${shapeMode} Geometry`);
+      project.sourceIds = [assets[0]!.id];
+      project.layout.family = "fractal";
+      project.layout.shapeMode = shapeMode;
+      project.layout.fractalVariant = "rosette";
+      project.layout.fractalIterations = 2;
+
+      const slices = buildRenderSlices(project, [assets[0]!]);
+
+      expect(slices.length).toBeGreaterThan(0);
+      expect(slices.every((slice) => slice.shape === shapeMode)).toBe(true);
+      if (shapeMode !== "blob") {
+        expect(slices.every((slice) => slice.clipPathPoints === null)).toBe(true);
+      }
+    },
+  );
+
+  it("cycles mixed geometry through creative fractal slice masks", () => {
+    const project = createProjectView("Fractal Mixed Geometry");
+    project.sourceIds = [assets[0]!.id];
+    project.layout.family = "fractal";
+    project.layout.shapeMode = "mixed";
+    project.layout.fractalVariant = "sierpinski-carpet";
+    project.layout.fractalIterations = 2;
+
+    const slices = buildRenderSlices(project, [assets[0]!]);
+    const shapes = new Set(slices.map((slice) => slice.shape));
+
+    expect(shapes).toEqual(
+      new Set(["rect", "triangle", "blob", "ring", "arc", "wedge"]),
+    );
   });
 
   it("changes fractal slice counts as rosette petals change", () => {

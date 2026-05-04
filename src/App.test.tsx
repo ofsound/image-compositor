@@ -230,6 +230,7 @@ function createStoreState(overrides?: {
     setActiveProject: vi.fn(async () => null),
     selectLayer: vi.fn(async () => undefined),
     addLayer: vi.fn(async () => undefined),
+    duplicateLayer: vi.fn(async () => undefined),
     deleteLayer: vi.fn(async () => undefined),
     toggleLayerVisibility: vi.fn(async () => undefined),
     reorderLayers: vi.fn(async () => undefined),
@@ -890,7 +891,17 @@ describe("App conditional sliders", () => {
     expect(getGeometryOptions("flow")).toContain("text");
     expect(getGeometryOptions("3d")).not.toContain("interlock");
     expect(getGeometryOptions("3d")).toContain("text");
-    expect(getGeometryOptions("fractal")).toEqual(["rect", "text"]);
+    expect(getGeometryOptions("fractal")).toEqual([
+      "mixed",
+      "rect",
+      "triangle",
+      "blob",
+      "ring",
+      "arc",
+      "wedge",
+      "text",
+    ]);
+    expect(getGeometryOptions("fractal")).not.toContain("interlock");
   });
 
   it("coerces interlock back to triangle when leaving grid", () => {
@@ -901,6 +912,8 @@ describe("App conditional sliders", () => {
     expect(coerceShapeModeForFamily("grid", "blob")).toBe("rect");
     expect(coerceShapeModeForFamily("3d", "blob")).toBe("rect");
     expect(coerceShapeModeForFamily("flow", "arc")).toBe("arc");
+    expect(coerceShapeModeForFamily("fractal", "arc")).toBe("arc");
+    expect(coerceShapeModeForFamily("fractal", "blob")).toBe("blob");
     expect(coerceShapeModeForFamily("fractal", "text")).toBe("text");
   });
 
@@ -970,6 +983,12 @@ describe("App conditional sliders", () => {
     expect(geometryTrigger).toHaveTextContent("rect");
 
     await user.click(geometryTrigger);
+    expect(await screen.findByRole("option", { name: "mixed" })).toBeInTheDocument();
+    expect(await screen.findByRole("option", { name: "triangle" })).toBeInTheDocument();
+    expect(await screen.findByRole("option", { name: "blob" })).toBeInTheDocument();
+    expect(await screen.findByRole("option", { name: "ring" })).toBeInTheDocument();
+    expect(await screen.findByRole("option", { name: "arc" })).toBeInTheDocument();
+    expect(await screen.findByRole("option", { name: "wedge" })).toBeInTheDocument();
     expect(await screen.findByRole("option", { name: "text" })).toBeInTheDocument();
   });
 

@@ -30,7 +30,7 @@ export function getGeometryOptions(family: LayoutFamily): GeometryShape[] {
   }
 
   if (family === "fractal") {
-    return ["rect", "text"];
+    return ["mixed", "rect", "triangle", "blob", "ring", "arc", "wedge", "text"];
   }
 
   return family === "grid"

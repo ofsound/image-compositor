@@ -2125,7 +2125,7 @@ export function RightSidebar({
                     <SliderField
                       label="Blur"
                       min={0}
-                      max={18}
+                      max={200}
                       step={0.1}
                       value={activeProjectView.effects.blur}
                       defaultValue={DEFAULT_EFFECTS.blur}
@@ -2178,7 +2178,7 @@ export function RightSidebar({
                     <SliderField
                       label="Scale Jitter"
                       min={0}
-                      max={0.8}
+                      max={3}
                       step={0.01}
                       value={activeProjectView.effects.scaleJitter}
                       defaultValue={DEFAULT_EFFECTS.scaleJitter}

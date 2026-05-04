@@ -35,6 +35,7 @@ interface LeftSidebarProps {
   updateSourceWeight: (assetId: string, weight: number) => void;
   toggleAssetEnabled: (assetId: string) => void;
   addLayer: () => void;
+  duplicateLayer: (layerId: string) => void;
   selectLayer: (layerId: string) => void;
   toggleLayerVisibility: (layerId: string) => void;
   deleteLayer: (layerId: string) => void;
@@ -56,6 +57,7 @@ export function LeftSidebar({
   updateSourceWeight,
   toggleAssetEnabled,
   addLayer,
+  duplicateLayer,
   selectLayer,
   toggleLayerVisibility,
   deleteLayer,
@@ -194,6 +196,7 @@ export function LeftSidebar({
                   canDelete={activeProject.layers.length > 1}
                   onSelect={() => void selectLayer(layer.id)}
                   onToggleVisibility={() => void toggleLayerVisibility(layer.id)}
+                  onDuplicate={() => void duplicateLayer(layer.id)}
                   onDelete={() => void deleteLayer(layer.id)}
                 />
               ))}

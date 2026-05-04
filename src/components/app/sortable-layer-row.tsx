@@ -1,6 +1,6 @@
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Eye, EyeOff, GripVertical, Layers, Trash2 } from "lucide-react";
+import { Copy, Eye, EyeOff, GripVertical, Layers, Trash2 } from "lucide-react";
 
 import { LayerRowThumbnail } from "@/components/app/layer-row-thumbnail";
 import { Button } from "@/components/ui/button";
@@ -14,6 +14,7 @@ export function SortableLayerRow({
   canDelete,
   onSelect,
   onToggleVisibility,
+  onDuplicate,
   onDelete,
 }: {
   layer: ProjectDocument["layers"][number];
@@ -22,6 +23,7 @@ export function SortableLayerRow({
   canDelete: boolean;
   onSelect: () => void;
   onToggleVisibility: () => void;
+  onDuplicate: () => void;
   onDelete: () => void;
 }) {
   const {
@@ -96,11 +98,11 @@ export function SortableLayerRow({
           thumbnailUrl={thumbnailUrl}
         />
       </button>
-      <div className="mt-3 grid grid-cols-2 gap-2">
+      <div className="mt-3 grid grid-cols-3 gap-2">
         <button
           type="button"
           className={cn(
-            "inline-flex h-8 items-center justify-center gap-2 rounded-md border px-3 text-xs font-medium transition-all",
+            "inline-flex h-8 items-center justify-center gap-1.5 rounded-md border px-2 text-xs font-medium transition-all",
             layer.visible
               ? "border-control-secondary-border bg-control-secondary text-control-secondary-text hover:bg-control-secondary-hover"
               : "border-border bg-transparent text-text-secondary hover:border-border-strong hover:bg-control-ghost-hover hover:text-text",
@@ -120,7 +122,17 @@ export function SortableLayerRow({
         <Button
           size="sm"
           variant="ghost"
-          className="w-full justify-center"
+          className="w-full justify-center gap-1.5 px-2"
+          onClick={onDuplicate}
+          aria-label={`Duplicate ${layer.name}`}
+        >
+          <Copy className="h-3.5 w-3.5" />
+          Duplicate
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          className="w-full justify-center gap-1.5 px-2"
           onClick={onDelete}
           disabled={!canDelete}
           aria-label={`Delete ${layer.name}`}

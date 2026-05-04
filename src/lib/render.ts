@@ -411,6 +411,31 @@ function drawShapePath(
     return;
   }
 
+  if (slice.shape === "blob") {
+    const pointCount = 16;
+    const radiusX = width / 2;
+    const radiusY = height / 2;
+    for (let index = 0; index <= pointCount; index += 1) {
+      const theta = (Math.PI * 2 * index) / pointCount;
+      const radiusScale =
+        1 +
+        0.14 * Math.sin(theta * 2 + 0.7) +
+        0.09 * Math.cos(theta * 3 + 1.9);
+      const point = {
+        x: centerX + Math.cos(theta) * radiusX * radiusScale,
+        y: centerY + Math.sin(theta) * radiusY * radiusScale,
+      };
+
+      if (index === 0) {
+        context.moveTo(point.x, point.y);
+      } else {
+        context.lineTo(point.x, point.y);
+      }
+    }
+    context.closePath();
+    return;
+  }
+
   if (slice.shape === "wedge" || slice.shape === "arc") {
     const radius = Math.min(width, height) / 2;
     const sweepRadians = slice.wedgeSweepRadians ?? Math.PI / 3;

@@ -388,7 +388,6 @@ function createCustomizedLayerState(
 ) {
   const customizedLayer = structuredClone(layer);
   customizedLayer.sourceIds = [sourceId];
-  customizedLayer.inset = 12;
   customizedLayer.layout = {
     ...customizedLayer.layout,
     columns: 5,
@@ -676,6 +675,73 @@ describe("useAppStore history", () => {
     await useAppStore.getState().addLayer();
 
     expect(useAppStore.getState().projects[0]?.layers[0]).toEqual(customizedLayer);
+  });
+
+  it("duplicates a layer next to the original and selects the copy", async () => {
+    const project = useAppStore.getState().projects[0]!;
+    const asset = createSolidAsset(project.id);
+    const customizedLayer = createCustomizedLayerState(project.layers[0]!, asset.id);
+    customizedLayer.name = "Texture";
+
+    useAppStore.setState((state) => ({
+      ...state,
+      assets: [asset],
+      projects: [
+        normalizeProjectDocument({
+          ...serializeProjectDocument(project),
+          layers: [customizedLayer],
+          selectedLayerId: customizedLayer.id,
+        }),
+      ],
+    }));
+
+    await useAppStore.getState().duplicateLayer(customizedLayer.id);
+
+    const updatedProject = useAppStore.getState().projects[0]!;
+    const sourceLayer = updatedProject.layers[0]!;
+    const duplicateLayer = updatedProject.layers[1]!;
+
+    expect(updatedProject.layers).toHaveLength(2);
+    expect(updatedProject.selectedLayerId).toBe(duplicateLayer.id);
+    expect(duplicateLayer.id).not.toBe(sourceLayer.id);
+    expect(duplicateLayer.name).toBe("Texture Copy");
+    expect(duplicateLayer).toEqual({
+      ...sourceLayer,
+      id: duplicateLayer.id,
+      name: "Texture Copy",
+    });
+  });
+
+  it("increments duplicate layer names when a copy already exists", async () => {
+    const project = useAppStore.getState().projects[0]!;
+    const sourceLayer = createCompositorLayer({
+      name: "Layer",
+      visible: true,
+    });
+    const existingCopy = createCompositorLayer({
+      name: "Layer Copy",
+      visible: true,
+    });
+
+    useAppStore.setState((state) => ({
+      ...state,
+      projects: [
+        normalizeProjectDocument({
+          ...serializeProjectDocument(project),
+          layers: [sourceLayer, existingCopy],
+          selectedLayerId: sourceLayer.id,
+        }),
+      ],
+    }));
+
+    await useAppStore.getState().duplicateLayer(sourceLayer.id);
+
+    const updatedProject = useAppStore.getState().projects[0]!;
+    expect(updatedProject.layers.map((layer) => layer.name)).toEqual([
+      "Layer",
+      "Layer Copy 2",
+      "Layer Copy",
+    ]);
   });
 
   it("deleting the selected layer does not overwrite the remaining layer", async () => {

@@ -149,6 +149,7 @@ interface AppState {
   setActiveProject: (projectId: string) => Promise<OpenProjectResult | null>;
   selectLayer: (layerId: string) => Promise<void>;
   addLayer: () => Promise<void>;
+  duplicateLayer: (layerId: string) => Promise<void>;
   deleteLayer: (layerId: string) => Promise<void>;
   appendDrawStroke: (stroke: DrawStroke) => Promise<void>;
   clearDrawLayer: () => Promise<void>;
@@ -369,6 +370,21 @@ function removeSourceFromAllLayers(project: ProjectDocument, assetId: string) {
 
 function getNextLayerName(project: ProjectDocument) {
   return `Layer ${project.layers.length + 1}`;
+}
+
+function getDuplicateLayerName(project: ProjectDocument, layerName: string) {
+  const baseName = `${layerName.trim() || "Layer"} Copy`;
+  const existingNames = new Set(project.layers.map((layer) => layer.name));
+  if (!existingNames.has(baseName)) {
+    return baseName;
+  }
+
+  let copyIndex = 2;
+  while (existingNames.has(`${baseName} ${copyIndex}`)) {
+    copyIndex += 1;
+  }
+
+  return `${baseName} ${copyIndex}`;
 }
 
 function clonePreparedAssetRecord(entry: PreparedAssetRecord): PreparedAssetRecord {
@@ -1298,6 +1314,51 @@ export const useAppStore = create<AppState>((set, get) => {
           error instanceof Error
             ? `Could not add layer: ${error.message}`
             : "Could not add layer.",
+      },
+    );
+  },
+
+  async duplicateLayer(layerId) {
+    await runWorkspaceAction(
+      async () => {
+        const project = getActiveProject(get());
+        if (!project || !project.layers.some((layer) => layer.id === layerId)) return;
+
+        await get().updateProject((currentProject) => {
+          const baseProject = createProjectMutationBase(currentProject);
+          const sourceLayerIndex = baseProject.layers.findIndex(
+            (layer) => layer.id === layerId,
+          );
+          const sourceLayer = baseProject.layers[sourceLayerIndex];
+          if (!sourceLayer) {
+            return baseProject;
+          }
+
+          const duplicateLayer: CompositorLayer = {
+            ...structuredClone(sourceLayer),
+            id: makeId("layer"),
+            name: getDuplicateLayerName(baseProject, sourceLayer.name),
+          };
+          const layers = [...baseProject.layers];
+          layers.splice(sourceLayerIndex + 1, 0, duplicateLayer);
+
+          return {
+            ...baseProject,
+            canvas: {
+              ...baseProject.canvas,
+              inset: sourceLayer.inset,
+            },
+            layers,
+            selectedLayerId: duplicateLayer.id,
+          };
+        });
+      },
+      {
+        queue: false,
+        getErrorStatus: (error) =>
+          error instanceof Error
+            ? `Could not duplicate layer: ${error.message}`
+            : "Could not duplicate layer.",
       },
     );
   },

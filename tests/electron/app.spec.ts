@@ -7,6 +7,32 @@ const PNG_FIXTURE = fs.readFileSync(
   path.join(process.cwd(), "import", "shape5.png"),
 );
 
+function hasPersistedSource(userDataDir: string, sourceName: string) {
+  const libraryDir = path.join(userDataDir, "project-library");
+  if (!fs.existsSync(libraryDir)) {
+    return false;
+  }
+
+  for (const entry of fs.readdirSync(libraryDir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+
+    const assetsPath = path.join(libraryDir, entry.name, "assets.json");
+    try {
+      const assets = JSON.parse(fs.readFileSync(assetsPath, "utf8")) as Array<{
+        name?: string;
+      }>;
+      if (assets.some((asset) => asset.name === sourceName)) {
+        return true;
+      }
+    } catch {
+      // The bundle save replaces the project directory atomically enough for
+      // app behavior, but the test can observe a transient missing JSON file.
+    }
+  }
+
+  return false;
+}
+
 async function importGeneratedImage(page: Awaited<ReturnType<typeof launchApp>>["page"]) {
   await page.getByRole("button", { name: "Add Source" }).first().click();
   await expect(page.getByRole("button", { name: "Choose images" })).toBeVisible();
@@ -44,6 +70,11 @@ test("boots, imports an image, and preserves workspace on relaunch", async ({ br
   await importGeneratedImage(firstRun.page);
   await expect(firstRun.page.getByText("electron-spec", { exact: true })).toBeVisible();
   await expect(firstRun.page.getByLabel("Disable electron-spec")).toBeVisible();
+  await expect
+    .poll(() => hasPersistedSource(userDataDir, "electron-spec"), {
+      timeout: 15_000,
+    })
+    .toBe(true);
   await firstRun.app.close();
 
   const secondRun = await launchApp(userDataDir);

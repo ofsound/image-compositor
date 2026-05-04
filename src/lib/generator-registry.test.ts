@@ -225,6 +225,7 @@ describe("buildRenderSlices", () => {
     const project = createProjectView("Determinism");
     project.sourceIds = assets.map((asset) => asset.id);
     project.layout.family = "blocks";
+    project.layout.gutter = 0;
     project.layout.symmetryMode = "mirror-x";
 
     const first = buildRenderSlices(project, assets);
@@ -299,6 +300,7 @@ describe("buildRenderSlices", () => {
     const project = createProjectView("Block Depth");
     project.sourceIds = [assets[0]!.id];
     project.layout.family = "blocks";
+    project.layout.gutter = 0;
     project.layout.symmetryMode = "none";
     project.layout.blockMinSize = 32;
 
@@ -315,6 +317,7 @@ describe("buildRenderSlices", () => {
     const project = createProjectView("Block Min Size");
     project.sourceIds = [assets[0]!.id];
     project.layout.family = "blocks";
+    project.layout.gutter = 0;
     project.layout.symmetryMode = "none";
     project.layout.blockDepth = 5;
 
@@ -335,6 +338,7 @@ describe("buildRenderSlices", () => {
     const project = createProjectView("Centered Blocks");
     project.sourceIds = [assets[0]!.id];
     project.layout.family = "blocks";
+    project.layout.gutter = 0;
     project.layout.symmetryMode = "none";
     project.layout.blockDepth = 1;
     project.layout.blockMinSize = 32;
@@ -353,10 +357,40 @@ describe("buildRenderSlices", () => {
     expect(slices[0]?.rect.height).toBeCloseTo(slices[1]?.rect.height ?? 0, 4);
   });
 
+  it("applies layout gutter between block siblings on vertical and horizontal splits", () => {
+    const project = createProjectView("Block Gutter XY");
+    project.sourceIds = [assets[0]!.id];
+    project.layout.family = "blocks";
+    project.layout.symmetryMode = "none";
+    project.layout.blockDepth = 1;
+    project.layout.blockMinSize = 32;
+    project.layout.blockSplitRandomness = 0;
+    project.compositing.overlap = 0;
+
+    project.layout.blockSplitBias = 1;
+    project.layout.gutter = 0;
+    const verticalNoGutter = buildRenderSlices(project, [assets[0]!]);
+    project.layout.gutter = 100;
+    const verticalWithGutter = buildRenderSlices(project, [assets[0]!]);
+    expect(
+      Math.max(...verticalWithGutter.map((slice) => slice.rect.width)),
+    ).toBeLessThan(Math.max(...verticalNoGutter.map((slice) => slice.rect.width)));
+
+    project.layout.blockSplitBias = 0;
+    project.layout.gutter = 0;
+    const horizontalNoGutter = buildRenderSlices(project, [assets[0]!]);
+    project.layout.gutter = 100;
+    const horizontalWithGutter = buildRenderSlices(project, [assets[0]!]);
+    expect(
+      Math.max(...horizontalWithGutter.map((slice) => slice.rect.height)),
+    ).toBeLessThan(Math.max(...horizontalNoGutter.map((slice) => slice.rect.height)));
+  });
+
   it("favors vertical block splits as block split bias rises", () => {
     const project = createProjectView("Block Bias");
     project.sourceIds = [assets[0]!.id];
     project.layout.family = "blocks";
+    project.layout.gutter = 0;
     project.layout.symmetryMode = "none";
     project.layout.blockDepth = 1;
     project.layout.blockMinSize = 32;

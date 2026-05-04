@@ -774,7 +774,7 @@ describe("App conditional sliders", () => {
     expectSliderHidden("Ring Phase");
     expectSliderHidden("Inner Radius");
     expect(screen.queryByLabelText("Child Rotation")).not.toBeInTheDocument();
-    expectSliderHidden("Gutter");
+    expectSliderEnabled("Gutter");
     expectSliderHidden("Gutter Horizontal");
     expectSliderHidden("Gutter Vertical");
     expectSliderEnabled("Block Depth");

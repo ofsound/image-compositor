@@ -835,6 +835,31 @@ function getBlockVerticalSplitProbability(rect: RenderRect, splitBias: number) {
   return clamp(aspectPreference + (clamp(splitBias, 0, 1) - 0.5), 0, 1);
 }
 
+/** Same scaling as strips: overlap consumes part of the nominal gutter. */
+function getEffectiveBlockGutter(layoutGutter: number, overlap: number) {
+  return layoutGutter * (1 - overlap);
+}
+
+/**
+ * Maximum gap between two children along the split axis so each side stays ≥ minSize
+ * (mirrors strips clamping inter-strip gap to feasible geometry).
+ */
+function clampBlockSplitGap(
+  spanAlongSplitAxis: number,
+  split: number,
+  requestedGap: number,
+  minSize: number,
+): number {
+  const firstSpan = spanAlongSplitAxis * split;
+  const secondSpan = spanAlongSplitAxis * (1 - split);
+  const firstRemainder = firstSpan - minSize;
+  const secondRemainder = secondSpan - minSize;
+  if (firstRemainder <= 0 || secondRemainder <= 0) {
+    return 0;
+  }
+  return Math.min(requestedGap, 2 * Math.min(firstRemainder, secondRemainder));
+}
+
 function subdivide(
   rect: RenderRect,
   depth: number,
@@ -845,6 +870,7 @@ function subdivide(
   minSize: number,
   splitRandomness: number,
   splitBias: number,
+  requestedGap: number,
 ) {
   if (depth === 0 || rect.width < minSize || rect.height < minSize) {
     cells.push({
@@ -860,8 +886,9 @@ function subdivide(
 
   if (splitVertical) {
     const widthA = rect.width * split;
+    const gap = clampBlockSplitGap(rect.width, split, requestedGap, minSize);
     subdivide(
-      { x: rect.x, y: rect.y, width: widthA, height: rect.height },
+      { x: rect.x, y: rect.y, width: widthA - gap / 2, height: rect.height },
       depth - 1,
       rng,
       cells,
@@ -870,9 +897,15 @@ function subdivide(
       minSize,
       splitRandomness,
       splitBias,
+      requestedGap,
     );
     subdivide(
-      { x: rect.x + widthA, y: rect.y, width: rect.width - widthA, height: rect.height },
+      {
+        x: rect.x + widthA + gap / 2,
+        y: rect.y,
+        width: rect.width - widthA - gap / 2,
+        height: rect.height,
+      },
       depth - 1,
       rng,
       cells,
@@ -881,11 +914,13 @@ function subdivide(
       minSize,
       splitRandomness,
       splitBias,
+      requestedGap,
     );
   } else {
     const heightA = rect.height * split;
+    const gap = clampBlockSplitGap(rect.height, split, requestedGap, minSize);
     subdivide(
-      { x: rect.x, y: rect.y, width: rect.width, height: heightA },
+      { x: rect.x, y: rect.y, width: rect.width, height: heightA - gap / 2 },
       depth - 1,
       rng,
       cells,
@@ -894,9 +929,15 @@ function subdivide(
       minSize,
       splitRandomness,
       splitBias,
+      requestedGap,
     );
     subdivide(
-      { x: rect.x, y: rect.y + heightA, width: rect.width, height: rect.height - heightA },
+      {
+        x: rect.x,
+        y: rect.y + heightA + gap / 2,
+        width: rect.width,
+        height: rect.height - heightA - gap / 2,
+      },
       depth - 1,
       rng,
       cells,
@@ -905,6 +946,7 @@ function subdivide(
       minSize,
       splitRandomness,
       splitBias,
+      requestedGap,
     );
   }
 }
@@ -915,6 +957,7 @@ function generateBlocks(context: GeneratorContext) {
   } = context;
   const rng = mulberry32(activeSeed + 101);
   const cells: LayoutCell[] = [];
+  const requestedGap = getEffectiveBlockGutter(layout.gutter, compositing.overlap);
   subdivide(
     {
       x: canvas.inset,
@@ -930,6 +973,7 @@ function generateBlocks(context: GeneratorContext) {
     layout.blockMinSize,
     layout.blockSplitRandomness,
     layout.blockSplitBias,
+    requestedGap,
   );
   return cells;
 }

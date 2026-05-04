@@ -95,7 +95,7 @@ export function CenterCanvas({
         </Button>
       }
       cardClassName="rounded-none border-0 bg-transparent shadow-none backdrop-blur-none"
-      contentClassName="flex min-h-0 items-center justify-center p-0"
+      contentClassName="flex min-h-0 min-w-0 flex-1 flex-col p-0"
     >
       <PreviewStage
         canvasRef={canvasRef}
@@ -345,7 +345,7 @@ export function CenterCanvas({
   }
 
   return (
-    <div className="flex min-h-0 flex-col gap-3">
+    <div className="flex min-h-0 min-w-0 flex-col gap-3">
       {previewPanel}
       {projectSettingsPanel}
     </div>

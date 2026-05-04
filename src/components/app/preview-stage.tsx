@@ -263,21 +263,21 @@ export function PreviewStage({
       };
 
   return (
-    <div className="relative flex h-full min-h-0 overflow-hidden rounded-lg bg-preview-bg p-3">
+    <div className="relative flex min-h-0 min-w-0 w-full flex-1 flex-col overflow-hidden bg-preview-bg p-3">
       <div
         ref={stageBoundsRef}
-        className="relative flex min-h-0 w-full items-center justify-center"
+        className="relative flex min-h-0 min-w-0 w-full flex-1 items-center justify-center"
       >
         <div className="relative shrink-0" style={canvasFrameStyle}>
           <canvas
             ref={canvasRef}
-            className="block h-full w-full rounded-md bg-preview-canvas"
+            className="block h-full w-full bg-preview-canvas"
           />
           <canvas
             ref={overlayCanvasRef}
             width={project.canvas.width}
             height={project.canvas.height}
-            className="absolute inset-0 h-full w-full rounded-md"
+            className="absolute inset-0 h-full w-full"
             style={{
               cursor: drawEnabled ? "crosshair" : "default",
               pointerEvents: drawEnabled ? "auto" : "none",

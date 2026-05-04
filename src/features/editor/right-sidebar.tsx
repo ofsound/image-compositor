@@ -686,6 +686,25 @@ export function RightSidebar({
                           }))
                         }
                       />
+                      <SliderField
+                        className="sm:col-span-2"
+                        label="Gutter"
+                        min={0}
+                        max={300}
+                        step={1}
+                        value={activeProjectView.layout.gutter}
+                        defaultValue={DEFAULT_LAYOUT.gutter}
+                        formatter={(value) => `${Math.round(value)} px`}
+                        onChange={(value) =>
+                          patchProject((project) => ({
+                            ...project,
+                            layout: {
+                              ...project.layout,
+                              gutter: value,
+                            },
+                          }))
+                        }
+                      />
                     </InspectorFieldGrid>
                   </InspectorGroup>
                 ) : null}

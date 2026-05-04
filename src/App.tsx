@@ -21,7 +21,6 @@ import {
   CopyPlus,
   Download,
   FolderOpen,
-  ImagePlus,
   Layers,
   Pencil,
   Plus,
@@ -662,9 +661,6 @@ function App() {
             <Button variant="ghost" size="sm" onClick={() => setTrashDialogOpen(true)}>
               <Trash2 className="h-3.5 w-3.5" /> Trash
             </Button>
-            <Button variant="ghost" size="sm" onClick={() => openAddSourceDialog("image")}>
-              <ImagePlus className="h-3.5 w-3.5" /> Add Source
-            </Button>
             <Button variant="ghost" size="sm" onClick={() => bundleInputRef.current?.click()}>
               <FolderOpen className="h-3.5 w-3.5" /> Import
             </Button>
@@ -738,7 +734,8 @@ function App() {
               "min-h-0 flex-1 gap-3 overflow-hidden",
               previewExpanded
                 ? "flex"
-                : "grid grid-cols-[288px_minmax(0,260px)_minmax(640px,1fr)_560px]",
+                : // LeftSidebar renders two grid items (Sources, Layers); then preview, then Inspector.
+                  "grid grid-cols-[288px_minmax(0,260px)_minmax(640px,1fr)_560px]",
             )}
           >
             <LeftSidebar

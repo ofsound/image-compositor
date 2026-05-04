@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { createProjectDocument } from "@/lib/project-defaults";
 import { createProjectEditorView } from "@/lib/project-editor-view";
-import type { ImageSourceAsset } from "@/types/project";
+import type { ImageSourceAsset, SourceAsset } from "@/types/project";
 import { LeftSidebar } from "./left-sidebar";
 
 vi.mock("@/components/app/source-thumbnail", () => ({
@@ -20,6 +20,7 @@ function createImageAsset(): ImageSourceAsset {
     id: "asset-1",
     projectId: "project-1",
     kind: "image",
+    fitMode: "stretch",
     name: "Reference",
     originalFileName: "reference.png",
     mimeType: "image/png",
@@ -36,7 +37,63 @@ function createImageAsset(): ImageSourceAsset {
   };
 }
 
+function createSolidAsset(): SourceAsset {
+  return {
+    ...createImageAsset(),
+    id: "solid-1",
+    kind: "solid",
+    name: "Solid",
+    recipe: {
+      color: "#888888",
+    },
+  };
+}
+
 describe("LeftSidebar", () => {
+  function renderLeftSidebar(options?: {
+    asset?: SourceAsset;
+    updateSourceWeight?: (assetId: string, weight: number) => void;
+    updateImageSourceFitMode?: (
+      assetId: string,
+      fitMode: ImageSourceAsset["fitMode"],
+    ) => Promise<void>;
+  }) {
+    const project = createProjectDocument("Left Sidebar");
+    const activeProjectView = createProjectEditorView(project);
+    const asset = options?.asset ?? createImageAsset();
+
+    activeProjectView.sourceIds = [asset.id];
+
+    render(
+      <LeftSidebar
+        previewExpanded={false}
+        projectAssets={[asset]}
+        activeProject={project}
+        activeProjectView={activeProjectView}
+        displayLayers={project.layers}
+        selectedLayer={project.layers[0] ?? null}
+        layerThumbnailUrls={{}}
+        layerSensors={[]}
+        handleLayerDragEnd={vi.fn()}
+        openAddSourceDialog={vi.fn()}
+        openEditSourceDialog={vi.fn()}
+        handleRemoveSource={vi.fn(async () => undefined)}
+        updateSourceWeight={options?.updateSourceWeight ?? vi.fn()}
+        updateImageSourceFitMode={
+          options?.updateImageSourceFitMode ?? vi.fn(async () => undefined)
+        }
+        toggleAssetEnabled={vi.fn()}
+        addLayer={vi.fn()}
+        duplicateLayer={vi.fn()}
+        selectLayer={vi.fn()}
+        toggleLayerVisibility={vi.fn()}
+        deleteLayer={vi.fn()}
+      />,
+    );
+
+    return { asset, activeProjectView };
+  }
+
   it("supports manual entry for source mix weight", async () => {
     const user = userEvent.setup();
     const updateSourceWeight = vi.fn();
@@ -64,6 +121,7 @@ describe("LeftSidebar", () => {
         openEditSourceDialog={vi.fn()}
         handleRemoveSource={vi.fn(async () => undefined)}
         updateSourceWeight={updateSourceWeight}
+        updateImageSourceFitMode={vi.fn(async () => undefined)}
         toggleAssetEnabled={vi.fn()}
         addLayer={vi.fn()}
         duplicateLayer={vi.fn()}
@@ -80,5 +138,21 @@ describe("LeftSidebar", () => {
     await user.keyboard("{Enter}");
 
     expect(updateSourceWeight).toHaveBeenCalledWith(asset.id, 1.65);
+  });
+
+  it("toggles natural crop for image sources", async () => {
+    const user = userEvent.setup();
+    const updateImageSourceFitMode = vi.fn(async () => undefined);
+    const { asset } = renderLeftSidebar({ updateImageSourceFitMode });
+
+    await user.click(screen.getByRole("switch", { name: "Reference natural crop" }));
+
+    expect(updateImageSourceFitMode).toHaveBeenCalledWith(asset.id, "natural");
+  });
+
+  it("does not show natural crop for generated sources", () => {
+    renderLeftSidebar({ asset: createSolidAsset() });
+
+    expect(screen.queryByRole("switch", { name: /natural crop/i })).not.toBeInTheDocument();
   });
 });

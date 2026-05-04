@@ -3,12 +3,13 @@ import { describe, expect, it } from "vitest";
 import { buildRenderSlices } from "@/lib/generator-registry";
 import { createProjectDocument } from "@/lib/project-defaults";
 import { createProjectEditorView } from "@/lib/project-editor-view";
-import type { SourceAsset } from "@/types/project";
+import type { ImageSourceAsset, SourceAsset } from "@/types/project";
 
 const assets: SourceAsset[] = [
   {
     id: "asset_a",
     kind: "image",
+    fitMode: "stretch",
     projectId: "project_test",
     name: "A",
     originalFileName: "a.jpg",
@@ -27,6 +28,7 @@ const assets: SourceAsset[] = [
   {
     id: "asset_b",
     kind: "image",
+    fitMode: "stretch",
     projectId: "project_test",
     name: "B",
     originalFileName: "b.jpg",
@@ -801,6 +803,43 @@ describe("buildRenderSlices", () => {
 
     expect(slices).toHaveLength(25);
     expect(new Set(slices.map((slice) => JSON.stringify(slice.sourceCrop))).size).toBe(25);
+  });
+
+  it("uses per-image natural fit for distributed crop aspect", () => {
+    const baseAsset = assets[0] as ImageSourceAsset;
+    const naturalAsset: ImageSourceAsset = {
+      ...baseAsset,
+      fitMode: "natural",
+    };
+    const stretchAsset: ImageSourceAsset = {
+      ...baseAsset,
+      fitMode: "stretch",
+    };
+    const project = createProjectView("Distributed Natural Crop");
+    project.sourceIds = [naturalAsset.id];
+    project.layout.family = "grid";
+    project.layout.columns = 1;
+    project.layout.rows = 1;
+    project.layout.symmetryMode = "none";
+    project.sourceMapping.cropDistribution = "distributed";
+    project.sourceMapping.preserveAspect = false;
+    project.sourceMapping.cropZoom = 1;
+
+    const [naturalSlice] = buildRenderSlices(project, [naturalAsset]);
+    const [stretchSlice] = buildRenderSlices(project, [stretchAsset]);
+
+    expect(naturalSlice?.sourceCrop).toEqual({
+      x: expect.closeTo(1 / 6, 6),
+      y: 0,
+      width: expect.closeTo(2 / 3, 6),
+      height: 1,
+    });
+    expect(stretchSlice?.sourceCrop).toEqual({
+      x: 0,
+      y: 0,
+      width: 1,
+      height: 1,
+    });
   });
 
   it("builds staggered interlock grids with alternating triangle rotation", () => {

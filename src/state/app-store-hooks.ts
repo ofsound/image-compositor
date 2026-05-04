@@ -51,6 +51,7 @@ export function useWorkspaceActions() {
       addReactionSource: state.addReactionSource,
       addWaveSource: state.addWaveSource,
       removeSource: state.removeSource,
+      updateImageSourceFitMode: state.updateImageSourceFitMode,
       updateGeneratedSource: state.updateGeneratedSource,
       randomizeVariant: state.randomizeVariant,
       saveVersion: state.saveVersion,

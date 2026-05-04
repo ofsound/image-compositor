@@ -194,6 +194,7 @@ function App() {
     addReactionSource,
     addWaveSource,
     removeSource,
+    updateImageSourceFitMode,
     updateGeneratedSource,
     randomizeVariant,
     saveVersion,
@@ -753,6 +754,7 @@ function App() {
               openEditSourceDialog={openEditSourceDialog}
               handleRemoveSource={handleRemoveSource}
               updateSourceWeight={updateSourceWeight}
+              updateImageSourceFitMode={updateImageSourceFitMode}
               toggleAssetEnabled={toggleAssetEnabled}
               addLayer={addLayer}
               duplicateLayer={duplicateLayer}

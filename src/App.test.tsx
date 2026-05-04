@@ -244,6 +244,7 @@ function createStoreState(overrides?: {
     addReactionSource: vi.fn(async () => undefined),
     addWaveSource: vi.fn(async () => undefined),
     removeSource: vi.fn(async () => undefined),
+    updateImageSourceFitMode: vi.fn(async () => undefined),
     updateGeneratedSource: vi.fn(async () => undefined),
     appendDrawStroke: vi.fn(async () => undefined),
     clearDrawLayer: vi.fn(async () => undefined),
@@ -293,6 +294,7 @@ function createImageAsset(
   return {
     id: overrides?.id ?? "asset_a",
     kind: "image",
+    fitMode: "stretch",
     projectId,
     name: overrides?.name ?? "Asset A",
     originalFileName: "asset-a.jpg",

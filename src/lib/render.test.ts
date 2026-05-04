@@ -180,6 +180,7 @@ function createMockContext() {
 const asset: SourceAsset = {
   id: "asset_a",
   kind: "image",
+  fitMode: "stretch",
   projectId: "project_test",
   name: "A",
   originalFileName: "a.jpg",
@@ -1094,6 +1095,124 @@ describe("renderProjectToCanvas", () => {
     const sourceHeights = context.drawImage.mock.calls.map((call) => call[4]);
     expect(sourceWidths.every((value) => value === 100)).toBe(true);
     expect(sourceHeights.every((value) => value === 100)).toBe(true);
+  });
+
+  it("uses full image bounds for stretch image sources", async () => {
+    const stretchAsset: SourceAsset = {
+      ...asset,
+      width: 200,
+      height: 100,
+      fitMode: "stretch",
+    };
+    const project = createProjectView("Stretch Image Fit");
+    project.canvas.width = 100;
+    project.canvas.height = 100;
+    project.sourceIds = [stretchAsset.id];
+    project.layers[0]!.sourceIds = [stretchAsset.id];
+    project.layout.family = "grid";
+    project.layout.columns = 1;
+    project.layout.rows = 1;
+    project.layout.symmetryMode = "none";
+    project.layout.shapeMode = "rect";
+    project.compositing.overlap = 0;
+    project.effects.rotationJitter = 0;
+    project.effects.scaleJitter = 0;
+    project.effects.displacement = 0;
+    project.effects.distortion = 0;
+    project.effects.sharpen = 0;
+    project.effects.kaleidoscopeSegments = 1;
+    project.sourceMapping.cropZoom = 1;
+    project.sourceMapping.cropDistribution = "center";
+    project.sourceMapping.preserveAspect = true;
+
+    const context = createMockContext();
+    const canvas = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn(() => context),
+    } as unknown as HTMLCanvasElement;
+
+    await renderProjectToCanvas(
+      project,
+      [stretchAsset],
+      new Map([[stretchAsset.id, { asset: stretchAsset, bitmap: {} as ImageBitmap }]]),
+      canvas,
+    );
+
+    expect(context.drawImage).toHaveBeenCalled();
+    expect(context.drawImage.mock.calls.some((call) =>
+      call[1] === 0 &&
+      call[2] === 0 &&
+      call[3] === 200 &&
+      call[4] === 100,
+    )).toBe(true);
+  });
+
+  it("uses centered cover crops for natural portrait and landscape image sources", async () => {
+    const project = createProjectView("Natural Image Fit");
+    project.canvas.width = 100;
+    project.canvas.height = 100;
+    project.layout.family = "grid";
+    project.layout.columns = 1;
+    project.layout.rows = 1;
+    project.layout.symmetryMode = "none";
+    project.layout.shapeMode = "rect";
+    project.compositing.overlap = 0;
+    project.effects.rotationJitter = 0;
+    project.effects.scaleJitter = 0;
+    project.effects.displacement = 0;
+    project.effects.distortion = 0;
+    project.effects.sharpen = 0;
+    project.effects.kaleidoscopeSegments = 1;
+    project.sourceMapping.cropZoom = 1;
+    project.sourceMapping.cropDistribution = "center";
+    project.sourceMapping.preserveAspect = false;
+
+    const renderWithAsset = async (nextAsset: SourceAsset) => {
+      project.sourceIds = [nextAsset.id];
+      project.layers[0]!.sourceIds = [nextAsset.id];
+      const context = createMockContext();
+      const canvas = {
+        width: 0,
+        height: 0,
+        getContext: vi.fn(() => context),
+      } as unknown as HTMLCanvasElement;
+
+      await renderProjectToCanvas(
+        project,
+        [nextAsset],
+        new Map([[nextAsset.id, { asset: nextAsset, bitmap: {} as ImageBitmap }]]),
+        canvas,
+      );
+
+      return context.drawImage.mock.calls;
+    };
+
+    const landscapeCalls = await renderWithAsset({
+      ...asset,
+      width: 200,
+      height: 100,
+      fitMode: "natural",
+    });
+    const portraitCalls = await renderWithAsset({
+      ...asset,
+      width: 100,
+      height: 200,
+      fitMode: "natural",
+    });
+
+    expect(landscapeCalls.some((call) =>
+      call[1] === 50 &&
+      call[2] === 0 &&
+      call[3] === 100 &&
+      call[4] === 100,
+    )).toBe(true);
+    expect(portraitCalls.some((call) =>
+      call[1] === 0 &&
+      call[2] === 50 &&
+      call[3] === 100 &&
+      call[4] === 100,
+    )).toBe(true);
   });
 
   it("uses distributed source crops when crop distribution is enabled", async () => {

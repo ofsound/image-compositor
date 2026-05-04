@@ -3317,6 +3317,27 @@ function applyCropZoom(crop: NormalizedRect, bounds: NormalizedRect, zoom: numbe
   };
 }
 
+function shouldPreserveAssetAspect(
+  project: LayerRenderProject,
+  asset: SourceAsset | undefined,
+) {
+  return asset?.kind === "image"
+    ? asset.fitMode === "natural"
+    : project.sourceMapping.preserveAspect;
+}
+
+function getNormalizedCropAspectRatio(
+  asset: SourceAsset | undefined,
+  targetAspectRatio: number,
+) {
+  const assetAspectRatio = asset
+    ? asset.width / Math.max(asset.height, 1)
+    : 1;
+  return assetAspectRatio > 0
+    ? targetAspectRatio / assetAspectRatio
+    : targetAspectRatio;
+}
+
 function getAtlasDimensions(
   project: LayerRenderProject,
   asset: SourceAsset,
@@ -3401,8 +3422,15 @@ function assignDistributedCrops(
         Math.abs(Math.sin(angleRadians)) > Math.abs(Math.cos(angleRadians))
           ? { x: 0, y: cursor, width: 1, height: span }
           : { x: cursor, y: 0, width: span, height: 1 };
-      const baseCrop = project.sourceMapping.preserveAspect
-        ? fitCropToAspect(atlasCell, slice.rect.width / slice.rect.height)
+      const asset = assets.find((entry) => entry.id === slice.assetId);
+      const baseCrop = shouldPreserveAssetAspect(project, asset)
+        ? fitCropToAspect(
+            atlasCell,
+            getNormalizedCropAspectRatio(
+              asset,
+              slice.rect.width / slice.rect.height,
+            ),
+          )
         : atlasCell;
 
       cropBySliceId.set(
@@ -3444,8 +3472,14 @@ function assignDistributedCrops(
         width: 1 / atlas.columns,
         height: 1 / atlas.rows,
       };
-      const baseCrop = project.sourceMapping.preserveAspect
-        ? fitCropToAspect(atlasCell, slice.rect.width / slice.rect.height)
+      const baseCrop = shouldPreserveAssetAspect(project, asset)
+        ? fitCropToAspect(
+            atlasCell,
+            getNormalizedCropAspectRatio(
+              asset,
+              slice.rect.width / slice.rect.height,
+            ),
+          )
         : atlasCell;
       cropBySliceId.set(
         slice.id,

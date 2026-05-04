@@ -200,6 +200,7 @@ function createImageAsset(projectId: string, id: string): SourceAsset {
   return {
     id,
     kind: "image",
+    fitMode: "stretch",
     projectId,
     name: `Image ${id}`,
     originalFileName: `${id}.jpg`,
@@ -1270,6 +1271,41 @@ describe("useAppStore import progress", () => {
         assets: [updatedPreparedAsset],
       }),
     );
+  });
+
+  it("updates image source fit mode metadata", async () => {
+    const project = useAppStore.getState().projects[0]!;
+    const asset = createImageAsset(project.id, "asset_image");
+    useAppStore.setState((state) => ({
+      ...state,
+      assets: [asset],
+      projects: [{ ...project, sourceIds: [asset.id] }],
+    }));
+
+    await useAppStore.getState().updateImageSourceFitMode(asset.id, "natural");
+
+    expect(useAppStore.getState().assets[0]).toEqual({
+      ...asset,
+      fitMode: "natural",
+    });
+    expect(persistAssetUpdatesAtomically).toHaveBeenCalledWith(
+      expect.objectContaining({
+        assets: [
+          {
+            asset: {
+              ...asset,
+              fitMode: "natural",
+            },
+            blobs: {
+              original: null,
+              normalized: null,
+              preview: null,
+            },
+          },
+        ],
+      }),
+    );
+    expect(useAppStore.getState().status).toBe("Image source fit updated.");
   });
 
   it("updates generated perlin sources while keeping the asset id", async () => {

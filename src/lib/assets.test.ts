@@ -93,6 +93,40 @@ describe("normalizeSourceAsset", () => {
     });
 
     expect(asset.kind).toBe("image");
+    if (asset.kind !== "image") {
+      throw new Error("Expected an image source asset.");
+    }
+    expect(asset.fitMode).toBe("stretch");
+  });
+
+  it("normalizes image fit mode to supported values", () => {
+    const baseAsset = {
+      id: "asset_a",
+      kind: "image" as const,
+      projectId: "project_test",
+      name: "Legacy Asset",
+      originalFileName: "legacy.png",
+      mimeType: "image/png",
+      width: 100,
+      height: 100,
+      orientation: 1,
+      originalPath: "assets/original/asset_a.png",
+      normalizedPath: "assets/normalized/asset_a.png",
+      previewPath: "assets/previews/asset_a.webp",
+      averageColor: "#112233",
+      palette: ["#112233"],
+      luminance: 0.2,
+      createdAt: "2026-04-01T00:00:00.000Z",
+    };
+
+    const naturalAsset = normalizeSourceAsset({ ...baseAsset, fitMode: "natural" });
+    const invalidAsset = normalizeSourceAsset({ ...baseAsset, fitMode: "invalid" });
+
+    if (naturalAsset.kind !== "image" || invalidAsset.kind !== "image") {
+      throw new Error("Expected image source assets.");
+    }
+    expect(naturalAsset.fitMode).toBe("natural");
+    expect(invalidAsset.fitMode).toBe("stretch");
   });
 
   it("normalizes legacy gradient assets to linear mode defaults", () => {
@@ -893,6 +927,37 @@ describe("generated sources", () => {
 
     expect(signature).toContain("|conic|");
     expect(signature).toContain("|#778899|0.25|0.4|0.6|0.8|0.2|45|180|1");
+  });
+
+  it("includes image fit mode in source signatures", () => {
+    const stretchAsset = normalizeSourceAsset({
+      id: "asset_image",
+      kind: "image",
+      fitMode: "stretch",
+      projectId: "project_test",
+      name: "Image",
+      originalFileName: "image.png",
+      mimeType: "image/png",
+      width: 320,
+      height: 240,
+      orientation: 1,
+      originalPath: "assets/original/asset_image.png",
+      normalizedPath: "assets/normalized/asset_image.png",
+      previewPath: "assets/previews/asset_image.webp",
+      averageColor: "#225577",
+      palette: ["#225577", "#88aacc"],
+      luminance: 0.2,
+      createdAt: "2026-04-01T00:00:00.000Z",
+    });
+    const naturalAsset = normalizeSourceAsset({
+      ...stretchAsset,
+      fitMode: "natural",
+    });
+
+    expect(getSourceContentSignature(stretchAsset)).not.toBe(
+      getSourceContentSignature(naturalAsset),
+    );
+    expect(getSourceContentSignature(naturalAsset)).toContain("|image|natural|");
   });
 
   it("includes the perlin recipe in source signatures", () => {

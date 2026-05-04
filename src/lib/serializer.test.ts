@@ -294,6 +294,7 @@ const bundle: ImportedProjectBundle = {
     {
       id: "asset_original",
       kind: "image",
+      fitMode: "stretch",
       projectId: "project_original",
       name: "Original",
       originalFileName: "original.png",

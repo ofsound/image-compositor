@@ -62,6 +62,8 @@ import type {
   CompositorLayer,
   DrawStroke,
   GradientSourceAsset,
+  ImageSourceAsset,
+  ImageSourceFitMode,
   PerlinSourceAsset,
   ProjectDocument,
   ProjectSnapshot,
@@ -295,6 +297,10 @@ interface AppState {
   addReactionSource: (input: ReactionSourceInput) => Promise<void>;
   addWaveSource: (input: WaveSourceInput) => Promise<void>;
   removeSource: (assetId: string) => Promise<void>;
+  updateImageSourceFitMode: (
+    assetId: string,
+    fitMode: ImageSourceFitMode,
+  ) => Promise<void>;
   updateGeneratedSource: (
     assetId: string,
     input:
@@ -1946,6 +1952,78 @@ export const useAppStore = create<AppState>((set, get) => {
           error instanceof Error
             ? `Could not remove source: ${error.message}`
             : "Could not remove source.",
+      },
+    );
+  },
+
+  async updateImageSourceFitMode(assetId, fitMode) {
+    await runWorkspaceAction(
+      async () => {
+        const activeProject = getActiveProject(get());
+        if (!activeProject) return;
+
+        const asset = get().assets.find(
+          (entry): entry is ImageSourceAsset =>
+            entry.id === assetId &&
+            entry.projectId === activeProject.id &&
+            entry.kind === "image",
+        );
+        if (!asset || asset.fitMode === fitMode) return;
+
+        const updatedAsset: PreparedAssetRecord = {
+          asset: {
+            ...asset,
+            fitMode,
+          },
+          blobs: {
+            original: null,
+            normalized: null,
+            preview: null,
+          },
+        };
+        const updatedProject = normalizeProjectDocument({
+          ...createProjectMutationBase(activeProject),
+          updatedAt: new Date().toISOString(),
+        });
+
+        await persistAssetUpdatesAtomically({
+          projectDoc: updatedProject,
+          assets: [updatedAsset],
+        });
+
+        set((state) => {
+          const historyByProject = clearProjectHistory(
+            state.historyByProject,
+            updatedProject.id,
+          );
+          return {
+            assets: sortAssetsByCreated(
+              state.assets.map((entry) =>
+                entry.id === updatedAsset.asset.id ? updatedAsset.asset : entry,
+              ),
+            ),
+            projects: sortByUpdated(
+              state.projects.map((entry) =>
+                entry.id === updatedProject.id ? updatedProject : entry,
+              ),
+            ),
+            historyByProject,
+            status: "Image source fit updated.",
+            ...getHistoryFlags(historyByProject, state.activeProjectId),
+          };
+        });
+
+        if (useElectron) {
+          await syncElectronActiveProjectBundle(updatedProject);
+        }
+      },
+      {
+        busy: true,
+        startStatus: "Updating source fit…",
+        getErrorStatus: (error) =>
+          error instanceof Error
+            ? `Could not update source fit: ${error.message}`
+            : "Could not update source fit.",
       },
     );
   },

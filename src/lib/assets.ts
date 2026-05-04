@@ -7,6 +7,7 @@ import type {
   GradientDirection,
   GradientMode,
   GradientSourceRecipe,
+  ImageSourceFitMode,
   PerlinSourceRecipe,
   ProcessedAssetPayload,
   ReactionSourceRecipe,
@@ -59,6 +60,7 @@ const DEFAULT_WAVE_INTERFERENCE = 0.65;
 const DEFAULT_WAVE_DIRECTIONALITY = 0.6;
 const DEFAULT_WAVE_DISTORTION = 0.2;
 const DEFAULT_WAVE_SEED = 1;
+export const DEFAULT_IMAGE_SOURCE_FIT_MODE: ImageSourceFitMode = "stretch";
 
 export const ACCEPTED_IMAGE_TYPES = COMMON_EXTENSIONS.join(",");
 
@@ -145,6 +147,7 @@ export interface PreparedAssetRecord {
 
 type LegacySourceAsset = Omit<SourceAsset, "kind"> & {
   kind?: SourceKind | "noise";
+  fitMode?: unknown;
   recipe?: unknown;
 };
 
@@ -162,6 +165,12 @@ function clampNormalized(value: number, fallback: number) {
 
 function clampRange(value: number, min: number, max: number, fallback: number) {
   return Number.isFinite(value) ? clamp(value, min, max) : fallback;
+}
+
+function normalizeImageSourceFitMode(value: unknown): ImageSourceFitMode {
+  return value === "natural" || value === "stretch"
+    ? value
+    : DEFAULT_IMAGE_SOURCE_FIT_MODE;
 }
 
 function getDefaultGradientRecipe(): GradientSourceRecipe {
@@ -1255,6 +1264,7 @@ export function getSourceContentSignature(asset: SourceAsset) {
   const base = [
     asset.id,
     asset.kind,
+    asset.kind === "image" ? asset.fitMode : "",
     asset.normalizedPath,
     asset.previewPath,
     asset.averageColor,
@@ -1557,6 +1567,7 @@ export function normalizeSourceAsset(asset: LegacySourceAsset): SourceAsset {
   return {
     ...asset,
     kind: "image",
+    fitMode: normalizeImageSourceFitMode(asset.fitMode),
   };
 }
 
@@ -1607,6 +1618,7 @@ export async function persistProcessedAsset(
     asset: normalizeSourceAsset({
       id: assetId,
       kind: "image",
+      fitMode: DEFAULT_IMAGE_SOURCE_FIT_MODE,
       projectId,
       name: file.name.replace(/\.[^.]+$/, ""),
       originalFileName: file.name,

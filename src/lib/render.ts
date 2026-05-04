@@ -904,7 +904,12 @@ function getSourceRect(
   let sourceX = 0;
   let sourceY = 0;
 
-  if (project.sourceMapping.preserveAspect) {
+  const preserveAspect =
+    asset.kind === "image"
+      ? asset.fitMode === "natural"
+      : project.sourceMapping.preserveAspect;
+
+  if (preserveAspect) {
     if (assetRatio > rectRatio) {
       sourceHeight = asset.height;
       sourceWidth = sourceHeight * rectRatio;
@@ -916,10 +921,12 @@ function getSourceRect(
     }
   }
 
+  const cropCenterX = sourceX + sourceWidth / 2;
+  const cropCenterY = sourceY + sourceHeight / 2;
   sourceWidth /= zoom;
   sourceHeight /= zoom;
-  sourceX = clamp(sourceX + (asset.width - sourceWidth) / 2, 0, asset.width - sourceWidth);
-  sourceY = clamp(sourceY + (asset.height - sourceHeight) / 2, 0, asset.height - sourceHeight);
+  sourceX = clamp(cropCenterX - sourceWidth / 2, 0, asset.width - sourceWidth);
+  sourceY = clamp(cropCenterY - sourceHeight / 2, 0, asset.height - sourceHeight);
 
   return {
     sourceX,

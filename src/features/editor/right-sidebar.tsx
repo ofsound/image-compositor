@@ -3118,41 +3118,6 @@ export function RightSidebar({
                 <InspectorGroup title="Motion">
                   <InspectorFieldGrid>
                     <SliderField
-                      label="Blur"
-                      min={0}
-                      max={200}
-                      step={0.1}
-                      value={activeProjectView.effects.blur}
-                      defaultValue={DEFAULT_EFFECTS.blur}
-                      formatter={(value) => `${value.toFixed(1)} px`}
-                      onChange={(value) =>
-                        patchProject((project) => ({
-                          ...project,
-                          effects: {
-                            ...project.effects,
-                            blur: value,
-                          },
-                        }))
-                      }
-                    />
-                    <SliderField
-                      label="Sharpen"
-                      min={0}
-                      max={1}
-                      step={0.01}
-                      value={activeProjectView.effects.sharpen}
-                      defaultValue={DEFAULT_EFFECTS.sharpen}
-                      onChange={(value) =>
-                        patchProject((project) => ({
-                          ...project,
-                          effects: {
-                            ...project.effects,
-                            sharpen: value,
-                          },
-                        }))
-                      }
-                    />
-                    <SliderField
                       label="Rotation Jitter"
                       min={0}
                       max={180}
@@ -3552,6 +3517,41 @@ export function RightSidebar({
 
                 <InspectorGroup title="Layer Finish" className="xl:col-span-2">
                   <InspectorFieldGrid className="sm:grid-cols-2">
+                    <SliderField
+                      label="Blur"
+                      min={0}
+                      max={200}
+                      step={0.1}
+                      value={activeProjectView.effects.blur}
+                      defaultValue={DEFAULT_EFFECTS.blur}
+                      formatter={(value) => `${value.toFixed(1)} px`}
+                      onChange={(value) =>
+                        patchProject((project) => ({
+                          ...project,
+                          effects: {
+                            ...project.effects,
+                            blur: value,
+                          },
+                        }))
+                      }
+                    />
+                    <SliderField
+                      label="Sharpen"
+                      min={0}
+                      max={1}
+                      step={0.01}
+                      value={activeProjectView.effects.sharpen}
+                      defaultValue={DEFAULT_EFFECTS.sharpen}
+                      onChange={(value) =>
+                        patchProject((project) => ({
+                          ...project,
+                          effects: {
+                            ...project.effects,
+                            sharpen: value,
+                          },
+                        }))
+                      }
+                    />
                     <SliderField
                       label="Shadow X"
                       min={-200}

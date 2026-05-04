@@ -1422,6 +1422,17 @@ describe("App inspector grouping", () => {
     expect(within(layerControls).getByText("Assignment")).toBeInTheDocument();
     expect(within(layerControls).getByText("Motion")).toBeInTheDocument();
     expect(within(layerControls).getByText("Layer Finish")).toBeInTheDocument();
+    const getInspectorGroup = (title: string) => {
+      const group = within(layerControls).getByText(title).closest("section");
+      expect(group).not.toBeNull();
+      return group as HTMLElement;
+    };
+    const motionGroup = getInspectorGroup("Motion");
+    const layerFinishGroup = getInspectorGroup("Layer Finish");
+    expect(within(motionGroup).queryByLabelText("Blur")).not.toBeInTheDocument();
+    expect(within(motionGroup).queryByLabelText("Sharpen")).not.toBeInTheDocument();
+    expect(within(layerFinishGroup).getByLabelText("Blur")).toBeInTheDocument();
+    expect(within(layerFinishGroup).getByLabelText("Sharpen")).toBeInTheDocument();
     expect(
       within(layerControls).queryByText("Canvas Background"),
     ).not.toBeInTheDocument();

@@ -11,7 +11,6 @@ import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -582,10 +581,6 @@ export function SourceEditorDialog({
           <DialogTitle>
             {editingSource ? "Edit source" : "Add source"}
           </DialogTitle>
-          <DialogDescription>
-            Build the source pool from imported images, solid fills, and
-            generated gradients and procedural textures.
-          </DialogDescription>
         </DialogHeader>
         <Tabs
           value={sourceDialogMode}

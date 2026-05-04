@@ -1,7 +1,10 @@
 import { fireEvent, render, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import { PreviewStage } from "@/components/app/preview-stage";
+import {
+  getContainedCanvasSize,
+  PreviewStage,
+} from "@/components/app/preview-stage";
 import { createProjectDocument } from "@/lib/project-defaults";
 import { buildBitmapMap } from "@/lib/render";
 import type { SourceAsset } from "@/types/project";
@@ -35,6 +38,21 @@ const asset: SourceAsset = {
 };
 
 describe("PreviewStage", () => {
+  it("fits the displayed canvas inside the available stage without clipping", () => {
+    expect(getContainedCanvasSize(1200, 700, 3000, 3000)).toEqual({
+      width: 700,
+      height: 700,
+    });
+    expect(getContainedCanvasSize(1200, 500, 3000, 1500)).toEqual({
+      width: 1000,
+      height: 500,
+    });
+    expect(getContainedCanvasSize(500, 1200, 1500, 3000)).toEqual({
+      width: 500,
+      height: 1000,
+    });
+  });
+
   it("reports the exact rendered preview snapshot after painting", async () => {
     const project = createProjectDocument("Preview Snapshot");
     const canvasRef = { current: document.createElement("canvas") };

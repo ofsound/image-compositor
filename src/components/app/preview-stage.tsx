@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { type CSSProperties, useEffect, useRef, useState } from "react";
 
 import { makeId } from "@/lib/id";
 import { getSourceContentSignature } from "@/lib/assets";
@@ -11,6 +11,11 @@ import type {
 } from "@/types/project";
 
 const MIN_DRAW_POINT_DISTANCE = 2;
+
+interface ContainedCanvasSize {
+  width: number;
+  height: number;
+}
 
 export interface PreviewRenderState {
   ready: boolean;
@@ -25,6 +30,37 @@ interface PreviewStageProps {
   drawEnabled?: boolean;
   drawBrushSize?: number;
   onAppendDrawStroke?: (stroke: DrawStroke) => Promise<void>;
+}
+
+export function getContainedCanvasSize(
+  containerWidth: number,
+  containerHeight: number,
+  canvasWidth: number,
+  canvasHeight: number,
+): ContainedCanvasSize | null {
+  if (
+    containerWidth <= 0 ||
+    containerHeight <= 0 ||
+    canvasWidth <= 0 ||
+    canvasHeight <= 0
+  ) {
+    return null;
+  }
+
+  const canvasAspect = canvasWidth / canvasHeight;
+  const containerAspect = containerWidth / containerHeight;
+
+  if (containerAspect > canvasAspect) {
+    return {
+      width: containerHeight * canvasAspect,
+      height: containerHeight,
+    };
+  }
+
+  return {
+    width: containerWidth,
+    height: containerWidth / canvasAspect,
+  };
 }
 
 function getProjectPoint(
@@ -73,10 +109,44 @@ export function PreviewStage({
   drawBrushSize = 160,
   onAppendDrawStroke,
 }: PreviewStageProps) {
+  const stageBoundsRef = useRef<HTMLDivElement>(null);
   const overlayCanvasRef = useRef<HTMLCanvasElement>(null);
   const pointerStrokeRef = useRef<DrawStroke | null>(null);
   const [draftStroke, setDraftStroke] = useState<DrawStroke | null>(null);
+  const [displaySize, setDisplaySize] = useState<ContainedCanvasSize | null>(null);
   const assetSignature = assets.map(getSourceContentSignature).join("|");
+
+  useEffect(() => {
+    const stageBounds = stageBoundsRef.current;
+    if (!stageBounds) return;
+
+    const updateDisplaySize = () => {
+      const nextSize = getContainedCanvasSize(
+        stageBounds.clientWidth,
+        stageBounds.clientHeight,
+        project.canvas.width,
+        project.canvas.height,
+      );
+      setDisplaySize((currentSize) =>
+        currentSize?.width === nextSize?.width &&
+        currentSize?.height === nextSize?.height
+          ? currentSize
+          : nextSize,
+      );
+    };
+
+    updateDisplaySize();
+
+    if (typeof ResizeObserver === "undefined") {
+      window.addEventListener("resize", updateDisplaySize);
+      return () => window.removeEventListener("resize", updateDisplaySize);
+    }
+
+    const resizeObserver = new ResizeObserver(updateDisplaySize);
+    resizeObserver.observe(stageBounds);
+
+    return () => resizeObserver.disconnect();
+  }, [project.canvas.height, project.canvas.width]);
 
   useEffect(() => {
     let cancelled = false;
@@ -180,76 +250,92 @@ export function PreviewStage({
     }
   };
 
+  const canvasFrameStyle: CSSProperties = displaySize
+    ? {
+        width: `${displaySize.width}px`,
+        height: `${displaySize.height}px`,
+      }
+    : {
+        aspectRatio: `${project.canvas.width} / ${project.canvas.height}`,
+        maxHeight: "100%",
+        maxWidth: "100%",
+        width: "100%",
+      };
+
   return (
-    <div className="relative flex h-full min-h-0 items-center justify-center overflow-hidden rounded-lg bg-preview-bg p-3">
-      <div className="relative inline-block max-h-full max-w-full">
-        <canvas
-          ref={canvasRef}
-          className="block h-auto max-h-full w-full max-w-full rounded-md bg-preview-canvas object-contain"
-          style={{ aspectRatio: `${project.canvas.width} / ${project.canvas.height}` }}
-        />
-        <canvas
-          ref={overlayCanvasRef}
-          width={project.canvas.width}
-          height={project.canvas.height}
-          className="absolute inset-0 h-full w-full rounded-md"
-          style={{
-            cursor: drawEnabled ? "crosshair" : "default",
-            pointerEvents: drawEnabled ? "auto" : "none",
-            touchAction: "none",
-          }}
-          onPointerDown={(event) => {
-            if (
-              !drawEnabled ||
-              !onAppendDrawStroke ||
-              event.button !== 0 ||
-              event.pointerType === "touch" ||
-              event.pointerType === "pen"
-            ) {
-              return;
-            }
+    <div className="relative flex h-full min-h-0 overflow-hidden rounded-lg bg-preview-bg p-3">
+      <div
+        ref={stageBoundsRef}
+        className="relative flex min-h-0 w-full items-center justify-center"
+      >
+        <div className="relative shrink-0" style={canvasFrameStyle}>
+          <canvas
+            ref={canvasRef}
+            className="block h-full w-full rounded-md bg-preview-canvas"
+          />
+          <canvas
+            ref={overlayCanvasRef}
+            width={project.canvas.width}
+            height={project.canvas.height}
+            className="absolute inset-0 h-full w-full rounded-md"
+            style={{
+              cursor: drawEnabled ? "crosshair" : "default",
+              pointerEvents: drawEnabled ? "auto" : "none",
+              touchAction: "none",
+            }}
+            onPointerDown={(event) => {
+              if (
+                !drawEnabled ||
+                !onAppendDrawStroke ||
+                event.button !== 0 ||
+                event.pointerType === "touch" ||
+                event.pointerType === "pen"
+              ) {
+                return;
+              }
 
-            const overlay = overlayCanvasRef.current;
-            const previewCanvas = canvasRef.current;
-            if (!overlay || !previewCanvas) return;
+              const overlay = overlayCanvasRef.current;
+              const previewCanvas = canvasRef.current;
+              if (!overlay || !previewCanvas) return;
 
-            const point = getProjectPoint(event.nativeEvent, previewCanvas, project);
-            const stroke: DrawStroke = {
-              id: makeId("stroke"),
-              points: [point],
-            };
+              const point = getProjectPoint(event.nativeEvent, previewCanvas, project);
+              const stroke: DrawStroke = {
+                id: makeId("stroke"),
+                points: [point],
+              };
 
-            pointerStrokeRef.current = stroke;
-            setDraftStroke(stroke);
-            event.currentTarget.setPointerCapture?.(event.pointerId);
-            event.preventDefault();
-          }}
-          onPointerMove={(event) => {
-            const activeStroke = pointerStrokeRef.current;
-            const overlay = overlayCanvasRef.current;
-            const previewCanvas = canvasRef.current;
-            if (!drawEnabled || !activeStroke || !overlay || !previewCanvas) return;
+              pointerStrokeRef.current = stroke;
+              setDraftStroke(stroke);
+              event.currentTarget.setPointerCapture?.(event.pointerId);
+              event.preventDefault();
+            }}
+            onPointerMove={(event) => {
+              const activeStroke = pointerStrokeRef.current;
+              const overlay = overlayCanvasRef.current;
+              const previewCanvas = canvasRef.current;
+              if (!drawEnabled || !activeStroke || !overlay || !previewCanvas) return;
 
-            const nextPoints = appendStrokePoint(
-              activeStroke.points,
-              getProjectPoint(event.nativeEvent, previewCanvas, project),
-            );
+              const nextPoints = appendStrokePoint(
+                activeStroke.points,
+                getProjectPoint(event.nativeEvent, previewCanvas, project),
+              );
 
-            if (nextPoints === activeStroke.points) {
-              return;
-            }
+              if (nextPoints === activeStroke.points) {
+                return;
+              }
 
-            const nextStroke = { ...activeStroke, points: nextPoints };
-            pointerStrokeRef.current = nextStroke;
-            setDraftStroke(nextStroke);
-          }}
-          onPointerUp={(event) => {
-            void finalizeStroke(event);
-          }}
-          onPointerCancel={(event) => {
-            void finalizeStroke(event);
-          }}
-        />
+              const nextStroke = { ...activeStroke, points: nextPoints };
+              pointerStrokeRef.current = nextStroke;
+              setDraftStroke(nextStroke);
+            }}
+            onPointerUp={(event) => {
+              void finalizeStroke(event);
+            }}
+            onPointerCancel={(event) => {
+              void finalizeStroke(event);
+            }}
+          />
+        </div>
       </div>
     </div>
   );

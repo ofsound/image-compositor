@@ -121,6 +121,7 @@ interface ProjectHistoryState {
 }
 
 type HistoryByProject = Record<string, ProjectHistoryState>;
+type ExportFilenameReservations = Record<string, boolean>;
 
 interface AppState {
   ready: boolean;
@@ -133,6 +134,7 @@ interface AppState {
   versions: ProjectVersion[];
   activeProjectId: string | null;
   historyByProject: HistoryByProject;
+  exportFilenameReservations: ExportFilenameReservations;
   canUndo: boolean;
   canRedo: boolean;
   bootstrap: () => Promise<void>;
@@ -210,6 +212,36 @@ function sortAssetsByCreated(assets: SourceAsset[]) {
 
 function sortVersionsByCreated(versions: ProjectVersion[]) {
   return [...versions].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+function getProjectExportSlug(title: string) {
+  return title.trim().toLowerCase().replace(/\s+/g, "-") || "composition";
+}
+
+function reserveUniqueExportFilename(
+  reservations: ExportFilenameReservations,
+  preferredFilename: string,
+) {
+  const extensionMatch = preferredFilename.match(/(\.[^.]+)$/);
+  const extension = extensionMatch?.[1] ?? "";
+  const stem = extension
+    ? preferredFilename.slice(0, -extension.length)
+    : preferredFilename;
+  let filename = preferredFilename;
+  let suffix = 2;
+
+  while (reservations[filename]) {
+    filename = `${stem}-${suffix}${extension}`;
+    suffix += 1;
+  }
+
+  return {
+    filename,
+    reservations: {
+      ...reservations,
+      [filename]: true,
+    },
+  };
 }
 
 function getLiveProjects(projects: ProjectDocument[]) {
@@ -799,6 +831,7 @@ export const useAppStore = create<AppState>((set, get) => {
   versions: [],
   activeProjectId: null,
   historyByProject: {},
+  exportFilenameReservations: {},
   canUndo: false,
   canRedo: false,
 
@@ -1982,11 +2015,16 @@ export const useAppStore = create<AppState>((set, get) => {
         const bitmaps = await loadNormalizedAssetBitmapMap(assets);
         const blob = await exportProjectImage(project, assets, bitmaps);
         const extension = project.export.format === "image/jpeg" ? "jpg" : "png";
-        downloadBlob(
-          blob,
-          `${project.title.toLowerCase().replace(/\s+/g, "-")}.${extension}`,
+        const preferredFilename = `${getProjectExportSlug(project.title)}.${extension}`;
+        const { filename, reservations } = reserveUniqueExportFilename(
+          get().exportFilenameReservations,
+          preferredFilename,
         );
-        set({ status: "Export saved." });
+        downloadBlob(blob, filename);
+        set({
+          exportFilenameReservations: reservations,
+          status: "Export saved.",
+        });
       },
       {
         busy: true,

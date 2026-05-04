@@ -5,6 +5,7 @@ const {
   captureAssetSnapshot,
   createGeneratedSourceAsset,
   deleteAssetsAtomically,
+  downloadBlob,
   buildBitmapMap,
   renderProjectLayerToCanvas,
   renderProjectToCanvas,
@@ -59,10 +60,11 @@ const {
   captureAssetSnapshot: vi.fn(),
   createGeneratedSourceAsset: vi.fn(),
   deleteAssetsAtomically: vi.fn(async () => undefined),
+  downloadBlob: vi.fn(),
   buildBitmapMap: vi.fn(async () => new Map()),
   renderProjectLayerToCanvas: vi.fn(async () => undefined),
   renderProjectToCanvas: vi.fn(async () => undefined),
-  exportProjectImage: vi.fn(),
+  exportProjectImage: vi.fn(async () => new Blob(["export"])),
   exportProjectBundle: vi.fn(),
   loadProjectBundle: vi.fn(),
   persistImportedProjectBundle: vi.fn(async () => undefined),
@@ -92,7 +94,7 @@ vi.mock("@/lib/assets", () => ({
 }));
 
 vi.mock("@/lib/db", () => ({ db }));
-vi.mock("@/lib/download", () => ({ downloadBlob: vi.fn() }));
+vi.mock("@/lib/download", () => ({ downloadBlob }));
 vi.mock("@/lib/image-worker-client", () => ({ processImageFile }));
 vi.mock("@/lib/render", () => ({
   buildBitmapMap,
@@ -158,6 +160,7 @@ function resetStore() {
     versions: [],
     activeProjectId: project.id,
     historyByProject: {},
+    exportFilenameReservations: {},
     canUndo: false,
     canRedo: false,
   });
@@ -1369,6 +1372,55 @@ describe("useAppStore import progress", () => {
     expect(useAppStore.getState().busy).toBe(false);
     expect(useAppStore.getState().status).toBe(
       "Could not export image: render failed",
+    );
+    expect(useAppStore.getState().exportFilenameReservations).toEqual({});
+  });
+
+  it("suggests unique image export filenames during the current session", async () => {
+    const project = useAppStore.getState().projects[0]!;
+
+    await useAppStore.getState().exportCurrentImage(project, [], async () => null);
+    await useAppStore.getState().exportCurrentImage(project, [], async () => null);
+    await useAppStore.getState().exportCurrentImage(project, [], async () => null);
+
+    expect(downloadBlob).toHaveBeenNthCalledWith(
+      1,
+      expect.any(Blob),
+      "history-test.png",
+    );
+    expect(downloadBlob).toHaveBeenNthCalledWith(
+      2,
+      expect.any(Blob),
+      "history-test-2.png",
+    );
+    expect(downloadBlob).toHaveBeenNthCalledWith(
+      3,
+      expect.any(Blob),
+      "history-test-3.png",
+    );
+  });
+
+  it("tracks image export filename reservations per exact extension", async () => {
+    const project = {
+      ...useAppStore.getState().projects[0]!,
+      export: {
+        ...useAppStore.getState().projects[0]!.export,
+        format: "image/jpeg" as const,
+      },
+    };
+
+    await useAppStore.getState().exportCurrentImage(project, [], async () => null);
+    await useAppStore.getState().exportCurrentImage(project, [], async () => null);
+
+    expect(downloadBlob).toHaveBeenNthCalledWith(
+      1,
+      expect.any(Blob),
+      "history-test.jpg",
+    );
+    expect(downloadBlob).toHaveBeenNthCalledWith(
+      2,
+      expect.any(Blob),
+      "history-test-2.jpg",
     );
   });
 

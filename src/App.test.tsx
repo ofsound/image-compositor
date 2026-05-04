@@ -1157,6 +1157,46 @@ describe("App conditional sliders", () => {
     expectSliderHidden("Block Depth");
   });
 
+  it("edits algorithmic variation settings per selected target", async () => {
+    const state = createStoreState({
+      family: "grid",
+      shapeMode: "rect",
+      symmetryMode: "none",
+      strategy: "random",
+    });
+    mockStoreState(state);
+    const user = userEvent.setup();
+
+    render(<App />);
+
+    expect(screen.getByText("Algorithmic Variation")).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Modulation Target" })).toBeInTheDocument();
+    expect(screen.getByRole("combobox", { name: "Modulation Pattern" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("switch", { name: "Enable Modulation" }));
+    let [[update]] = state.updateProject.mock.calls.slice(-1);
+    let nextProject = createProjectEditorView(update(structuredClone(state.projects[0]!)));
+    expect(nextProject.effects.elementModulations.rotation.enabled).toBe(true);
+
+    state.updateProject.mockClear();
+    await user.click(screen.getByRole("combobox", { name: "Modulation Pattern" }));
+    await user.click(await screen.findByRole("option", { name: "Saw" }));
+    [[update]] = state.updateProject.mock.calls.slice(-1);
+    nextProject = createProjectEditorView(update(structuredClone(state.projects[0]!)));
+    expect(nextProject.effects.elementModulations.rotation.pattern).toBe("saw");
+
+    await user.click(screen.getByRole("combobox", { name: "Modulation Target" }));
+    await user.click(await screen.findByRole("option", { name: "Scale" }));
+
+    state.updateProject.mockClear();
+    fireEvent.keyDown(screen.getByLabelText("Amount"), { key: "End" });
+    fireEvent.keyUp(screen.getByLabelText("Amount"), { key: "End" });
+    [[update]] = state.updateProject.mock.calls.slice(-1);
+    nextProject = createProjectEditorView(update(structuredClone(state.projects[0]!)));
+    expect(nextProject.effects.elementModulations.scale.amount).toBe(2);
+    expect(nextProject.effects.elementModulations.rotation.amount).toBe(0);
+  });
+
   it("hides geometry and shows fractal controls for the fractal family", async () => {
     renderApp({
       family: "fractal",

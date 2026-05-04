@@ -96,6 +96,28 @@ describe("createProjectDocument", () => {
     expect(project.effects.kaleidoscopeRotationDrift).toBe(0);
     expect(project.effects.kaleidoscopeScaleFalloff).toBe(0);
     expect(project.effects.kaleidoscopeOpacity).toBe(0.2);
+    expect(Object.keys(project.effects.elementModulations)).toEqual([
+      "rotation",
+      "scale",
+      "displacementX",
+      "displacementY",
+      "opacity",
+      "distortion",
+      "wedgeSweep",
+      "threeDZ",
+      "threeDTwist",
+      "symmetryDrift",
+    ]);
+    expect(project.effects.elementModulations.rotation).toEqual({
+      enabled: false,
+      pattern: "sine",
+      amount: 0,
+      frequency: 1,
+      phase: 0,
+      originX: 0.5,
+      originY: 0.5,
+      axisAngle: 0,
+    });
     expect(project.finish.shadowOffsetX).toBe(0);
     expect(project.finish.shadowOffsetY).toBe(0);
     expect(project.finish.shadowBlur).toBe(0);
@@ -798,6 +820,8 @@ describe("createProjectDocument", () => {
     expect(normalized.kaleidoscopeRotationDrift).toBe(0);
     expect(normalized.kaleidoscopeScaleFalloff).toBe(0);
     expect(normalized.kaleidoscopeOpacity).toBe(0.2);
+    expect(normalized.elementModulations.rotation.enabled).toBe(false);
+    expect(normalized.elementModulations.rotation.pattern).toBe("sine");
   });
 
   it("normalizes legacy projects without block controls to defaults", () => {

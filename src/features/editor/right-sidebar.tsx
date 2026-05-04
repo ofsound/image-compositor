@@ -18,7 +18,12 @@ import {
   InspectorGroup,
   InspectorFieldGrid,
 } from "@/components/app/inspector-group";
-import type { GeometryShape } from "@/types/project";
+import type {
+  ElementModulationPattern,
+  ElementModulationSettings,
+  ElementModulationTarget,
+  GeometryShape,
+} from "@/types/project";
 
 import { coerceShapeModeForFamily } from "@/lib/layout-utils";
 import {
@@ -99,6 +104,84 @@ interface RightSidebarProps {
   geometryValue: GeometryShape;
 }
 
+const ELEMENT_MODULATION_TARGET_OPTIONS: Array<{
+  value: ElementModulationTarget;
+  label: string;
+}> = [
+  { value: "rotation", label: "Rotation" },
+  { value: "scale", label: "Scale" },
+  { value: "displacementX", label: "Displace X" },
+  { value: "displacementY", label: "Displace Y" },
+  { value: "opacity", label: "Opacity" },
+  { value: "distortion", label: "Distortion" },
+  { value: "wedgeSweep", label: "Wedge Sweep" },
+  { value: "threeDZ", label: "3D Z" },
+  { value: "threeDTwist", label: "3D Twist" },
+  { value: "symmetryDrift", label: "Symmetry Drift" },
+];
+
+const ELEMENT_MODULATION_PATTERN_OPTIONS: Array<{
+  value: ElementModulationPattern;
+  label: string;
+}> = [
+  { value: "sine", label: "Sine" },
+  { value: "triangle", label: "Triangle" },
+  { value: "saw", label: "Saw" },
+  { value: "checker", label: "Checker" },
+  { value: "linear", label: "Linear" },
+  { value: "rings", label: "Rings" },
+  { value: "spiral", label: "Spiral" },
+  { value: "depth", label: "Depth" },
+];
+
+function isElementModulationTarget(value: string): value is ElementModulationTarget {
+  return ELEMENT_MODULATION_TARGET_OPTIONS.some((option) => option.value === value);
+}
+
+function isElementModulationPattern(value: string): value is ElementModulationPattern {
+  return ELEMENT_MODULATION_PATTERN_OPTIONS.some((option) => option.value === value);
+}
+
+function getElementModulationAmountConfig(target: ElementModulationTarget) {
+  if (target === "rotation" || target === "wedgeSweep" || target === "threeDTwist") {
+    return {
+      max: 180,
+      step: 1,
+      formatter: (value: number) => `${Math.round(value)}°`,
+    };
+  }
+
+  if (target === "displacementX" || target === "displacementY") {
+    return {
+      max: 500,
+      step: 1,
+      formatter: (value: number) => `${Math.round(value)} px`,
+    };
+  }
+
+  if (target === "opacity") {
+    return {
+      max: 100,
+      step: 1,
+      formatter: (value: number) => `${Math.round(value)}%`,
+    };
+  }
+
+  if (target === "threeDZ" || target === "symmetryDrift") {
+    return {
+      max: 1,
+      step: 0.01,
+      formatter: (value: number) => value.toFixed(2),
+    };
+  }
+
+  return {
+    max: target === "scale" ? 2 : 0.8,
+    step: 0.01,
+    formatter: (value: number) => value.toFixed(2),
+  };
+}
+
 export function RightSidebar({
   previewExpanded,
   activeProjectView,
@@ -132,6 +215,8 @@ export function RightSidebar({
 }: RightSidebarProps) {
   const svgUploadInputRef = useRef<HTMLInputElement>(null);
   const [svgUploadError, setSvgUploadError] = useState<string | null>(null);
+  const [selectedModulationTarget, setSelectedModulationTarget] =
+    useState<ElementModulationTarget>("rotation");
 
   if (previewExpanded) return null;
 
@@ -142,6 +227,28 @@ export function RightSidebar({
     isFractalFamily && isRadialSymmetry
       ? FRACTAL_RADIAL_SYMMETRY_COPY_LIMIT
       : 12;
+  const selectedModulation =
+    activeProjectView.effects.elementModulations[selectedModulationTarget];
+  const selectedModulationAmountConfig = getElementModulationAmountConfig(
+    selectedModulationTarget,
+  );
+  const patchSelectedModulation = (
+    patch: Partial<ElementModulationSettings>,
+  ) => {
+    patchProject((project) => ({
+      ...project,
+      effects: {
+        ...project.effects,
+        elementModulations: {
+          ...project.effects.elementModulations,
+          [selectedModulationTarget]: {
+            ...project.effects.elementModulations[selectedModulationTarget],
+            ...patch,
+          },
+        },
+      },
+    }));
+  };
 
   return (
     <div className="flex min-h-0 flex-col gap-3">
@@ -2543,6 +2650,150 @@ export function RightSidebar({
                         }))
                       }
                     />
+                    <ControlBlock label="Algorithmic Variation">
+                      <div className="grid gap-3 rounded-md border border-border-subtle bg-surface-sunken/50 p-3 sm:grid-cols-2">
+                        <ControlBlock label="Target">
+                          <Select
+                            value={selectedModulationTarget}
+                            onValueChange={(value) => {
+                              if (!isElementModulationTarget(value)) return;
+                              setSelectedModulationTarget(value);
+                            }}
+                          >
+                            <SelectTrigger aria-label="Modulation Target">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {ELEMENT_MODULATION_TARGET_OPTIONS.map((option) => (
+                                <SelectItem key={option.value} value={option.value}>
+                                  {option.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </ControlBlock>
+                        <ControlBlock label="Enabled">
+                          <div className="flex h-9 items-center justify-end rounded-md bg-surface-muted px-3">
+                            <Switch
+                              aria-label="Enable Modulation"
+                              checked={selectedModulation.enabled}
+                              onCheckedChange={(checked) =>
+                                patchSelectedModulation({ enabled: checked })
+                              }
+                            />
+                          </div>
+                        </ControlBlock>
+                        <ControlBlock label="Pattern" className="sm:col-span-2">
+                          <Select
+                            value={selectedModulation.pattern}
+                            onValueChange={(value) => {
+                              if (!isElementModulationPattern(value)) return;
+                              patchSelectedModulation({ pattern: value });
+                            }}
+                          >
+                            <SelectTrigger aria-label="Modulation Pattern">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {ELEMENT_MODULATION_PATTERN_OPTIONS.map((option) => (
+                                <SelectItem key={option.value} value={option.value}>
+                                  {option.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </ControlBlock>
+                        <SliderField
+                          label="Amount"
+                          min={0}
+                          max={selectedModulationAmountConfig.max}
+                          step={selectedModulationAmountConfig.step}
+                          value={selectedModulation.amount}
+                          defaultValue={
+                            DEFAULT_EFFECTS.elementModulations[selectedModulationTarget]
+                              .amount
+                          }
+                          formatter={selectedModulationAmountConfig.formatter}
+                          onChange={(value) =>
+                            patchSelectedModulation({ amount: value })
+                          }
+                        />
+                        <SliderField
+                          label="Frequency"
+                          min={0}
+                          max={16}
+                          step={0.01}
+                          value={selectedModulation.frequency}
+                          defaultValue={
+                            DEFAULT_EFFECTS.elementModulations[selectedModulationTarget]
+                              .frequency
+                          }
+                          onChange={(value) =>
+                            patchSelectedModulation({ frequency: value })
+                          }
+                        />
+                        <SliderField
+                          label="Phase"
+                          min={-360}
+                          max={360}
+                          step={1}
+                          value={selectedModulation.phase}
+                          defaultValue={
+                            DEFAULT_EFFECTS.elementModulations[selectedModulationTarget]
+                              .phase
+                          }
+                          formatter={(value) => `${Math.round(value)}°`}
+                          onChange={(value) =>
+                            patchSelectedModulation({ phase: value })
+                          }
+                        />
+                        <SliderField
+                          label="Axis"
+                          min={-180}
+                          max={180}
+                          step={1}
+                          value={selectedModulation.axisAngle}
+                          defaultValue={
+                            DEFAULT_EFFECTS.elementModulations[selectedModulationTarget]
+                              .axisAngle
+                          }
+                          formatter={(value) => `${Math.round(value)}°`}
+                          onChange={(value) =>
+                            patchSelectedModulation({ axisAngle: value })
+                          }
+                        />
+                        <SliderField
+                          label="Origin X"
+                          min={0}
+                          max={1}
+                          step={0.01}
+                          value={selectedModulation.originX}
+                          defaultValue={
+                            DEFAULT_EFFECTS.elementModulations[selectedModulationTarget]
+                              .originX
+                          }
+                          formatter={(value) => `${Math.round(value * 100)}%`}
+                          onChange={(value) =>
+                            patchSelectedModulation({ originX: value })
+                          }
+                        />
+                        <SliderField
+                          label="Origin Y"
+                          min={0}
+                          max={1}
+                          step={0.01}
+                          value={selectedModulation.originY}
+                          defaultValue={
+                            DEFAULT_EFFECTS.elementModulations[selectedModulationTarget]
+                              .originY
+                          }
+                          formatter={(value) => `${Math.round(value * 100)}%`}
+                          onChange={(value) =>
+                            patchSelectedModulation({ originY: value })
+                          }
+                        />
+                      </div>
+                    </ControlBlock>
                   </InspectorFieldGrid>
                 </InspectorGroup>
 

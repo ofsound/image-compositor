@@ -198,8 +198,6 @@ function evaluateElementModulationPattern(
 ) {
   const frequency = Math.max(0, settings.frequency);
   const phase = settings.phase / 360;
-  const indexPosition =
-    coordinates.count <= 1 ? 0 : coordinates.index / (coordinates.count - 1);
   const axisValue = coordinates.axisProjection * frequency + phase;
 
   switch (settings.pattern) {
@@ -230,7 +228,7 @@ function evaluateElementModulationPattern(
       return clamp((coordinates.depth - 0.5) * 2, -1, 1);
     case "sine":
     default:
-      return Math.sin(Math.PI * 2 * (axisValue || indexPosition * frequency + phase));
+      return Math.sin(Math.PI * 2 * axisValue);
   }
 }
 
@@ -858,6 +856,10 @@ function generateGrid(context: GeneratorContext) {
           ...insetRect(rect, insetAmountHorizontal, insetAmountVertical),
           shape: "interlock",
           clipRotation: (row + column) % 2 === 0 ? 0 : Math.PI,
+          layoutRow: row,
+          layoutColumn: column,
+          layoutIndex: row * layout.columns + column,
+          layoutCount: layout.rows * layout.columns,
         });
       }
     }
@@ -882,6 +884,10 @@ function generateGrid(context: GeneratorContext) {
           layout.shapeMode,
           layout.family,
         ),
+        layoutRow: row,
+        layoutColumn: column,
+        layoutIndex: row * layout.columns + column,
+        layoutCount: layout.rows * layout.columns,
       });
     }
   }
@@ -1197,6 +1203,10 @@ function generateRadial(context: GeneratorContext) {
         height: Math.max(64, Math.max(...ys) - Math.min(...ys)),
         shape: assignShape(segment + ring, layout.shapeMode, layout.family),
         rotation,
+        layoutRing: ring,
+        layoutSegment: segment,
+        layoutIndex: ring * layout.radialSegments + segment,
+        layoutCount: layout.radialRings * layout.radialSegments,
       });
     }
   }
@@ -1869,6 +1879,7 @@ function projectThreeDPoint(
 }
 
 function generateThreeD(context: GeneratorContext) {
+  const { project } = context;
   const {
     project: { canvas, layout, activeSeed, effects },
   } = context;
@@ -1903,10 +1914,20 @@ function generateThreeD(context: GeneratorContext) {
   for (let index = 0; index < anchors.length; index += 1) {
     const anchor = anchors[index]!;
     const cellRng = mulberry32(distributionSeed + index * 9_973 + 6_931);
+    const modulationInput: ElementModulationInput = {
+      index,
+      count: anchors.length,
+      normalizedX: clamp((anchor.position.x + 1) / 2, 0, 1),
+      normalizedY: clamp((anchor.position.y + 1) / 2, 0, 1),
+      depthValue: clamp((anchor.position.z + 1) / 2, 0, 1),
+    };
     const jitteredPosition = {
       x: anchor.position.x * worldRadius,
       y: anchor.position.y * worldRadius,
-      z: anchor.position.z * worldRadius + (cellRng.next() - 0.5) * jitterAmount,
+      z:
+        anchor.position.z * worldRadius +
+        (cellRng.next() - 0.5) * jitterAmount +
+        getElementModulationDelta(project, "threeDZ", modulationInput) * worldRadius,
     };
     const rotatedPosition = rotatePoint3D(jitteredPosition, yawRadians, pitchRadians);
     const rotatedTangent = normalizePoint3D(
@@ -1942,7 +1963,8 @@ function generateThreeD(context: GeneratorContext) {
       rotatedNormal,
     );
     const rotationNoiseRadians = degToRad(
-      (cellRng.next() - 0.5) * effects.rotationJitter,
+      (cellRng.next() - 0.5) * effects.rotationJitter +
+        getElementModulationDelta(project, "threeDTwist", modulationInput),
     );
     const rotatedBasis = rotateThreeDCardBasis(
       cardBasis.right,
@@ -1952,7 +1974,9 @@ function generateThreeD(context: GeneratorContext) {
     const widthFactor = 0.9 + cellRng.next() * 0.32;
     const heightFactor = 0.78 + cellRng.next() * 0.24;
     const scaleNoise = clamp(
-      1 + (cellRng.next() - 0.5) * effects.scaleJitter,
+      1 +
+        (cellRng.next() - 0.5) * effects.scaleJitter +
+        getElementModulationDelta(project, "scale", modulationInput),
       0.05,
       2.5,
     );
@@ -1966,7 +1990,12 @@ function generateThreeD(context: GeneratorContext) {
     const distortionDepth =
       baseCardSize *
       scaleNoise *
-      effects.distortion *
+      clamp(
+        effects.distortion +
+          getElementModulationDelta(project, "distortion", modulationInput),
+        0,
+        2,
+      ) *
       (0.08 + cellRng.next() * 0.18);
     const projectedCorners = [
       buildThreeDCardCorner(
@@ -2031,6 +2060,8 @@ function generateThreeD(context: GeneratorContext) {
       rotationX: 0,
       rotationY: 0,
       depthValue,
+      layoutIndex: index,
+      layoutCount: anchors.length,
     });
   }
 
@@ -3066,8 +3097,14 @@ function reflectSlices(slices: RenderSlice[], project: LayerRenderProject) {
           y: centerY + (centerY - rect.y - rect.height),
         };
   };
-  const applyCloneDrift = (slice: RenderSlice, cloneKey: string) => {
-    if (symmetryJitter <= 0) {
+  const applyCloneDrift = (
+    slice: RenderSlice,
+    cloneKey: string,
+    cloneIndex: number,
+    cloneCount: number,
+  ) => {
+    const symmetryModulation = project.effects.elementModulations.symmetryDrift;
+    if (symmetryJitter <= 0 && !symmetryModulation.enabled) {
       return slice;
     }
 
@@ -3075,10 +3112,30 @@ function reflectSlices(slices: RenderSlice[], project: LayerRenderProject) {
       hashToSeed(`${project.activeSeed}:${slice.id}:${cloneKey}`),
     );
     const maxOffset = Math.min(project.canvas.width, project.canvas.height) * 0.12;
-    const offsetX = (driftRng.next() - 0.5) * maxOffset * symmetryJitter;
-    const offsetY = (driftRng.next() - 0.5) * maxOffset * symmetryJitter;
-    const rotationDrift = (driftRng.next() - 0.5) * (Math.PI / 3) * symmetryJitter;
-    const scaleDrift = 1 + (driftRng.next() - 0.5) * 0.28 * symmetryJitter;
+    const center = getRectCenter(slice.rect);
+    const symmetryDelta = clamp(
+      getElementModulationDelta(project, "symmetryDrift", {
+        index: cloneIndex,
+        count: cloneCount,
+        normalizedX: center.x / Math.max(project.canvas.width, 1),
+        normalizedY: center.y / Math.max(project.canvas.height, 1),
+        depthValue: slice.depth,
+      }),
+      -2,
+      2,
+    );
+    const symmetryAxis = degToRad(symmetryModulation.axisAngle);
+    const offsetX =
+      (driftRng.next() - 0.5) * maxOffset * symmetryJitter +
+      Math.cos(symmetryAxis) * maxOffset * symmetryDelta;
+    const offsetY =
+      (driftRng.next() - 0.5) * maxOffset * symmetryJitter +
+      Math.sin(symmetryAxis) * maxOffset * symmetryDelta;
+    const rotationDrift =
+      (driftRng.next() - 0.5) * (Math.PI / 3) * symmetryJitter +
+      (Math.PI / 3) * symmetryDelta;
+    const scaleDrift =
+      1 + (driftRng.next() - 0.5) * 0.28 * symmetryJitter + 0.28 * symmetryDelta;
 
     return {
       ...slice,
@@ -3125,7 +3182,7 @@ function reflectSlices(slices: RenderSlice[], project: LayerRenderProject) {
           : null,
         rotationY: -slice.rotationY,
         mirrorAxis: "x",
-      }, "mirror-x"));
+      }, "mirror-x", 1, symmetryCopies));
     }
 
     if (symmetryMode === "mirror-y" || symmetryMode === "quad") {
@@ -3156,7 +3213,7 @@ function reflectSlices(slices: RenderSlice[], project: LayerRenderProject) {
           : null,
         rotationX: -slice.rotationX,
         mirrorAxis: "y",
-      }, "mirror-y"));
+      }, "mirror-y", symmetryMode === "quad" ? 2 : 1, symmetryCopies));
     }
   }
 
@@ -3213,7 +3270,7 @@ function reflectSlices(slices: RenderSlice[], project: LayerRenderProject) {
           rotation: slice.rotation + angle,
           rotationX: slice.rotationX,
           rotationY: slice.rotationY,
-        }, `radial-${copyIndex}`));
+        }, `radial-${copyIndex}`, copyIndex, symmetryCopies));
       }
     }
     clones.push(...radialClones);
@@ -3508,14 +3565,18 @@ function applyLetterbox(slices: RenderSlice[], project: LayerRenderProject) {
 }
 
 function getWedgeSweepRadians(
-  shape: ConcreteGeometryShape,
+  cell: LayoutCell,
   project: LayerRenderProject,
   rng: ReturnType<typeof mulberry32>,
+  modulationInput: ElementModulationInput,
 ) {
+  const { shape } = cell;
   if (shape !== "wedge" && shape !== "arc") return null;
 
   const sweepDegrees = clamp(
-    project.layout.wedgeAngle + rng.next() * project.layout.wedgeJitter,
+    project.layout.wedgeAngle +
+      rng.next() * project.layout.wedgeJitter +
+      getElementModulationDelta(project, "wedgeSweep", modulationInput),
     MIN_WEDGE_SWEEP_DEGREES,
     360,
   );
@@ -3574,13 +3635,38 @@ function createRenderSliceFromCell(
         )
       : null;
   if (cell.shape === "text" || cell.shape === "svg") {
-    const rotationNoise = (rng.next() - 0.5) * project.effects.rotationJitter;
+    const modulationInput = { cell, index, count: cell.layoutCount };
+    const rotationNoise =
+      (rng.next() - 0.5) * project.effects.rotationJitter +
+      getElementModulationDelta(project, "rotation", modulationInput);
     const scaleNoise = clamp(
-      1 + (rng.next() - 0.5) * project.effects.scaleJitter,
+      1 +
+        (rng.next() - 0.5) * project.effects.scaleJitter +
+        getElementModulationDelta(project, "scale", modulationInput),
       0.05,
       2.5,
     );
     const displacement = project.effects.displacement * (rng.next() - 0.5);
+    const displacementX =
+      displacement + getElementModulationDelta(project, "displacementX", modulationInput);
+    const displacementY =
+      displacement * (rng.next() - 0.5) +
+      getElementModulationDelta(project, "displacementY", modulationInput);
+    const opacityBase =
+      project.layout.family === "3d" && cell.depthValue !== undefined
+        ? project.compositing.opacity * lerp(0.72, 1, cell.depthValue)
+        : project.compositing.opacity;
+    const opacity = clamp(
+      opacityBase + getElementModulationDelta(project, "opacity", modulationInput) / 100,
+      0,
+      1,
+    );
+    const distortion = clamp(
+      project.effects.distortion * rng.next() +
+        getElementModulationDelta(project, "distortion", modulationInput),
+      0,
+      2,
+    );
     const fogAmount =
       project.layout.family === "3d" && cell.depthValue !== undefined
         ? lerp(0, 0.22, (1 - cell.depthValue) ** 1.35)
@@ -3607,17 +3693,14 @@ function createRenderSliceFromCell(
       rotationX: cell.rotationX ?? 0,
       rotationY: cell.rotationY ?? 0,
       scale: scaleNoise,
-      opacity:
-        project.layout.family === "3d" && cell.depthValue !== undefined
-          ? project.compositing.opacity * lerp(0.72, 1, cell.depthValue)
-          : project.compositing.opacity,
+      opacity,
       blendMode: project.compositing.blendMode,
       clipInset: project.compositing.feather,
       displacementOffset: {
-        x: displacement,
-        y: displacement * (rng.next() - 0.5),
+        x: displacementX,
+        y: displacementY,
       },
-      distortion: project.effects.distortion * rng.next(),
+      distortion,
       sourceCrop: null,
       wedgeSweepRadians: null,
       mirrorAxis: "none",
@@ -3644,13 +3727,38 @@ function createRenderSliceFromCell(
           width: cell.width + overlapSize,
           height: cell.height + overlapSize,
         };
-  const rotationNoise = (rng.next() - 0.5) * project.effects.rotationJitter;
+  const modulationInput = { cell, index, count: cell.layoutCount };
+  const rotationNoise =
+    (rng.next() - 0.5) * project.effects.rotationJitter +
+    getElementModulationDelta(project, "rotation", modulationInput);
   const scaleNoise = clamp(
-    1 + (rng.next() - 0.5) * project.effects.scaleJitter,
+    1 +
+      (rng.next() - 0.5) * project.effects.scaleJitter +
+      getElementModulationDelta(project, "scale", modulationInput),
     0.05,
     2.5,
   );
   const displacement = project.effects.displacement * (rng.next() - 0.5);
+  const displacementX =
+    displacement + getElementModulationDelta(project, "displacementX", modulationInput);
+  const displacementY =
+    displacement * (rng.next() - 0.5) +
+    getElementModulationDelta(project, "displacementY", modulationInput);
+  const opacityBase =
+    project.layout.family === "3d" && cell.depthValue !== undefined
+      ? project.compositing.opacity * lerp(0.72, 1, cell.depthValue)
+      : project.compositing.opacity;
+  const opacity = clamp(
+    opacityBase + getElementModulationDelta(project, "opacity", modulationInput) / 100,
+    0,
+    1,
+  );
+  const distortion = clamp(
+    project.effects.distortion * rng.next() +
+      getElementModulationDelta(project, "distortion", modulationInput),
+    0,
+    2,
+  );
   const fogAmount =
     project.layout.family === "3d" && cell.depthValue !== undefined
       ? lerp(0, 0.22, (1 - cell.depthValue) ** 1.35)
@@ -3670,19 +3778,16 @@ function createRenderSliceFromCell(
     rotationX: cell.rotationX ?? 0,
     rotationY: cell.rotationY ?? 0,
     scale: scaleNoise,
-    opacity:
-      project.layout.family === "3d" && cell.depthValue !== undefined
-        ? project.compositing.opacity * lerp(0.72, 1, cell.depthValue)
-        : project.compositing.opacity,
+    opacity,
     blendMode: project.compositing.blendMode,
     clipInset: project.compositing.feather,
     displacementOffset: {
-      x: displacement,
-      y: displacement * (rng.next() - 0.5),
+      x: displacementX,
+      y: displacementY,
     },
-    distortion: project.effects.distortion * rng.next(),
+    distortion,
     sourceCrop: null,
-    wedgeSweepRadians: getWedgeSweepRadians(cell.shape, project, rng),
+    wedgeSweepRadians: getWedgeSweepRadians(cell, project, rng, modulationInput),
     mirrorAxis: "none",
     depth: cell.depthValue ?? rng.next(),
     fogAmount,
@@ -3759,7 +3864,11 @@ function buildLayoutAssignmentTargets(
   layoutCells: LayoutCell[],
 ) {
   return layoutCells.map<AssignmentTarget>((cell, index) => ({
-    cell,
+    cell: {
+      ...cell,
+      layoutIndex: cell.layoutIndex ?? index,
+      layoutCount: cell.layoutCount ?? layoutCells.length,
+    },
     index,
     rngSeed: `${project.activeSeed}:layout:${index}`,
     tonePosition: getCellTonePosition(project, cell),
@@ -3814,7 +3923,10 @@ function buildDrawSlices(project: LayerRenderProject, assets: SourceAsset[]) {
 
     for (let localIndex = 0; localIndex < strokeCells.length; localIndex += 1) {
       targets.push({
-        cell: strokeCells[localIndex]!,
+        cell: {
+          ...strokeCells[localIndex]!,
+          layoutIndex: stampIndex,
+        },
         index: stampIndex,
         rngSeed: `${project.activeSeed}:${stroke.id}:${localIndex}`,
         tonePosition: normalizeRank(localIndex, strokeCells.length),
@@ -3829,6 +3941,9 @@ function buildDrawSlices(project: LayerRenderProject, assets: SourceAsset[]) {
     assets,
     project,
   );
+  for (const target of targets) {
+    target.cell.layoutCount = targets.length;
+  }
   const slices = targets.map((target, index) =>
     createRenderSliceFromCell(
       target.cell,

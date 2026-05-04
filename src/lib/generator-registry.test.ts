@@ -1822,6 +1822,186 @@ describe("buildRenderSlices", () => {
     }
   });
 
+  it("adds deterministic algorithmic rotation and scale variation to grid elements", () => {
+    const project = createProjectView("Algorithmic Grid Modulation");
+    project.sourceIds = [assets[0]!.id];
+    project.layout.family = "grid";
+    project.layout.shapeMode = "rect";
+    project.layout.symmetryMode = "none";
+    project.layout.columns = 2;
+    project.layout.rows = 1;
+    project.effects.rotationJitter = 0;
+    project.effects.scaleJitter = 0;
+    project.effects.elementModulations.rotation = {
+      ...project.effects.elementModulations.rotation,
+      enabled: true,
+      pattern: "linear",
+      amount: 90,
+    };
+    project.effects.elementModulations.scale = {
+      ...project.effects.elementModulations.scale,
+      enabled: true,
+      pattern: "linear",
+      amount: 0.5,
+    };
+
+    const first = buildRenderSlices(project, [assets[0]!]);
+    const second = buildRenderSlices(project, [assets[0]!]);
+    const firstByX = [...first].sort((a, b) => a.rect.x - b.rect.x);
+
+    expect(first).toEqual(second);
+    expect(first).toHaveLength(2);
+    expect(firstByX[0]!.rotation).toBeCloseTo((-45 * Math.PI) / 180, 6);
+    expect(firstByX[1]!.rotation).toBeCloseTo((45 * Math.PI) / 180, 6);
+    expect(firstByX[0]!.scale).toBeCloseTo(0.75, 6);
+    expect(firstByX[1]!.scale).toBeCloseTo(1.25, 6);
+  });
+
+  it("keeps all preset modulation patterns deterministic", () => {
+    const patterns = [
+      "sine",
+      "triangle",
+      "saw",
+      "checker",
+      "linear",
+      "rings",
+      "spiral",
+    ] as const;
+
+    for (const pattern of patterns) {
+      const project = createProjectView(`Pattern ${pattern}`);
+      project.sourceIds = [assets[0]!.id];
+      project.layout.family = "grid";
+      project.layout.shapeMode = "rect";
+      project.layout.symmetryMode = "none";
+      project.layout.columns = 3;
+      project.layout.rows = 3;
+      project.effects.rotationJitter = 0;
+      project.effects.elementModulations.rotation = {
+        ...project.effects.elementModulations.rotation,
+        enabled: true,
+        pattern,
+        amount: 30,
+        frequency: 2,
+      };
+
+      const first = buildRenderSlices(project, [assets[0]!]);
+      const second = buildRenderSlices(project, [assets[0]!]);
+
+      expect(first).toEqual(second);
+      expect(first.some((slice) => Math.abs(slice.rotation) > 0.0001)).toBe(true);
+    }
+  });
+
+  it("clamps algorithmic opacity and wedge sweep modulation", () => {
+    const project = createProjectView("Algorithmic Clamp");
+    project.sourceIds = [assets[0]!.id];
+    project.layout.family = "grid";
+    project.layout.shapeMode = "wedge";
+    project.layout.symmetryMode = "none";
+    project.layout.columns = 2;
+    project.layout.rows = 1;
+    project.layout.wedgeAngle = 10;
+    project.layout.wedgeJitter = 0;
+    project.effects.elementModulations.opacity = {
+      ...project.effects.elementModulations.opacity,
+      enabled: true,
+      pattern: "linear",
+      amount: 200,
+    };
+    project.effects.elementModulations.wedgeSweep = {
+      ...project.effects.elementModulations.wedgeSweep,
+      enabled: true,
+      pattern: "linear",
+      amount: 400,
+    };
+
+    const slices = buildRenderSlices(project, [assets[0]!]);
+
+    expect(slices.every((slice) => slice.opacity >= 0 && slice.opacity <= 1)).toBe(true);
+    expect(slices.some((slice) => slice.opacity < 1)).toBe(true);
+    expect(
+      slices.every((slice) =>
+        slice.wedgeSweepRadians !== null &&
+        slice.wedgeSweepRadians >= (0.5 * Math.PI) / 180 &&
+        slice.wedgeSweepRadians <= Math.PI * 2,
+      ),
+    ).toBe(true);
+  });
+
+  it("modulates 3d depth and card twist deterministically", () => {
+    const project = createProjectView("Algorithmic 3D");
+    project.sourceIds = [assets[0]!.id];
+    project.layout.family = "3d";
+    project.layout.shapeMode = "rect";
+    project.layout.symmetryMode = "none";
+    project.layout.threeDZJitter = 0;
+    project.effects.rotationJitter = 0;
+    project.effects.scaleJitter = 0;
+    project.effects.distortion = 0;
+    const baseline = buildRenderSlices(project, [assets[0]!]);
+
+    project.effects.elementModulations.threeDZ = {
+      ...project.effects.elementModulations.threeDZ,
+      enabled: true,
+      pattern: "depth",
+      amount: 0.25,
+    };
+    project.effects.elementModulations.threeDTwist = {
+      ...project.effects.elementModulations.threeDTwist,
+      enabled: true,
+      pattern: "linear",
+      amount: 90,
+    };
+    const modulated = buildRenderSlices(project, [assets[0]!]);
+    const repeated = buildRenderSlices(project, [assets[0]!]);
+
+    expect(modulated).toEqual(repeated);
+    expect(modulated).toHaveLength(baseline.length);
+    expect(
+      modulated.some((slice, index) => {
+        const baselineSlice = baseline[index]!;
+        return (
+          slice.rect.x !== baselineSlice.rect.x ||
+          slice.rect.y !== baselineSlice.rect.y ||
+          JSON.stringify(slice.quadPoints) !== JSON.stringify(baselineSlice.quadPoints)
+        );
+      }),
+    ).toBe(true);
+  });
+
+  it("applies symmetry drift modulation only to symmetry clones", () => {
+    const project = createProjectView("Algorithmic Symmetry");
+    project.sourceIds = [assets[0]!.id];
+    project.layout.family = "grid";
+    project.layout.shapeMode = "rect";
+    project.layout.columns = 1;
+    project.layout.rows = 1;
+    project.layout.symmetryMode = "none";
+    project.layout.symmetryJitter = 0;
+    project.effects.elementModulations.symmetryDrift = {
+      ...project.effects.elementModulations.symmetryDrift,
+      enabled: true,
+      pattern: "checker",
+      amount: 0.5,
+    };
+
+    const noSymmetry = buildRenderSlices(project, [assets[0]!]);
+    project.effects.elementModulations.symmetryDrift.enabled = false;
+    const noSymmetryBaseline = buildRenderSlices(project, [assets[0]!]);
+    expect(noSymmetry).toEqual(noSymmetryBaseline);
+
+    project.layout.symmetryMode = "mirror-x";
+    project.effects.elementModulations.symmetryDrift.enabled = false;
+    const baseline = buildRenderSlices(project, [assets[0]!]);
+    project.effects.elementModulations.symmetryDrift.enabled = true;
+    const modulated = buildRenderSlices(project, [assets[0]!]);
+
+    expect(modulated).toHaveLength(baseline.length);
+    expect(modulated[0]).toEqual(baseline[0]);
+    expect(modulated.slice(1)).not.toEqual(baseline.slice(1));
+  });
+
   it("keeps non-3d rotation, scale, and distortion on the 2d transform path", () => {
     const project = createProjectView("2D Effect Regression");
     project.sourceIds = [assets[0]!.id];

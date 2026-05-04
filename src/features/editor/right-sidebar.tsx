@@ -1,5 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { SourceColorField } from "@/components/app/source-color-field";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -149,6 +150,55 @@ export function RightSidebar({
                 </div>
                 <div className="mt-1 text-sm font-medium text-text">
                   Editing {inspectorLayerName}
+                </div>
+                <div className="mt-3 space-y-1 border-t border-border-subtle pt-2.5">
+                  <label
+                    htmlFor="layer-variation-seed"
+                    className="font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-text-muted"
+                  >
+                    Variation seed
+                  </label>
+                  <Input
+                    id="layer-variation-seed"
+                    key={activeProjectView.activeSeed}
+                    className="h-8 font-mono text-xs tabular-nums"
+                    defaultValue={String(activeProjectView.activeSeed)}
+                    inputMode="numeric"
+                    aria-describedby="layer-variation-seed-hint"
+                    onBlur={(event) => {
+                      const parsed = Number.parseInt(
+                        event.currentTarget.value.trim(),
+                        10,
+                      );
+                      const clamped = Number.isFinite(parsed)
+                        ? Math.max(
+                            0,
+                            Math.min(999_999_999, Math.floor(parsed)),
+                          )
+                        : null;
+                      if (clamped === null) {
+                        event.currentTarget.value = String(
+                          activeProjectView.activeSeed,
+                        );
+                        return;
+                      }
+                      if (clamped === activeProjectView.activeSeed) {
+                        event.currentTarget.value = String(clamped);
+                        return;
+                      }
+                      patchProject((project) => ({
+                        ...project,
+                        activeSeed: clamped,
+                      }));
+                    }}
+                  />
+                  <p
+                    id="layer-variation-seed-hint"
+                    className="text-[10px] leading-snug text-text-muted"
+                  >
+                    Layout randomness for this layer. Randomize updates this (and
+                    other visible layers when scoped to visible).
+                  </p>
                 </div>
               </div>
 

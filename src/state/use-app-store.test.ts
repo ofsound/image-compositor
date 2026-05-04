@@ -1463,3 +1463,95 @@ describe("useAppStore import progress", () => {
     expect(useAppStore.getState().activeProjectId).toBe(beforeState.activeProjectId);
   });
 });
+
+describe("randomizeVariant", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resetStore();
+  });
+
+  it("updates activeSeed on every visible layer in one undo step", async () => {
+    await useAppStore.getState().addLayer();
+    const beforeProject = useAppStore.getState().projects[0]!;
+    expect(beforeProject.layers.length).toBe(2);
+    const seedsBefore = beforeProject.layers.map((layer) => layer.activeSeed);
+
+    let index = 0;
+    const values = [0.1, 0.2, 0.3, 0.4];
+    vi.spyOn(Math, "random").mockImplementation(() => values[index++] ?? 0.99);
+
+    await useAppStore.getState().randomizeVariant({ layerScope: "visible" });
+
+    const afterProject = useAppStore.getState().projects[0]!;
+    expect(afterProject.layers.map((layer) => layer.activeSeed)).not.toEqual(seedsBefore);
+    expect(useAppStore.getState().canUndo).toBe(true);
+  });
+
+  it("updates only the selected layer when layerScope is selected", async () => {
+    await useAppStore.getState().addLayer();
+    const layer0Id = useAppStore.getState().projects[0]!.layers[0]!.id;
+    await useAppStore.getState().selectLayer(layer0Id);
+
+    const seed0Before = useAppStore.getState().projects[0]!.layers[0]!.activeSeed;
+    const seed1Before = useAppStore.getState().projects[0]!.layers[1]!.activeSeed;
+
+    vi.spyOn(Math, "random").mockReturnValue(0.5);
+
+    await useAppStore.getState().randomizeVariant({ layerScope: "selected" });
+
+    const after = useAppStore.getState().projects[0]!;
+    expect(after.layers.find((layer) => layer.id === layer0Id)!.activeSeed).not.toBe(
+      seed0Before,
+    );
+    expect(after.layers.find((layer) => layer.id !== layer0Id)!.activeSeed).toBe(
+      seed1Before,
+    );
+  });
+
+  it("regenerates procedural sources and clears history when includeTextures is true", async () => {
+    const project = useAppStore.getState().projects[0]!;
+    const asset = createPerlinAsset(project.id);
+
+    useAppStore.setState((state) => ({
+      ...state,
+      assets: [asset],
+    }));
+
+    await useAppStore.getState().updateProject((draft) => ({
+      ...draft,
+      layers: draft.layers.map((layer, index) =>
+        index === 0 ? { ...layer, sourceIds: [asset.id] } : layer,
+      ),
+    }));
+
+    await useAppStore.getState().updateSelectedLayer((layer) => ({
+      ...layer,
+      layout: {
+        ...layer.layout,
+        columns: layer.layout.columns + 1,
+      },
+    }));
+    expect(useAppStore.getState().canUndo).toBe(true);
+
+    const updatedAsset: PerlinSourceAsset = {
+      ...asset,
+      recipe: { ...asset.recipe, seed: 888_888 },
+    };
+    vi.mocked(updateGeneratedSourceAsset).mockResolvedValue(
+      createPreparedAssetRecord(updatedAsset),
+    );
+    vi.spyOn(Math, "random").mockReturnValue(0.5);
+
+    await useAppStore.getState().randomizeVariant({
+      layerScope: "selected",
+      includeTextures: true,
+    });
+
+    expect(updateGeneratedSourceAsset).toHaveBeenCalled();
+    expect(persistAssetUpdatesAtomically).toHaveBeenCalled();
+    expect(useAppStore.getState().canUndo).toBe(false);
+    expect(
+      (useAppStore.getState().assets[0] as PerlinSourceAsset).recipe.seed,
+    ).toBe(888_888);
+  });
+});

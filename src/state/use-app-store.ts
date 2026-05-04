@@ -76,6 +76,127 @@ import type {
   ProjectSummary,
 } from "../../electron/contract";
 
+export type RandomizeLayerScope = "visible" | "selected";
+
+export interface RandomizeVariantOptions {
+  layerScope: RandomizeLayerScope;
+  /**
+   * Regenerate procedural sources (perlin/cellular/reaction/waves) with new recipe seeds.
+   * When at least one source is updated, undo history for this project is cleared (same as editing a generated source).
+   */
+  includeTextures?: boolean;
+}
+
+function nextRandomSeed(): number {
+  return Math.floor(Math.random() * 1_000_000_000);
+}
+
+function getRandomizeTargetLayerIds(
+  project: ProjectDocument,
+  layerScope: RandomizeLayerScope,
+): Set<string> {
+  const ids = new Set<string>();
+  if (layerScope === "visible") {
+    for (const layer of project.layers) {
+      if (layer.visible) {
+        ids.add(layer.id);
+      }
+    }
+  } else {
+    const selected = getSelectedLayer(project);
+    if (selected) {
+      ids.add(selected.id);
+    }
+  }
+  return ids;
+}
+
+function collectProceduralAssetsForLayers(
+  project: ProjectDocument,
+  storeAssets: SourceAsset[],
+  targetLayerIds: Set<string>,
+  projectId: string,
+): SourceAsset[] {
+  const byId = new Map(storeAssets.map((a) => [a.id, a] as const));
+  const seen = new Set<string>();
+  const out: SourceAsset[] = [];
+  for (const layer of project.layers) {
+    if (!targetLayerIds.has(layer.id)) {
+      continue;
+    }
+    for (const sourceId of layer.sourceIds) {
+      if (seen.has(sourceId)) {
+        continue;
+      }
+      const asset = byId.get(sourceId);
+      if (!asset || asset.projectId !== projectId) {
+        continue;
+      }
+      if (
+        asset.kind === "perlin" ||
+        asset.kind === "cellular" ||
+        asset.kind === "reaction" ||
+        asset.kind === "waves"
+      ) {
+        seen.add(sourceId);
+        out.push(asset);
+      }
+    }
+  }
+  return out;
+}
+
+async function regenerateProceduralAssetWithNewSeed(
+  asset: SourceAsset,
+): Promise<PreparedAssetRecord> {
+  const seed = nextRandomSeed();
+  if (asset.kind === "perlin") {
+    return updateGeneratedSourceAsset(asset, {
+      name: asset.name,
+      color: asset.recipe.color,
+      scale: asset.recipe.scale,
+      detail: asset.recipe.detail,
+      contrast: asset.recipe.contrast,
+      distortion: asset.recipe.distortion,
+      seed,
+    });
+  }
+  if (asset.kind === "cellular") {
+    return updateGeneratedSourceAsset(asset, {
+      name: asset.name,
+      color: asset.recipe.color,
+      scale: asset.recipe.scale,
+      jitter: asset.recipe.jitter,
+      edge: asset.recipe.edge,
+      contrast: asset.recipe.contrast,
+      seed,
+    });
+  }
+  if (asset.kind === "reaction") {
+    return updateGeneratedSourceAsset(asset, {
+      name: asset.name,
+      color: asset.recipe.color,
+      scale: asset.recipe.scale,
+      diffusion: asset.recipe.diffusion,
+      balance: asset.recipe.balance,
+      distortion: asset.recipe.distortion,
+      seed,
+    });
+  }
+  if (asset.kind === "waves") {
+    return updateGeneratedSourceAsset(asset, {
+      name: asset.name,
+      color: asset.recipe.color,
+      scale: asset.recipe.scale,
+      interference: asset.recipe.interference,
+      directionality: asset.recipe.directionality,
+      distortion: asset.recipe.distortion,
+      seed,
+    });
+  }
+  throw new Error(`Unsupported procedural asset kind: ${(asset as SourceAsset).kind}`);
+}
+
 type BundleImportResolution = "replace" | "copy";
 type SourceImportProgress = { processed: number; total: number };
 
@@ -184,7 +305,7 @@ interface AppState {
       | ReactionSourceInput
       | WaveSourceInput,
   ) => Promise<void>;
-  randomizeSeed: () => Promise<void>;
+  randomizeVariant: (options: RandomizeVariantOptions) => Promise<void>;
   saveVersion: (label: string, thumbnailBlob?: Blob | null) => Promise<void>;
   restoreVersion: (versionId: string) => Promise<void>;
   exportCurrentImage: (
@@ -1899,13 +2020,126 @@ export const useAppStore = create<AppState>((set, get) => {
     );
   },
 
-  async randomizeSeed() {
-    await runWorkspaceAction(async () => {
-      await get().updateSelectedLayer((layer) => ({
-        ...layer,
-        activeSeed: Math.floor(Math.random() * 1_000_000_000),
-      }));
-    }, { queue: false });
+  async randomizeVariant(options: RandomizeVariantOptions) {
+    await runWorkspaceAction(
+      async () => {
+        const project = getActiveProject(get());
+        if (!project) {
+          return;
+        }
+
+        const targetIds = getRandomizeTargetLayerIds(project, options.layerScope);
+        if (targetIds.size === 0) {
+          set({ status: "No layers to shuffle." });
+          return;
+        }
+
+        const proceduralAssets = collectProceduralAssetsForLayers(
+          project,
+          get().assets,
+          targetIds,
+          project.id,
+        );
+
+        const wantsTextures = Boolean(options.includeTextures);
+        const shouldRegenerateTextures =
+          wantsTextures && proceduralAssets.length > 0;
+
+        if (!shouldRegenerateTextures) {
+          await get().updateProject((draft) => {
+            const ids = getRandomizeTargetLayerIds(draft, options.layerScope);
+            if (ids.size === 0) {
+              return draft;
+            }
+
+            return normalizeProjectDocument({
+              ...draft,
+              layers: draft.layers.map((layer) =>
+                ids.has(layer.id)
+                  ? { ...layer, activeSeed: nextRandomSeed() }
+                  : layer,
+              ),
+              updatedAt: new Date().toISOString(),
+            });
+          });
+
+          const layerWord =
+            options.layerScope === "visible"
+              ? `Shuffled seeds on ${targetIds.size} visible layer${targetIds.size === 1 ? "" : "s"}.`
+              : "Shuffled seed on selected layer.";
+          const suffix =
+            wantsTextures && proceduralAssets.length === 0
+              ? " No procedural sources to regenerate."
+              : "";
+          set({ status: `${layerWord}${suffix}` });
+          return;
+        }
+
+        const draftProject = normalizeProjectDocument({
+          ...createProjectMutationBase(project),
+          updatedAt: new Date().toISOString(),
+        });
+        const updatedProject = normalizeProjectDocument(
+          syncLegacyProjectFieldsToSelectedLayer({
+            ...draftProject,
+            layers: draftProject.layers.map((layer) =>
+              targetIds.has(layer.id)
+                ? { ...layer, activeSeed: nextRandomSeed() }
+                : layer,
+            ),
+            updatedAt: new Date().toISOString(),
+          }),
+        );
+
+        const preparedRecords: PreparedAssetRecord[] = [];
+        for (const asset of proceduralAssets) {
+          preparedRecords.push(await regenerateProceduralAssetWithNewSeed(asset));
+        }
+
+        await persistAssetUpdatesAtomically({
+          projectDoc: updatedProject,
+          assets: preparedRecords,
+        });
+
+        set((state) => {
+          const historyByProject = clearProjectHistory(
+            state.historyByProject,
+            updatedProject.id,
+          );
+          let nextAssets = state.assets;
+          for (const record of preparedRecords) {
+            nextAssets = nextAssets.map((entry) =>
+              entry.id === record.asset.id ? record.asset : entry,
+            );
+          }
+
+          return {
+            assets: sortAssetsByCreated(nextAssets),
+            projects: sortByUpdated(
+              state.projects.map((entry) =>
+                entry.id === updatedProject.id ? updatedProject : entry,
+              ),
+            ),
+            historyByProject,
+            status: `Shuffled seeds and regenerated ${preparedRecords.length} procedural source${preparedRecords.length === 1 ? "" : "s"}. Undo history cleared.`,
+            ...getHistoryFlags(historyByProject, state.activeProjectId),
+          };
+        });
+
+        if (useElectron) {
+          await syncElectronActiveProjectBundle(updatedProject);
+        }
+      },
+      {
+        busy: true,
+        startStatus: "Randomizing…",
+        queue: false,
+        getErrorStatus: (error) =>
+          error instanceof Error
+            ? `Could not randomize: ${error.message}`
+            : "Could not randomize.",
+      },
+    );
   },
 
   async saveVersion(label, thumbnailBlob) {

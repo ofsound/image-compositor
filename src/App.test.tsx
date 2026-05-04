@@ -246,7 +246,7 @@ function createStoreState(overrides?: {
     updateGeneratedSource: vi.fn(async () => undefined),
     appendDrawStroke: vi.fn(async () => undefined),
     clearDrawLayer: vi.fn(async () => undefined),
-    randomizeSeed: vi.fn(async () => undefined),
+    randomizeVariant: vi.fn(async () => undefined),
     saveVersion: vi.fn(async () => undefined),
     restoreVersion: vi.fn(async () => undefined),
     exportCurrentImage: vi.fn(async () => undefined),

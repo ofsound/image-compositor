@@ -81,6 +81,7 @@ import {
   useWorkspaceActions,
   useWorkspaceState,
 } from "@/state/app-store-hooks";
+import type { RandomizeLayerScope } from "@/state/use-app-store";
 import type {
   BundleImportInspection,
   SourceAsset,
@@ -116,6 +117,9 @@ function App() {
     lastRenderedPreview: null,
   });
   const [previewExpanded, setPreviewExpanded] = useState(false);
+  const [randomizeLayerScope, setRandomizeLayerScope] =
+    useState<RandomizeLayerScope>("visible");
+  const [randomizeIncludeTextures, setRandomizeIncludeTextures] = useState(false);
 
   // Dialog open/close state
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
@@ -192,7 +196,7 @@ function App() {
     addWaveSource,
     removeSource,
     updateGeneratedSource,
-    randomizeSeed,
+    randomizeVariant,
     saveVersion,
     restoreVersion,
     exportCurrentImage,
@@ -668,9 +672,50 @@ function App() {
               <Layers className="h-3.5 w-3.5" /> Bundle
             </Button>
             <div className="h-4 w-px bg-border" />
-            <Button variant="secondary" size="sm" onClick={() => void randomizeSeed()}>
-              <Sparkles className="h-3.5 w-3.5" /> Randomize
-            </Button>
+            <div className="flex flex-wrap items-center gap-1.5">
+              <Select
+                value={randomizeLayerScope}
+                onValueChange={(value) =>
+                  setRandomizeLayerScope(value as RandomizeLayerScope)
+                }
+              >
+                <SelectTrigger
+                  className="h-8 w-[142px] text-xs"
+                  aria-label="Randomize layer scope"
+                >
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="visible">Visible layers</SelectItem>
+                  <SelectItem value="selected">Selected layer</SelectItem>
+                </SelectContent>
+              </Select>
+              <label className="flex cursor-pointer items-center gap-1.5 whitespace-nowrap text-xs text-muted-foreground">
+                <input
+                  type="checkbox"
+                  checked={randomizeIncludeTextures}
+                  onChange={(event) =>
+                    setRandomizeIncludeTextures(event.target.checked)
+                  }
+                  className="accent-primary"
+                />
+                Textures
+              </label>
+              <Button
+                variant="secondary"
+                size="sm"
+                title="Shuffles layout variation seeds. Textures regenerates procedural sources and clears undo history."
+                disabled={busy}
+                onClick={() =>
+                  void randomizeVariant({
+                    layerScope: randomizeLayerScope,
+                    includeTextures: randomizeIncludeTextures,
+                  })
+                }
+              >
+                <Sparkles className="h-3.5 w-3.5" /> Randomize
+              </Button>
+            </div>
             <Button variant="secondary" size="sm" onClick={openSaveVersionDialog}>
               <Save className="h-3.5 w-3.5" /> Save
             </Button>

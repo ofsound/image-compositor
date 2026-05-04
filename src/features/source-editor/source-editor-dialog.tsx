@@ -219,13 +219,13 @@ export function SourceEditorDialog({
       ? status
       : `${editingSource ? "Updating" : "Creating"} ${generatedSourceLabel} source…`
     : null;
+  const defaultGradient = getDefaultGradientInput();
+  const defaultPerlin = getDefaultPerlinInput();
+  const defaultCellular = getDefaultCellularInput();
+  const defaultReaction = getDefaultReactionInput();
+  const defaultWave = getDefaultWaveInput();
 
   const resetForms = () => {
-    const defaultGradient = getDefaultGradientInput();
-    const defaultPerlin = getDefaultPerlinInput();
-    const defaultCellular = getDefaultCellularInput();
-    const defaultReaction = getDefaultReactionInput();
-    const defaultWave = getDefaultWaveInput();
     setSolidSourceName("");
     setSolidSourceColor("#0f172a");
     setGradientSourceName(defaultGradient.name ?? "");
@@ -744,6 +744,7 @@ export function SourceEditorDialog({
                       max={1}
                       step={0.01}
                       value={gradientSourceViaPosition}
+                      defaultValue={defaultGradient.viaPosition}
                       disabled={isSubmittingGenerated}
                       formatter={formatPercentValue}
                       onChange={setGradientSourceViaPosition}
@@ -782,6 +783,7 @@ export function SourceEditorDialog({
                       max={1}
                       step={0.01}
                       value={gradientSourceCenterX}
+                      defaultValue={defaultGradient.centerX}
                       disabled={isSubmittingGenerated}
                       formatter={formatPercentValue}
                       onChange={setGradientSourceCenterX}
@@ -792,6 +794,7 @@ export function SourceEditorDialog({
                       max={1}
                       step={0.01}
                       value={gradientSourceCenterY}
+                      defaultValue={defaultGradient.centerY}
                       disabled={isSubmittingGenerated}
                       formatter={formatPercentValue}
                       onChange={setGradientSourceCenterY}
@@ -806,6 +809,7 @@ export function SourceEditorDialog({
                       max={1}
                       step={0.01}
                       value={gradientSourceRadialRadius}
+                      defaultValue={defaultGradient.radialRadius}
                       disabled={isSubmittingGenerated}
                       formatter={formatPercentValue}
                       onChange={setGradientSourceRadialRadius}
@@ -816,6 +820,7 @@ export function SourceEditorDialog({
                       max={0.95}
                       step={0.01}
                       value={gradientSourceRadialInnerRadius}
+                      defaultValue={defaultGradient.radialInnerRadius}
                       disabled={isSubmittingGenerated}
                       formatter={formatPercentValue}
                       onChange={setGradientSourceRadialInnerRadius}
@@ -830,6 +835,7 @@ export function SourceEditorDialog({
                       max={360}
                       step={1}
                       value={gradientSourceConicAngle}
+                      defaultValue={defaultGradient.conicAngle}
                       disabled={isSubmittingGenerated}
                       formatter={formatDegreeValue}
                       onChange={setGradientSourceConicAngle}
@@ -840,6 +846,7 @@ export function SourceEditorDialog({
                       max={360}
                       step={1}
                       value={gradientSourceConicSpan}
+                      defaultValue={defaultGradient.conicSpan}
                       disabled={isSubmittingGenerated}
                       formatter={formatDegreeValue}
                       onChange={setGradientSourceConicSpan}
@@ -899,10 +906,30 @@ export function SourceEditorDialog({
             setColor={setPerlinSourceColor}
             regenerateSeed={() => setPerlinSourceSeed(createNoiseSeed())}
             fields={[
-              { label: "Scale", value: perlinSourceScale, onChange: setPerlinSourceScale },
-              { label: "Detail", value: perlinSourceDetail, onChange: setPerlinSourceDetail },
-              { label: "Contrast", value: perlinSourceContrast, onChange: setPerlinSourceContrast },
-              { label: "Distortion", value: perlinSourceDistortion, onChange: setPerlinSourceDistortion },
+              {
+                label: "Scale",
+                value: perlinSourceScale,
+                defaultValue: defaultPerlin.scale,
+                onChange: setPerlinSourceScale,
+              },
+              {
+                label: "Detail",
+                value: perlinSourceDetail,
+                defaultValue: defaultPerlin.detail,
+                onChange: setPerlinSourceDetail,
+              },
+              {
+                label: "Contrast",
+                value: perlinSourceContrast,
+                defaultValue: defaultPerlin.contrast,
+                onChange: setPerlinSourceContrast,
+              },
+              {
+                label: "Distortion",
+                value: perlinSourceDistortion,
+                defaultValue: defaultPerlin.distortion,
+                onChange: setPerlinSourceDistortion,
+              },
             ]}
             previewSource={perlinPreviewSource}
             canvasSize={canvasSize}
@@ -921,10 +948,30 @@ export function SourceEditorDialog({
             setColor={setCellularSourceColor}
             regenerateSeed={() => setCellularSourceSeed(createNoiseSeed())}
             fields={[
-              { label: "Scale", value: cellularSourceScale, onChange: setCellularSourceScale },
-              { label: "Jitter", value: cellularSourceJitter, onChange: setCellularSourceJitter },
-              { label: "Edge", value: cellularSourceEdge, onChange: setCellularSourceEdge },
-              { label: "Contrast", value: cellularSourceContrast, onChange: setCellularSourceContrast },
+              {
+                label: "Scale",
+                value: cellularSourceScale,
+                defaultValue: defaultCellular.scale,
+                onChange: setCellularSourceScale,
+              },
+              {
+                label: "Jitter",
+                value: cellularSourceJitter,
+                defaultValue: defaultCellular.jitter,
+                onChange: setCellularSourceJitter,
+              },
+              {
+                label: "Edge",
+                value: cellularSourceEdge,
+                defaultValue: defaultCellular.edge,
+                onChange: setCellularSourceEdge,
+              },
+              {
+                label: "Contrast",
+                value: cellularSourceContrast,
+                defaultValue: defaultCellular.contrast,
+                onChange: setCellularSourceContrast,
+              },
             ]}
             previewSource={cellularPreviewSource}
             canvasSize={canvasSize}
@@ -943,10 +990,30 @@ export function SourceEditorDialog({
             setColor={setReactionSourceColor}
             regenerateSeed={() => setReactionSourceSeed(createNoiseSeed())}
             fields={[
-              { label: "Scale", value: reactionSourceScale, onChange: setReactionSourceScale },
-              { label: "Diffusion", value: reactionSourceDiffusion, onChange: setReactionSourceDiffusion },
-              { label: "Balance", value: reactionSourceBalance, onChange: setReactionSourceBalance },
-              { label: "Distortion", value: reactionSourceDistortion, onChange: setReactionSourceDistortion },
+              {
+                label: "Scale",
+                value: reactionSourceScale,
+                defaultValue: defaultReaction.scale,
+                onChange: setReactionSourceScale,
+              },
+              {
+                label: "Diffusion",
+                value: reactionSourceDiffusion,
+                defaultValue: defaultReaction.diffusion,
+                onChange: setReactionSourceDiffusion,
+              },
+              {
+                label: "Balance",
+                value: reactionSourceBalance,
+                defaultValue: defaultReaction.balance,
+                onChange: setReactionSourceBalance,
+              },
+              {
+                label: "Distortion",
+                value: reactionSourceDistortion,
+                defaultValue: defaultReaction.distortion,
+                onChange: setReactionSourceDistortion,
+              },
             ]}
             previewSource={reactionPreviewSource}
             canvasSize={canvasSize}
@@ -965,10 +1032,30 @@ export function SourceEditorDialog({
             setColor={setWaveSourceColor}
             regenerateSeed={() => setWaveSourceSeed(createNoiseSeed())}
             fields={[
-              { label: "Scale", value: waveSourceScale, onChange: setWaveSourceScale },
-              { label: "Interference", value: waveSourceInterference, onChange: setWaveSourceInterference },
-              { label: "Directionality", value: waveSourceDirectionality, onChange: setWaveSourceDirectionality },
-              { label: "Distortion", value: waveSourceDistortion, onChange: setWaveSourceDistortion },
+              {
+                label: "Scale",
+                value: waveSourceScale,
+                defaultValue: defaultWave.scale,
+                onChange: setWaveSourceScale,
+              },
+              {
+                label: "Interference",
+                value: waveSourceInterference,
+                defaultValue: defaultWave.interference,
+                onChange: setWaveSourceInterference,
+              },
+              {
+                label: "Directionality",
+                value: waveSourceDirectionality,
+                defaultValue: defaultWave.directionality,
+                onChange: setWaveSourceDirectionality,
+              },
+              {
+                label: "Distortion",
+                value: waveSourceDistortion,
+                defaultValue: defaultWave.distortion,
+                onChange: setWaveSourceDistortion,
+              },
             ]}
             previewSource={wavePreviewSource}
             canvasSize={canvasSize}

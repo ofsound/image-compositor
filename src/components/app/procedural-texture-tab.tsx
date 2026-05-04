@@ -103,6 +103,7 @@ export function SliderField({
   max,
   step,
   value,
+  defaultValue,
   disabled = false,
   onChange,
   className,
@@ -114,6 +115,7 @@ export function SliderField({
   max: number;
   step: number;
   value: number;
+  defaultValue?: number;
   disabled?: boolean;
   onChange: (value: number) => void;
   className?: string;
@@ -175,6 +177,7 @@ export function SliderField({
         max={max}
         step={step}
         value={[displayValue]}
+        defaultValue={defaultValue === undefined ? undefined : [defaultValue]}
         onValueChange={(next) => {
           const nextValue = next[0] ?? value;
           setDraftValue(nextValue);
@@ -195,6 +198,7 @@ export function SliderField({
 export interface ProceduralTextureField {
   label: string;
   value: number;
+  defaultValue?: number;
   onChange: (value: number) => void;
 }
 
@@ -282,6 +286,7 @@ export function ProceduralTextureTab({
               max={1}
               step={0.01}
               value={field.value}
+              defaultValue={field.defaultValue}
               disabled={submitDisabled}
               formatter={formatPercentValue}
               onChange={field.onChange}

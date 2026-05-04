@@ -30,6 +30,14 @@ import {
 } from "@/lib/format-utils";
 import type { ProjectEditorView } from "@/lib/project-editor-view";
 import {
+  DEFAULT_COMPOSITING,
+  DEFAULT_DRAW,
+  DEFAULT_EFFECTS,
+  DEFAULT_FINISH,
+  DEFAULT_LAYOUT,
+  DEFAULT_SOURCE_MAPPING,
+} from "@/lib/project-defaults";
+import {
   FRACTAL_RADIAL_SYMMETRY_COPY_LIMIT,
   getFractalIterationLimit,
 } from "@/lib/layout-utils";
@@ -221,6 +229,7 @@ export function RightSidebar({
                         max={1}
                         step={0.01}
                         value={activeProjectView.layout.rectCornerRadius}
+                        defaultValue={DEFAULT_LAYOUT.rectCornerRadius}
                         formatter={(value) => `${Math.round(value * 100)}%`}
                         onChange={(value) =>
                           patchProject((project) => ({
@@ -241,6 +250,7 @@ export function RightSidebar({
                           max={360}
                           step={1}
                           value={activeProjectView.layout.wedgeAngle}
+                          defaultValue={DEFAULT_LAYOUT.wedgeAngle}
                           formatter={(value) => `${Math.round(value)}°`}
                           onChange={(value) =>
                             patchProject((project) => ({
@@ -258,6 +268,7 @@ export function RightSidebar({
                           max={360}
                           step={1}
                           value={activeProjectView.layout.wedgeJitter}
+                          defaultValue={DEFAULT_LAYOUT.wedgeJitter}
                           formatter={(value) => `${Math.round(value)}°`}
                           onChange={(value) =>
                             patchProject((project) => ({
@@ -279,6 +290,7 @@ export function RightSidebar({
                         max={0.95}
                         step={0.01}
                         value={activeProjectView.layout.hollowRatio}
+                        defaultValue={DEFAULT_LAYOUT.hollowRatio}
                         formatter={(value) => `${Math.round(value * 100)}%`}
                         onChange={(value) =>
                           patchProject((project) => ({
@@ -304,6 +316,7 @@ export function RightSidebar({
                         max={640}
                         step={1}
                         value={activeProjectView.draw.brushSize}
+                        defaultValue={DEFAULT_DRAW.brushSize}
                         formatter={(value) => `${Math.round(value)} px`}
                         onChange={(value) =>
                           patchProject((project) => ({
@@ -441,6 +454,7 @@ export function RightSidebar({
                         max={32}
                         step={1}
                         value={activeProjectView.layout.columns}
+                        defaultValue={DEFAULT_LAYOUT.columns}
                         formatter={(value) => `${Math.round(value)}`}
                         onChange={(value) =>
                           patchProject((project) => ({
@@ -458,6 +472,7 @@ export function RightSidebar({
                         max={32}
                         step={1}
                         value={activeProjectView.layout.rows}
+                        defaultValue={DEFAULT_LAYOUT.rows}
                         formatter={(value) => `${Math.round(value)}`}
                         onChange={(value) =>
                           patchProject((project) => ({
@@ -475,6 +490,7 @@ export function RightSidebar({
                         max={300}
                         step={1}
                         value={activeProjectView.layout.gutterHorizontal}
+                        defaultValue={DEFAULT_LAYOUT.gutterHorizontal}
                         formatter={(value) => `${Math.round(value)} px`}
                         onChange={(value) =>
                           patchProject((project) => ({
@@ -492,6 +508,7 @@ export function RightSidebar({
                         max={300}
                         step={1}
                         value={activeProjectView.layout.gutterVertical}
+                        defaultValue={DEFAULT_LAYOUT.gutterVertical}
                         formatter={(value) => `${Math.round(value)} px`}
                         onChange={(value) =>
                           patchProject((project) => ({
@@ -509,6 +526,7 @@ export function RightSidebar({
                         max={180}
                         step={1}
                         value={activeProjectView.layout.gridAngle}
+                        defaultValue={DEFAULT_LAYOUT.gridAngle}
                         formatter={(value) => `${Math.round(value)}°`}
                         onChange={(value) =>
                           patchProject((project) => ({
@@ -533,6 +551,7 @@ export function RightSidebar({
                         max={180}
                         step={1}
                         value={activeProjectView.layout.stripAngle}
+                        defaultValue={DEFAULT_LAYOUT.stripAngle}
                         formatter={(value) => `${Math.round(value)}°`}
                         onChange={(value) =>
                           patchProject((project) => ({
@@ -552,6 +571,7 @@ export function RightSidebar({
                         value={
                           activeProjectView.layout.density / DENSITY_UI_SCALE
                         }
+                        defaultValue={DEFAULT_LAYOUT.density / DENSITY_UI_SCALE}
                         onChange={(value) =>
                           patchProject((project) => ({
                             ...project,
@@ -571,6 +591,7 @@ export function RightSidebar({
                         max={300}
                         step={1}
                         value={activeProjectView.layout.gutter}
+                        defaultValue={DEFAULT_LAYOUT.gutter}
                         formatter={(value) => `${Math.round(value)} px`}
                         onChange={(value) =>
                           patchProject((project) => ({
@@ -595,6 +616,7 @@ export function RightSidebar({
                         max={7}
                         step={1}
                         value={activeProjectView.layout.blockDepth}
+                        defaultValue={DEFAULT_LAYOUT.blockDepth}
                         formatter={(value) => `${Math.round(value)}`}
                         onChange={(value) =>
                           patchProject((project) => ({
@@ -612,6 +634,7 @@ export function RightSidebar({
                         max={1}
                         step={0.01}
                         value={activeProjectView.layout.blockSplitRandomness}
+                        defaultValue={DEFAULT_LAYOUT.blockSplitRandomness}
                         formatter={(value) => `${Math.round(value * 100)}%`}
                         onChange={(value) =>
                           patchProject((project) => ({
@@ -629,6 +652,7 @@ export function RightSidebar({
                         max={400}
                         step={1}
                         value={activeProjectView.layout.blockMinSize}
+                        defaultValue={DEFAULT_LAYOUT.blockMinSize}
                         formatter={(value) => `${Math.round(value)} px`}
                         onChange={(value) =>
                           patchProject((project) => ({
@@ -646,6 +670,7 @@ export function RightSidebar({
                         max={1}
                         step={0.01}
                         value={activeProjectView.layout.blockSplitBias}
+                        defaultValue={DEFAULT_LAYOUT.blockSplitBias}
                         formatter={(value) => {
                           if (value < 0.45) return "horizontal";
                           if (value > 0.55) return "vertical";
@@ -674,6 +699,7 @@ export function RightSidebar({
                         max={36}
                         step={1}
                         value={activeProjectView.layout.radialSegments}
+                        defaultValue={DEFAULT_LAYOUT.radialSegments}
                         formatter={(value) => `${Math.round(value)}`}
                         onChange={(value) =>
                           patchProject((project) => ({
@@ -691,6 +717,7 @@ export function RightSidebar({
                         max={12}
                         step={1}
                         value={activeProjectView.layout.radialRings}
+                        defaultValue={DEFAULT_LAYOUT.radialRings}
                         formatter={(value) => `${Math.round(value)}`}
                         onChange={(value) =>
                           patchProject((project) => ({
@@ -708,6 +735,7 @@ export function RightSidebar({
                         max={360}
                         step={1}
                         value={activeProjectView.layout.radialAngleOffset}
+                        defaultValue={DEFAULT_LAYOUT.radialAngleOffset}
                         formatter={(value) => `${Math.round(value)}°`}
                         onChange={(value) =>
                           patchProject((project) => ({
@@ -725,6 +753,7 @@ export function RightSidebar({
                         max={180}
                         step={1}
                         value={activeProjectView.layout.radialRingPhaseStep}
+                        defaultValue={DEFAULT_LAYOUT.radialRingPhaseStep}
                         formatter={(value) => `${Math.round(value)}°`}
                         onChange={(value) =>
                           patchProject((project) => ({
@@ -742,6 +771,7 @@ export function RightSidebar({
                         max={0.85}
                         step={0.01}
                         value={activeProjectView.layout.radialInnerRadius}
+                        defaultValue={DEFAULT_LAYOUT.radialInnerRadius}
                         formatter={(value) => `${Math.round(value * 100)}%`}
                         onChange={(value) =>
                           patchProject((project) => ({
@@ -797,6 +827,7 @@ export function RightSidebar({
                         value={
                           activeProjectView.layout.density / DENSITY_UI_SCALE
                         }
+                        defaultValue={DEFAULT_LAYOUT.density / DENSITY_UI_SCALE}
                         onChange={(value) =>
                           patchProject((project) => ({
                             ...project,
@@ -815,6 +846,7 @@ export function RightSidebar({
                         max={ORGANIC_DISTRIBUTION_MAX}
                         step={1}
                         value={activeProjectView.layout.organicVariation}
+                        defaultValue={DEFAULT_LAYOUT.organicVariation}
                         formatter={(value) => `${Math.round(value)}`}
                         onChange={(value) =>
                           patchProject((project) => ({
@@ -841,6 +873,7 @@ export function RightSidebar({
                         value={
                           activeProjectView.layout.density / DENSITY_UI_SCALE
                         }
+                        defaultValue={DEFAULT_LAYOUT.density / DENSITY_UI_SCALE}
                         onChange={(value) =>
                           patchProject((project) => ({
                             ...project,
@@ -859,6 +892,7 @@ export function RightSidebar({
                         max={1}
                         step={0.01}
                         value={activeProjectView.layout.flowCurvature}
+                        defaultValue={DEFAULT_LAYOUT.flowCurvature}
                         formatter={(value) => `${Math.round(value * 100)}%`}
                         onChange={(value) =>
                           patchProject((project) => ({
@@ -876,6 +910,7 @@ export function RightSidebar({
                         max={1}
                         step={0.01}
                         value={activeProjectView.layout.flowCoherence}
+                        defaultValue={DEFAULT_LAYOUT.flowCoherence}
                         formatter={(value) => `${Math.round(value * 100)}%`}
                         onChange={(value) =>
                           patchProject((project) => ({
@@ -893,6 +928,7 @@ export function RightSidebar({
                         max={1}
                         step={0.01}
                         value={activeProjectView.layout.flowBranchRate}
+                        defaultValue={DEFAULT_LAYOUT.flowBranchRate}
                         formatter={(value) => `${Math.round(value * 100)}%`}
                         onChange={(value) =>
                           patchProject((project) => ({
@@ -911,6 +947,7 @@ export function RightSidebar({
                         max={1}
                         step={0.01}
                         value={activeProjectView.layout.flowTaper}
+                        defaultValue={DEFAULT_LAYOUT.flowTaper}
                         formatter={(value) => `${Math.round(value * 100)}%`}
                         onChange={(value) =>
                           patchProject((project) => ({
@@ -937,6 +974,7 @@ export function RightSidebar({
                         value={
                           activeProjectView.layout.density / DENSITY_UI_SCALE
                         }
+                        defaultValue={DEFAULT_LAYOUT.density / DENSITY_UI_SCALE}
                         onChange={(value) =>
                           patchProject((project) => ({
                             ...project,
@@ -982,6 +1020,7 @@ export function RightSidebar({
                         max={THREE_D_DISTRIBUTION_MAX}
                         step={1}
                         value={activeProjectView.layout.threeDDistribution}
+                        defaultValue={DEFAULT_LAYOUT.threeDDistribution}
                         formatter={(value) => `${Math.round(value)}`}
                         onChange={(value) =>
                           patchProject((project) => ({
@@ -999,6 +1038,7 @@ export function RightSidebar({
                         max={1}
                         step={0.01}
                         value={activeProjectView.layout.threeDDepth}
+                        defaultValue={DEFAULT_LAYOUT.threeDDepth}
                         formatter={(value) => `${Math.round(value * 100)}%`}
                         onChange={(value) =>
                           patchProject((project) => ({
@@ -1016,6 +1056,7 @@ export function RightSidebar({
                         max={1}
                         step={0.01}
                         value={activeProjectView.layout.threeDCameraDistance}
+                        defaultValue={DEFAULT_LAYOUT.threeDCameraDistance}
                         formatter={(value) => `${Math.round(value * 100)}%`}
                         onChange={(value) =>
                           patchProject((project) => ({
@@ -1033,6 +1074,7 @@ export function RightSidebar({
                         max={1}
                         step={0.01}
                         value={activeProjectView.layout.threeDPerspective}
+                        defaultValue={DEFAULT_LAYOUT.threeDPerspective}
                         formatter={(value) => `${Math.round(value * 100)}%`}
                         onChange={(value) =>
                           patchProject((project) => ({
@@ -1050,6 +1092,7 @@ export function RightSidebar({
                         max={1}
                         step={0.01}
                         value={activeProjectView.layout.threeDPanX}
+                        defaultValue={DEFAULT_LAYOUT.threeDPanX}
                         formatter={(value) => `${Math.round(value * 100)}%`}
                         onChange={(value) =>
                           patchProject((project) => ({
@@ -1067,6 +1110,7 @@ export function RightSidebar({
                         max={1}
                         step={0.01}
                         value={activeProjectView.layout.threeDPanY}
+                        defaultValue={DEFAULT_LAYOUT.threeDPanY}
                         formatter={(value) => `${Math.round(value * 100)}%`}
                         onChange={(value) =>
                           patchProject((project) => ({
@@ -1084,6 +1128,7 @@ export function RightSidebar({
                         max={1}
                         step={0.01}
                         value={activeProjectView.layout.threeDZJitter}
+                        defaultValue={DEFAULT_LAYOUT.threeDZJitter}
                         formatter={(value) => `${Math.round(value * 100)}%`}
                         onChange={(value) =>
                           patchProject((project) => ({
@@ -1101,6 +1146,7 @@ export function RightSidebar({
                         max={180}
                         step={1}
                         value={activeProjectView.layout.threeDYaw}
+                        defaultValue={DEFAULT_LAYOUT.threeDYaw}
                         formatter={(value) => `${Math.round(value)}°`}
                         onChange={(value) =>
                           patchProject((project) => ({
@@ -1118,6 +1164,7 @@ export function RightSidebar({
                         max={89}
                         step={1}
                         value={activeProjectView.layout.threeDPitch}
+                        defaultValue={DEFAULT_LAYOUT.threeDPitch}
                         formatter={(value) => `${Math.round(value)}°`}
                         onChange={(value) =>
                           patchProject((project) => ({
@@ -1135,6 +1182,7 @@ export function RightSidebar({
                         max={1}
                         step={0.01}
                         value={activeProjectView.layout.threeDBillboard}
+                        defaultValue={DEFAULT_LAYOUT.threeDBillboard}
                         formatter={(value) => `${Math.round(value * 100)}%`}
                         onChange={(value) =>
                           patchProject((project) => ({
@@ -1197,6 +1245,10 @@ export function RightSidebar({
                           activeProjectView.layout.fractalIterations,
                           fractalIterationMax,
                         )}
+                        defaultValue={Math.min(
+                          DEFAULT_LAYOUT.fractalIterations,
+                          fractalIterationMax,
+                        )}
                         formatter={(value) => `${Math.round(value)}`}
                         onChange={(value) =>
                           patchProject((project) => ({
@@ -1214,6 +1266,7 @@ export function RightSidebar({
                         max={0.45}
                         step={0.01}
                         value={activeProjectView.layout.fractalSpacing}
+                        defaultValue={DEFAULT_LAYOUT.fractalSpacing}
                         formatter={formatPercentValue}
                         onChange={(value) =>
                           patchProject((project) => ({
@@ -1234,6 +1287,7 @@ export function RightSidebar({
                             max={1.4}
                             step={0.01}
                             value={activeProjectView.layout.fractalTrianglePull}
+                            defaultValue={DEFAULT_LAYOUT.fractalTrianglePull}
                             formatter={(value) => `${value.toFixed(2)}x`}
                             onChange={(value) =>
                               patchProject((project) => ({
@@ -1253,6 +1307,7 @@ export function RightSidebar({
                             value={
                               activeProjectView.layout.fractalTriangleRotation
                             }
+                            defaultValue={DEFAULT_LAYOUT.fractalTriangleRotation}
                             formatter={formatDegreeValue}
                             onChange={(value) =>
                               patchProject((project) => ({
@@ -1277,6 +1332,7 @@ export function RightSidebar({
                             value={
                               activeProjectView.layout.fractalCarpetHoleScale
                             }
+                            defaultValue={DEFAULT_LAYOUT.fractalCarpetHoleScale}
                             formatter={formatPercentValue}
                             onChange={(value) =>
                               patchProject((project) => ({
@@ -1294,6 +1350,7 @@ export function RightSidebar({
                             max={0.24}
                             step={0.01}
                             value={activeProjectView.layout.fractalCarpetOffset}
+                            defaultValue={DEFAULT_LAYOUT.fractalCarpetOffset}
                             formatter={formatPercentValue}
                             onChange={(value) =>
                               patchProject((project) => ({
@@ -1317,6 +1374,7 @@ export function RightSidebar({
                             value={
                               activeProjectView.layout.fractalVicsekArmScale
                             }
+                            defaultValue={DEFAULT_LAYOUT.fractalVicsekArmScale}
                             formatter={formatPercentValue}
                             onChange={(value) =>
                               patchProject((project) => ({
@@ -1336,6 +1394,7 @@ export function RightSidebar({
                             value={
                               activeProjectView.layout.fractalVicsekCenterScale
                             }
+                            defaultValue={DEFAULT_LAYOUT.fractalVicsekCenterScale}
                             formatter={formatPercentValue}
                             onChange={(value) =>
                               patchProject((project) => ({
@@ -1357,6 +1416,7 @@ export function RightSidebar({
                             max={0.8}
                             step={0.01}
                             value={activeProjectView.layout.fractalHTreeRatio}
+                            defaultValue={DEFAULT_LAYOUT.fractalHTreeRatio}
                             formatter={formatPercentValue}
                             onChange={(value) =>
                               patchProject((project) => ({
@@ -1376,6 +1436,7 @@ export function RightSidebar({
                             value={
                               activeProjectView.layout.fractalHTreeThickness
                             }
+                            defaultValue={DEFAULT_LAYOUT.fractalHTreeThickness}
                             formatter={formatPercentValue}
                             onChange={(value) =>
                               patchProject((project) => ({
@@ -1399,6 +1460,7 @@ export function RightSidebar({
                             value={
                               activeProjectView.layout.fractalRosettePetals
                             }
+                            defaultValue={DEFAULT_LAYOUT.fractalRosettePetals}
                             formatter={(value) => `${Math.round(value)}`}
                             onChange={(value) =>
                               patchProject((project) => ({
@@ -1416,6 +1478,7 @@ export function RightSidebar({
                             max={180}
                             step={1}
                             value={activeProjectView.layout.fractalRosetteTwist}
+                            defaultValue={DEFAULT_LAYOUT.fractalRosetteTwist}
                             formatter={formatDegreeValue}
                             onChange={(value) =>
                               patchProject((project) => ({
@@ -1436,6 +1499,7 @@ export function RightSidebar({
                             value={
                               activeProjectView.layout.fractalRosetteInnerRadius
                             }
+                            defaultValue={DEFAULT_LAYOUT.fractalRosetteInnerRadius}
                             formatter={formatPercentValue}
                             onChange={(value) =>
                               patchProject((project) => ({
@@ -1458,6 +1522,7 @@ export function RightSidebar({
                             max={85}
                             step={1}
                             value={activeProjectView.layout.fractalBinaryAngle}
+                            defaultValue={DEFAULT_LAYOUT.fractalBinaryAngle}
                             formatter={formatDegreeValue}
                             onChange={(value) =>
                               patchProject((project) => ({
@@ -1475,6 +1540,7 @@ export function RightSidebar({
                             max={0.92}
                             step={0.01}
                             value={activeProjectView.layout.fractalBinaryDecay}
+                            defaultValue={DEFAULT_LAYOUT.fractalBinaryDecay}
                             formatter={formatPercentValue}
                             onChange={(value) =>
                               patchProject((project) => ({
@@ -1495,6 +1561,7 @@ export function RightSidebar({
                             value={
                               activeProjectView.layout.fractalBinaryThickness
                             }
+                            defaultValue={DEFAULT_LAYOUT.fractalBinaryThickness}
                             formatter={formatPercentValue}
                             onChange={(value) =>
                               patchProject((project) => ({
@@ -1519,6 +1586,7 @@ export function RightSidebar({
                             value={
                               activeProjectView.layout.fractalPythagorasAngle
                             }
+                            defaultValue={DEFAULT_LAYOUT.fractalPythagorasAngle}
                             formatter={formatDegreeValue}
                             onChange={(value) =>
                               patchProject((project) => ({
@@ -1538,6 +1606,7 @@ export function RightSidebar({
                             value={
                               activeProjectView.layout.fractalPythagorasScale
                             }
+                            defaultValue={DEFAULT_LAYOUT.fractalPythagorasScale}
                             formatter={formatPercentValue}
                             onChange={(value) =>
                               patchProject((project) => ({
@@ -1558,6 +1627,7 @@ export function RightSidebar({
                             value={
                               activeProjectView.layout.fractalPythagorasLean
                             }
+                            defaultValue={DEFAULT_LAYOUT.fractalPythagorasLean}
                             formatter={formatPercentValue}
                             onChange={(value) =>
                               patchProject((project) => ({
@@ -1620,6 +1690,7 @@ export function RightSidebar({
                             max={1}
                             step={0.01}
                             value={activeProjectView.layout.symmetryCenterX}
+                            defaultValue={DEFAULT_LAYOUT.symmetryCenterX}
                             formatter={formatPercentValue}
                             onChange={(value) =>
                               patchProject((project) => ({
@@ -1637,6 +1708,7 @@ export function RightSidebar({
                             max={1}
                             step={0.01}
                             value={activeProjectView.layout.symmetryCenterY}
+                            defaultValue={DEFAULT_LAYOUT.symmetryCenterY}
                             formatter={formatPercentValue}
                             onChange={(value) =>
                               patchProject((project) => ({
@@ -1655,6 +1727,7 @@ export function RightSidebar({
                             max={1}
                             step={0.01}
                             value={activeProjectView.layout.symmetryJitter}
+                            defaultValue={DEFAULT_LAYOUT.symmetryJitter}
                             formatter={formatPercentValue}
                             onChange={(value) =>
                               patchProject((project) => ({
@@ -1676,6 +1749,7 @@ export function RightSidebar({
                             max={180}
                             step={1}
                             value={activeProjectView.layout.symmetryAngleOffset}
+                            defaultValue={DEFAULT_LAYOUT.symmetryAngleOffset}
                             formatter={formatDegreeValue}
                             onChange={(value) =>
                               patchProject((project) => ({
@@ -1696,6 +1770,7 @@ export function RightSidebar({
                               activeProjectView.layout.symmetryCopies,
                               radialCopiesMax,
                             )}
+                            defaultValue={Math.min(DEFAULT_LAYOUT.symmetryCopies, radialCopiesMax)}
                             formatter={(value) => `${Math.round(value)}`}
                             onChange={(value) =>
                               patchProject((project) => ({
@@ -1725,6 +1800,7 @@ export function RightSidebar({
                         max={1}
                         step={0.01}
                         value={activeProjectView.layout.hidePercentage}
+                        defaultValue={DEFAULT_LAYOUT.hidePercentage}
                         formatter={(value) => `${Math.round(value * 100)}%`}
                         onChange={(value) =>
                           patchProject((project) => ({
@@ -1742,6 +1818,7 @@ export function RightSidebar({
                         max={1}
                         step={0.01}
                         value={activeProjectView.layout.letterbox}
+                        defaultValue={DEFAULT_LAYOUT.letterbox}
                         formatter={(value) => `${Math.round(value * 100)}%`}
                         onChange={(value) =>
                           patchProject((project) => ({
@@ -1765,6 +1842,7 @@ export function RightSidebar({
                       max={1}
                       step={0.01}
                       value={activeProjectView.layout.offsetX}
+                      defaultValue={DEFAULT_LAYOUT.offsetX}
                       formatter={(value) => `${Math.round(value * 100)}%`}
                       onChange={(value) =>
                         patchProject((project) => ({
@@ -1782,6 +1860,7 @@ export function RightSidebar({
                       max={1}
                       step={0.01}
                       value={activeProjectView.layout.offsetY}
+                      defaultValue={DEFAULT_LAYOUT.offsetY}
                       formatter={(value) => `${Math.round(value * 100)}%`}
                       onChange={(value) =>
                         patchProject((project) => ({
@@ -1800,6 +1879,7 @@ export function RightSidebar({
                       max={360}
                       step={1}
                       value={activeProjectView.layout.contentRotation}
+                      defaultValue={DEFAULT_LAYOUT.contentRotation}
                       formatter={formatDegreeValue}
                       onChange={(value) =>
                         patchProject((project) => ({
@@ -1888,6 +1968,7 @@ export function RightSidebar({
                         max={1}
                         step={0.01}
                         value={activeProjectView.sourceMapping.paletteEmphasis}
+                        defaultValue={DEFAULT_SOURCE_MAPPING.paletteEmphasis}
                         onChange={(value) =>
                           patchProject((project) => ({
                             ...project,
@@ -1936,6 +2017,7 @@ export function RightSidebar({
                       max={2.5}
                       step={0.01}
                       value={activeProjectView.sourceMapping.cropZoom}
+                      defaultValue={DEFAULT_SOURCE_MAPPING.cropZoom}
                       onChange={(value) =>
                         patchProject((project) => ({
                           ...project,
@@ -2007,6 +2089,7 @@ export function RightSidebar({
                       max={1}
                       step={0.01}
                       value={activeProjectView.compositing.opacity}
+                      defaultValue={DEFAULT_COMPOSITING.opacity}
                       onChange={(value) =>
                         patchProject((project) => ({
                           ...project,
@@ -2023,6 +2106,7 @@ export function RightSidebar({
                       max={1}
                       step={0.01}
                       value={activeProjectView.compositing.overlap}
+                      defaultValue={DEFAULT_COMPOSITING.overlap}
                       onChange={(value) =>
                         patchProject((project) => ({
                           ...project,
@@ -2044,6 +2128,7 @@ export function RightSidebar({
                       max={18}
                       step={0.1}
                       value={activeProjectView.effects.blur}
+                      defaultValue={DEFAULT_EFFECTS.blur}
                       formatter={(value) => `${value.toFixed(1)} px`}
                       onChange={(value) =>
                         patchProject((project) => ({
@@ -2061,6 +2146,7 @@ export function RightSidebar({
                       max={1}
                       step={0.01}
                       value={activeProjectView.effects.sharpen}
+                      defaultValue={DEFAULT_EFFECTS.sharpen}
                       onChange={(value) =>
                         patchProject((project) => ({
                           ...project,
@@ -2077,6 +2163,7 @@ export function RightSidebar({
                       max={180}
                       step={1}
                       value={activeProjectView.effects.rotationJitter}
+                      defaultValue={DEFAULT_EFFECTS.rotationJitter}
                       formatter={(value) => `${Math.round(value)}°`}
                       onChange={(value) =>
                         patchProject((project) => ({
@@ -2094,6 +2181,7 @@ export function RightSidebar({
                       max={0.8}
                       step={0.01}
                       value={activeProjectView.effects.scaleJitter}
+                      defaultValue={DEFAULT_EFFECTS.scaleJitter}
                       onChange={(value) =>
                         patchProject((project) => ({
                           ...project,
@@ -2110,6 +2198,7 @@ export function RightSidebar({
                       max={100}
                       step={1}
                       value={activeProjectView.effects.displacement}
+                      defaultValue={DEFAULT_EFFECTS.displacement}
                       formatter={(value) => `${Math.round(value)} px`}
                       onChange={(value) =>
                         patchProject((project) => ({
@@ -2127,6 +2216,7 @@ export function RightSidebar({
                       max={0.8}
                       step={0.01}
                       value={activeProjectView.effects.distortion}
+                      defaultValue={DEFAULT_EFFECTS.distortion}
                       onChange={(value) =>
                         patchProject((project) => ({
                           ...project,
@@ -2149,6 +2239,7 @@ export function RightSidebar({
                       max={12}
                       step={1}
                       value={activeProjectView.effects.kaleidoscopeSegments}
+                      defaultValue={DEFAULT_EFFECTS.kaleidoscopeSegments}
                       formatter={(value) => `${Math.round(value)} seg`}
                       onChange={(value) =>
                         patchProject((project) => ({
@@ -2168,6 +2259,7 @@ export function RightSidebar({
                           max={1}
                           step={0.01}
                           value={activeProjectView.effects.kaleidoscopeCenterX}
+                          defaultValue={DEFAULT_EFFECTS.kaleidoscopeCenterX}
                           formatter={(value) => `${Math.round(value * 100)}%`}
                           onChange={(value) =>
                             patchProject((project) => ({
@@ -2185,6 +2277,7 @@ export function RightSidebar({
                           max={1}
                           step={0.01}
                           value={activeProjectView.effects.kaleidoscopeCenterY}
+                          defaultValue={DEFAULT_EFFECTS.kaleidoscopeCenterY}
                           formatter={(value) => `${Math.round(value * 100)}%`}
                           onChange={(value) =>
                             patchProject((project) => ({
@@ -2204,6 +2297,7 @@ export function RightSidebar({
                           value={
                             activeProjectView.effects.kaleidoscopeAngleOffset
                           }
+                          defaultValue={DEFAULT_EFFECTS.kaleidoscopeAngleOffset}
                           formatter={(value) => `${Math.round(value)}°`}
                           onChange={(value) =>
                             patchProject((project) => ({
@@ -2223,6 +2317,7 @@ export function RightSidebar({
                           value={
                             activeProjectView.effects.kaleidoscopeRotationDrift
                           }
+                          defaultValue={DEFAULT_EFFECTS.kaleidoscopeRotationDrift}
                           formatter={(value) => `${Math.round(value)}°`}
                           onChange={(value) =>
                             patchProject((project) => ({
@@ -2242,6 +2337,7 @@ export function RightSidebar({
                           value={
                             activeProjectView.effects.kaleidoscopeScaleFalloff
                           }
+                          defaultValue={DEFAULT_EFFECTS.kaleidoscopeScaleFalloff}
                           formatter={(value) => `${Math.round(value * 100)}%`}
                           onChange={(value) =>
                             patchProject((project) => ({
@@ -2259,6 +2355,7 @@ export function RightSidebar({
                           max={1}
                           step={0.01}
                           value={activeProjectView.effects.kaleidoscopeOpacity}
+                          defaultValue={DEFAULT_EFFECTS.kaleidoscopeOpacity}
                           formatter={(value) => `${Math.round(value * 100)}%`}
                           onChange={(value) =>
                             patchProject((project) => ({
@@ -2322,6 +2419,7 @@ export function RightSidebar({
                       max={200}
                       step={1}
                       value={activeProjectView.finish.shadowOffsetX}
+                      defaultValue={DEFAULT_FINISH.shadowOffsetX}
                       formatter={(value) => `${Math.round(value)} px`}
                       onChange={(value) =>
                         patchProject((project) => ({
@@ -2339,6 +2437,7 @@ export function RightSidebar({
                       max={200}
                       step={1}
                       value={activeProjectView.finish.shadowOffsetY}
+                      defaultValue={DEFAULT_FINISH.shadowOffsetY}
                       formatter={(value) => `${Math.round(value)} px`}
                       onChange={(value) =>
                         patchProject((project) => ({
@@ -2356,6 +2455,7 @@ export function RightSidebar({
                       max={200}
                       step={1}
                       value={activeProjectView.finish.shadowBlur}
+                      defaultValue={DEFAULT_FINISH.shadowBlur}
                       formatter={(value) => `${Math.round(value)} px`}
                       onChange={(value) =>
                         patchProject((project) => ({
@@ -2373,6 +2473,7 @@ export function RightSidebar({
                       max={1}
                       step={0.01}
                       value={activeProjectView.finish.shadowOpacity}
+                      defaultValue={DEFAULT_FINISH.shadowOpacity}
                       formatter={formatPercentValue}
                       onChange={(value) =>
                         patchProject((project) => ({
@@ -2405,6 +2506,7 @@ export function RightSidebar({
                       max={2}
                       step={0.01}
                       value={activeProjectView.finish.brightness}
+                      defaultValue={DEFAULT_FINISH.brightness}
                       formatter={formatPercentValue}
                       onChange={(value) =>
                         patchProject((project) => ({
@@ -2422,6 +2524,7 @@ export function RightSidebar({
                       max={2}
                       step={0.01}
                       value={activeProjectView.finish.contrast}
+                      defaultValue={DEFAULT_FINISH.contrast}
                       formatter={formatPercentValue}
                       onChange={(value) =>
                         patchProject((project) => ({
@@ -2439,6 +2542,7 @@ export function RightSidebar({
                       max={2}
                       step={0.01}
                       value={activeProjectView.finish.saturate}
+                      defaultValue={DEFAULT_FINISH.saturate}
                       formatter={formatPercentValue}
                       onChange={(value) =>
                         patchProject((project) => ({
@@ -2456,6 +2560,7 @@ export function RightSidebar({
                       max={180}
                       step={1}
                       value={activeProjectView.finish.hueRotate}
+                      defaultValue={DEFAULT_FINISH.hueRotate}
                       formatter={formatDegreeValue}
                       onChange={(value) =>
                         patchProject((project) => ({
@@ -2473,6 +2578,7 @@ export function RightSidebar({
                       max={1}
                       step={0.01}
                       value={activeProjectView.finish.noise}
+                      defaultValue={DEFAULT_FINISH.noise}
                       formatter={formatPercentValue}
                       onChange={(value) =>
                         patchProject((project) => ({
@@ -2490,6 +2596,7 @@ export function RightSidebar({
                       max={1}
                       step={0.01}
                       value={activeProjectView.finish.noiseMonochrome}
+                      defaultValue={DEFAULT_FINISH.noiseMonochrome}
                       formatter={formatPercentValue}
                       onChange={(value) =>
                         patchProject((project) => ({
@@ -2508,6 +2615,7 @@ export function RightSidebar({
                       max={1}
                       step={0.01}
                       value={activeProjectView.finish.invert}
+                      defaultValue={DEFAULT_FINISH.invert}
                       formatter={formatPercentValue}
                       onChange={(value) =>
                         patchProject((project) => ({

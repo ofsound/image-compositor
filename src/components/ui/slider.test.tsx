@@ -236,4 +236,27 @@ describe("Slider", () => {
     expect(onValueChange).toHaveBeenCalledWith([0.8]);
     expect(onValueCommit).toHaveBeenCalledWith([0.8]);
   });
+
+  it("resets to the supplied default value on double click", () => {
+    const { onValueChange, onValueCommit, root } = renderSlider({
+      defaultValue: [0.25],
+      initialValue: 0.8,
+    });
+
+    fireEvent.doubleClick(root);
+
+    expect(onValueChange).toHaveBeenCalledWith([0.25]);
+    expect(onValueCommit).toHaveBeenCalledWith([0.25]);
+  });
+
+  it("ignores double click when no default value is supplied", () => {
+    const { onValueChange, onValueCommit, root } = renderSlider({
+      initialValue: 0.8,
+    });
+
+    fireEvent.doubleClick(root);
+
+    expect(onValueChange).not.toHaveBeenCalled();
+    expect(onValueCommit).not.toHaveBeenCalled();
+  });
 });

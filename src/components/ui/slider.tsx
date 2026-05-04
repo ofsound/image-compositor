@@ -29,6 +29,7 @@ export const Slider = React.forwardRef<
       inverted = false,
       max = 100,
       min = 0,
+      onDoubleClick,
       onPointerDown,
       onValueChange,
       onValueCommit,
@@ -252,6 +253,47 @@ export const Slider = React.forwardRef<
       [isControlled, onValueChange],
     );
 
+    const handleDoubleClick: NonNullable<SliderProps["onDoubleClick"]> =
+      React.useCallback((event) => {
+        onDoubleClick?.(event);
+        if (event.defaultPrevented || disabled) {
+          return;
+        }
+
+        const resetValue = defaultValue?.[0];
+        if (resetValue === undefined) {
+          return;
+        }
+
+        const currentValue = resolvedValue?.[0] ?? min;
+        const nextValue = normalizeSliderValue({
+          value: resetValue,
+          min,
+          max,
+          step,
+        });
+
+        if (nextValue === currentValue) {
+          return;
+        }
+
+        dragSessionRef.current = null;
+        emitValueChange(nextValue);
+        onValueCommit?.([nextValue]);
+        focusThumb();
+      }, [
+        defaultValue,
+        disabled,
+        emitValueChange,
+        focusThumb,
+        max,
+        min,
+        onDoubleClick,
+        onValueCommit,
+        resolvedValue,
+        step,
+      ]);
+
     return (
       <SliderPrimitive.Root
         ref={setRootRef}
@@ -265,6 +307,7 @@ export const Slider = React.forwardRef<
         inverted={inverted}
         max={max}
         min={min}
+        onDoubleClick={handleDoubleClick}
         onPointerDown={handlePointerDown}
         onValueChange={handleValueChange}
         onValueCommit={onValueCommit}

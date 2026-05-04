@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 
@@ -171,5 +171,26 @@ describe("SliderField", () => {
 
     expect(screen.queryByRole("button", { name: "Edit Opacity value" })).toBeNull();
     expect(screen.getByText("50%")).toBeInTheDocument();
+  });
+
+  it("resets to the field default value on slider double click", () => {
+    const onChange = vi.fn();
+
+    render(
+      <SliderField
+        label="Opacity"
+        min={0}
+        max={1}
+        step={0.01}
+        value={0.75}
+        defaultValue={0.25}
+        formatter={formatPercentValue}
+        onChange={onChange}
+      />,
+    );
+
+    fireEvent.doubleClick(screen.getByLabelText("Opacity"));
+
+    expect(onChange).toHaveBeenCalledWith(0.25);
   });
 });

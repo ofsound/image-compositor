@@ -4,7 +4,8 @@
   "compatibility_date": "2026-03-30",
   "routes": [
     {
-      "pattern": "compositor.csstune.com",
+      "pattern": "compositor.ofsound.net",
+      "zone_name": "ofsound.net",
       "custom_domain": true,
     },
   ],

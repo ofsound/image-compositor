@@ -16,7 +16,7 @@ import {
   parseMultiplierInputValue,
 } from "@/lib/format-utils";
 import type { ProjectEditorView } from "@/lib/project-editor-view";
-import { getSourceWeight } from "@/lib/source-weights";
+import { DEFAULT_SOURCE_WEIGHT, getSourceWeight } from "@/lib/source-weights";
 import type { ProjectDocument, SourceAsset, SourceKind } from "@/types/project";
 
 interface LeftSidebarProps {
@@ -132,6 +132,7 @@ export function LeftSidebar({
                           max={4}
                           step={0.05}
                           value={[mixWeight]}
+                          defaultValue={[DEFAULT_SOURCE_WEIGHT]}
                           onValueChange={(next) =>
                             updateSourceWeight(asset.id, next[0] ?? mixWeight)
                           }

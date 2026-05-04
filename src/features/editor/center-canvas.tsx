@@ -20,6 +20,7 @@ import {
   normalizeSliderInputValue,
   parsePercentInputValue,
 } from "@/lib/format-utils";
+import { DEFAULT_CANVAS, DEFAULT_EXPORT } from "@/lib/project-defaults";
 import type { ProjectEditorView } from "@/lib/project-editor-view";
 import type { DrawStroke, ProjectDocument, SourceAsset } from "@/types/project";
 import { SliderField } from "@/components/app/procedural-texture-tab";
@@ -125,6 +126,7 @@ export function CenterCanvas({
             max={3840}
             step={10}
             value={activeProject.canvas.width}
+            defaultValue={DEFAULT_CANVAS.width}
             formatter={(value) => `${Math.round(value)} px`}
             onChange={(value) =>
               patchProject((project) => {
@@ -153,6 +155,7 @@ export function CenterCanvas({
             max={3200}
             step={10}
             value={activeProject.canvas.height}
+            defaultValue={DEFAULT_CANVAS.height}
             formatter={(value) => `${Math.round(value)} px`}
             onChange={(value) =>
               patchProject((project) => {
@@ -226,6 +229,7 @@ export function CenterCanvas({
                 max={1}
                 step={0.01}
                 value={[activeProject.canvas.backgroundAlpha]}
+                defaultValue={[DEFAULT_CANVAS.backgroundAlpha]}
                 onValueChange={(next) =>
                   patchProject((project) => ({
                     ...project,
@@ -273,6 +277,7 @@ export function CenterCanvas({
             max={7680}
             step={16}
             value={activeProject.export.width}
+            defaultValue={DEFAULT_EXPORT.width}
             formatter={(value) => `${Math.round(value)} px`}
             onChange={(value) =>
               patchProject((project) => ({
@@ -297,6 +302,7 @@ export function CenterCanvas({
             max={7680}
             step={16}
             value={activeProject.export.height}
+            defaultValue={DEFAULT_EXPORT.height}
             formatter={(value) => `${Math.round(value)} px`}
             onChange={(value) =>
               patchProject((project) => ({
@@ -321,6 +327,7 @@ export function CenterCanvas({
             max={1}
             step={0.01}
             value={activeProject.export.quality}
+            defaultValue={DEFAULT_EXPORT.quality}
             onChange={(value) =>
               patchProject((project) => ({
                 ...project,

@@ -123,6 +123,18 @@ describe("createProjectDocument", () => {
     expect(project.finish.shadowBlur).toBe(0);
     expect(project.finish.shadowOpacity).toBe(0);
     expect(project.finish.shadowColor).toBe("#180f08");
+    expect(project.finish.layer3DEnabled).toBe(false);
+    expect(project.finish.layer3DRotateX).toBe(0);
+    expect(project.finish.layer3DRotateY).toBe(0);
+    expect(project.finish.layer3DRotateZ).toBe(0);
+    expect(project.finish.layer3DPanX).toBe(0);
+    expect(project.finish.layer3DPanY).toBe(0);
+    expect(project.finish.layer3DScale).toBe(1);
+    expect(project.finish.layer3DPivotX).toBe(0.5);
+    expect(project.finish.layer3DPivotY).toBe(0.5);
+    expect(project.finish.layer3DPerspective).toBe(0.68);
+    expect(project.finish.layer3DCameraDistance).toBe(0.62);
+    expect(project.finish.layer3DDepth).toBe(0);
     expect(project.finish.brightness).toBe(1);
     expect(project.finish.contrast).toBe(1);
     expect(project.finish.saturate).toBe(1);

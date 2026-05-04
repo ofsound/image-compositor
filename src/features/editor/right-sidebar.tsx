@@ -3067,6 +3067,236 @@ export function RightSidebar({
                         }))
                       }
                     />
+                    <ControlBlock
+                      label="Layer 3D"
+                      value={
+                        <Switch
+                          aria-label="Layer 3D"
+                          checked={activeProjectView.finish.layer3DEnabled}
+                          onCheckedChange={(checked) =>
+                            patchProject((project) => ({
+                              ...project,
+                              finish: {
+                                ...project.finish,
+                                layer3DEnabled: checked,
+                              },
+                            }))
+                          }
+                        />
+                      }
+                      className="sm:col-span-2"
+                    >
+                      <div className="h-px bg-border-subtle" />
+                    </ControlBlock>
+                    <SliderField
+                      label="3D Rotate X"
+                      min={-89}
+                      max={89}
+                      step={1}
+                      disabled={!activeProjectView.finish.layer3DEnabled}
+                      value={activeProjectView.finish.layer3DRotateX}
+                      defaultValue={DEFAULT_FINISH.layer3DRotateX}
+                      formatter={formatDegreeValue}
+                      onChange={(value) =>
+                        patchProject((project) => ({
+                          ...project,
+                          finish: {
+                            ...project.finish,
+                            layer3DRotateX: value,
+                          },
+                        }))
+                      }
+                    />
+                    <SliderField
+                      label="3D Rotate Y"
+                      min={-89}
+                      max={89}
+                      step={1}
+                      disabled={!activeProjectView.finish.layer3DEnabled}
+                      value={activeProjectView.finish.layer3DRotateY}
+                      defaultValue={DEFAULT_FINISH.layer3DRotateY}
+                      formatter={formatDegreeValue}
+                      onChange={(value) =>
+                        patchProject((project) => ({
+                          ...project,
+                          finish: {
+                            ...project.finish,
+                            layer3DRotateY: value,
+                          },
+                        }))
+                      }
+                    />
+                    <SliderField
+                      label="3D Rotate Z"
+                      min={-180}
+                      max={180}
+                      step={1}
+                      disabled={!activeProjectView.finish.layer3DEnabled}
+                      value={activeProjectView.finish.layer3DRotateZ}
+                      defaultValue={DEFAULT_FINISH.layer3DRotateZ}
+                      formatter={formatDegreeValue}
+                      onChange={(value) =>
+                        patchProject((project) => ({
+                          ...project,
+                          finish: {
+                            ...project.finish,
+                            layer3DRotateZ: value,
+                          },
+                        }))
+                      }
+                    />
+                    <SliderField
+                      label="3D Scale"
+                      min={0.05}
+                      max={3}
+                      step={0.01}
+                      disabled={!activeProjectView.finish.layer3DEnabled}
+                      value={activeProjectView.finish.layer3DScale}
+                      defaultValue={DEFAULT_FINISH.layer3DScale}
+                      formatter={formatPercentValue}
+                      onChange={(value) =>
+                        patchProject((project) => ({
+                          ...project,
+                          finish: {
+                            ...project.finish,
+                            layer3DScale: value,
+                          },
+                        }))
+                      }
+                    />
+                    <SliderField
+                      label="3D Pan X"
+                      min={-1}
+                      max={1}
+                      step={0.01}
+                      disabled={!activeProjectView.finish.layer3DEnabled}
+                      value={activeProjectView.finish.layer3DPanX}
+                      defaultValue={DEFAULT_FINISH.layer3DPanX}
+                      formatter={formatPercentValue}
+                      onChange={(value) =>
+                        patchProject((project) => ({
+                          ...project,
+                          finish: {
+                            ...project.finish,
+                            layer3DPanX: value,
+                          },
+                        }))
+                      }
+                    />
+                    <SliderField
+                      label="3D Pan Y"
+                      min={-1}
+                      max={1}
+                      step={0.01}
+                      disabled={!activeProjectView.finish.layer3DEnabled}
+                      value={activeProjectView.finish.layer3DPanY}
+                      defaultValue={DEFAULT_FINISH.layer3DPanY}
+                      formatter={formatPercentValue}
+                      onChange={(value) =>
+                        patchProject((project) => ({
+                          ...project,
+                          finish: {
+                            ...project.finish,
+                            layer3DPanY: value,
+                          },
+                        }))
+                      }
+                    />
+                    <SliderField
+                      label="3D Pivot X"
+                      min={0}
+                      max={1}
+                      step={0.01}
+                      disabled={!activeProjectView.finish.layer3DEnabled}
+                      value={activeProjectView.finish.layer3DPivotX}
+                      defaultValue={DEFAULT_FINISH.layer3DPivotX}
+                      formatter={formatPercentValue}
+                      onChange={(value) =>
+                        patchProject((project) => ({
+                          ...project,
+                          finish: {
+                            ...project.finish,
+                            layer3DPivotX: value,
+                          },
+                        }))
+                      }
+                    />
+                    <SliderField
+                      label="3D Pivot Y"
+                      min={0}
+                      max={1}
+                      step={0.01}
+                      disabled={!activeProjectView.finish.layer3DEnabled}
+                      value={activeProjectView.finish.layer3DPivotY}
+                      defaultValue={DEFAULT_FINISH.layer3DPivotY}
+                      formatter={formatPercentValue}
+                      onChange={(value) =>
+                        patchProject((project) => ({
+                          ...project,
+                          finish: {
+                            ...project.finish,
+                            layer3DPivotY: value,
+                          },
+                        }))
+                      }
+                    />
+                    <SliderField
+                      label="3D Perspective"
+                      min={0}
+                      max={1}
+                      step={0.01}
+                      disabled={!activeProjectView.finish.layer3DEnabled}
+                      value={activeProjectView.finish.layer3DPerspective}
+                      defaultValue={DEFAULT_FINISH.layer3DPerspective}
+                      formatter={formatPercentValue}
+                      onChange={(value) =>
+                        patchProject((project) => ({
+                          ...project,
+                          finish: {
+                            ...project.finish,
+                            layer3DPerspective: value,
+                          },
+                        }))
+                      }
+                    />
+                    <SliderField
+                      label="3D Camera Distance"
+                      min={0}
+                      max={1}
+                      step={0.01}
+                      disabled={!activeProjectView.finish.layer3DEnabled}
+                      value={activeProjectView.finish.layer3DCameraDistance}
+                      defaultValue={DEFAULT_FINISH.layer3DCameraDistance}
+                      formatter={formatPercentValue}
+                      onChange={(value) =>
+                        patchProject((project) => ({
+                          ...project,
+                          finish: {
+                            ...project.finish,
+                            layer3DCameraDistance: value,
+                          },
+                        }))
+                      }
+                    />
+                    <SliderField
+                      label="3D Z Offset"
+                      min={-1}
+                      max={1}
+                      step={0.01}
+                      disabled={!activeProjectView.finish.layer3DEnabled}
+                      value={activeProjectView.finish.layer3DDepth}
+                      defaultValue={DEFAULT_FINISH.layer3DDepth}
+                      formatter={formatPercentValue}
+                      onChange={(value) =>
+                        patchProject((project) => ({
+                          ...project,
+                          finish: {
+                            ...project.finish,
+                            layer3DDepth: value,
+                          },
+                        }))
+                      }
+                    />
                     <SliderField
                       label="Brightness"
                       min={0}

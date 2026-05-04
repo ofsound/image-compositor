@@ -348,6 +348,18 @@ export interface FinishSettings {
   shadowBlur: number;
   shadowOpacity: number;
   shadowColor: string;
+  layer3DEnabled: boolean;
+  layer3DRotateX: number;
+  layer3DRotateY: number;
+  layer3DRotateZ: number;
+  layer3DPanX: number;
+  layer3DPanY: number;
+  layer3DScale: number;
+  layer3DPivotX: number;
+  layer3DPivotY: number;
+  layer3DPerspective: number;
+  layer3DCameraDistance: number;
+  layer3DDepth: number;
   brightness: number;
   contrast: number;
   saturate: number;

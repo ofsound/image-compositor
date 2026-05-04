@@ -1726,6 +1726,182 @@ describe("renderProjectToCanvas", () => {
     ]);
   });
 
+  it("keeps disabled layer 3d controls on the direct render path", async () => {
+    const project = createProjectView("Layer 3D Disabled");
+    project.effects.sharpen = 0;
+    project.effects.kaleidoscopeSegments = 1;
+    project.finish.layer3DEnabled = false;
+
+    const context = createMockContext();
+    const canvas = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn(() => context),
+    } as unknown as HTMLCanvasElement;
+    const createElementSpy = vi.spyOn(document, "createElement");
+
+    try {
+      await renderProjectToCanvas(project, [], new Map(), canvas);
+    } finally {
+      createElementSpy.mockRestore();
+    }
+
+    expect(createElementSpy).not.toHaveBeenCalled();
+  });
+
+  it("forces isolation and warps the finished layer when layer 3d is enabled", async () => {
+    const project = createProjectView("Layer 3D Enabled");
+    project.effects.sharpen = 0;
+    project.effects.kaleidoscopeSegments = 1;
+    project.finish.layer3DEnabled = true;
+    project.finish.layer3DRotateX = 32;
+    project.finish.layer3DRotateY = -24;
+    project.finish.layer3DRotateZ = 11;
+    project.finish.layer3DPanX = 0.12;
+    project.finish.layer3DPanY = -0.08;
+    project.finish.layer3DDepth = 0.18;
+    project.layout.offsetX = 0.5;
+    project.layout.offsetY = 0.5;
+
+    const context = createMockContext();
+    const layerContext = createMockContext();
+    const transformedContext = createMockContext();
+    const canvas = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn(() => context),
+    } as unknown as HTMLCanvasElement;
+    const layerCanvas = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn(() => layerContext),
+    } as unknown as HTMLCanvasElement;
+    const transformedCanvas = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn(() => transformedContext),
+    } as unknown as HTMLCanvasElement;
+    const createElementSpy = vi
+      .spyOn(document, "createElement")
+      .mockReturnValueOnce(layerCanvas as never)
+      .mockReturnValueOnce(transformedCanvas as never);
+
+    try {
+      await renderProjectToCanvas(project, [], new Map(), canvas);
+    } finally {
+      createElementSpy.mockRestore();
+    }
+
+    expect(transformedContext.transform).toHaveBeenCalledTimes(2);
+    expect(transformedContext.drawImage).toHaveBeenCalledTimes(2);
+    expect(transformedContext.drawImage.mock.calls[0]?.[0]).toBe(layerCanvas);
+    expect(context.drawImage).toHaveBeenCalledWith(transformedCanvas, 0, 0);
+    expect(context.translate.mock.calls).not.toContainEqual([
+      project.canvas.width * 0.5,
+      project.canvas.height * 0.5,
+    ]);
+  });
+
+  it("applies finish color adjustments before the layer 3d warp", async () => {
+    const project = createProjectView("Layer 3D Finish Order");
+    project.effects.sharpen = 0;
+    project.effects.kaleidoscopeSegments = 1;
+    project.finish.layer3DEnabled = true;
+    project.finish.brightness = 1.2;
+    project.finish.contrast = 0.9;
+
+    const context = createMockContext();
+    const layerContext = createMockContext();
+    const colorContext = createMockContext();
+    const transformedContext = createMockContext();
+    const canvas = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn(() => context),
+    } as unknown as HTMLCanvasElement;
+    const layerCanvas = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn(() => layerContext),
+    } as unknown as HTMLCanvasElement;
+    const colorCanvas = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn(() => colorContext),
+    } as unknown as HTMLCanvasElement;
+    const transformedCanvas = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn(() => transformedContext),
+    } as unknown as HTMLCanvasElement;
+    const createElementSpy = vi
+      .spyOn(document, "createElement")
+      .mockReturnValueOnce(layerCanvas as never)
+      .mockReturnValueOnce(colorCanvas as never)
+      .mockReturnValueOnce(transformedCanvas as never);
+
+    try {
+      await renderProjectToCanvas(project, [], new Map(), canvas);
+    } finally {
+      createElementSpy.mockRestore();
+    }
+
+    expect(colorContext.filterAssignments).toContain(
+      "brightness(120%) contrast(90%) saturate(100%) hue-rotate(0deg) grayscale(0%) invert(0%)",
+    );
+    expect(transformedContext.drawImage.mock.calls[0]?.[0]).toBe(colorCanvas);
+    expect(context.drawImage).toHaveBeenCalledWith(transformedCanvas, 0, 0);
+  });
+
+  it("preserves blend opacity and shadow when compositing layer 3d output", async () => {
+    const project = createProjectView("Layer 3D Composite");
+    project.effects.sharpen = 0;
+    project.effects.kaleidoscopeSegments = 1;
+    project.finish.layer3DEnabled = true;
+    project.finish.shadowOpacity = 0.45;
+    project.finish.shadowBlur = 18;
+    project.finish.shadowOffsetX = 7;
+    project.finish.shadowOffsetY = -5;
+    project.compositing.blendMode = "multiply";
+    project.compositing.opacity = 0.62;
+
+    const context = createMockContext();
+    const layerContext = createMockContext();
+    const transformedContext = createMockContext();
+    const canvas = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn(() => context),
+    } as unknown as HTMLCanvasElement;
+    const layerCanvas = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn(() => layerContext),
+    } as unknown as HTMLCanvasElement;
+    const transformedCanvas = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn(() => transformedContext),
+    } as unknown as HTMLCanvasElement;
+    const createElementSpy = vi
+      .spyOn(document, "createElement")
+      .mockReturnValueOnce(layerCanvas as never)
+      .mockReturnValueOnce(transformedCanvas as never);
+
+    try {
+      await renderProjectToCanvas(project, [], new Map(), canvas);
+    } finally {
+      createElementSpy.mockRestore();
+    }
+
+    expect(context.globalCompositeOperationAssignments).toContain("multiply");
+    expect(context.globalAlphaAssignments).toContain(0.62);
+    expect(context.shadowBlurAssignments).toContain(18);
+    expect(context.shadowOffsetXAssignments).toContain(7);
+    expect(context.shadowOffsetYAssignments).toContain(-5);
+    expect(context.drawImage).toHaveBeenCalledWith(transformedCanvas, 0, 0);
+  });
+
   it("rotates layer content about the canvas center on the direct composite path", async () => {
     const project = createProjectView("Layer Rotation Direct");
     project.effects.sharpen = 0;

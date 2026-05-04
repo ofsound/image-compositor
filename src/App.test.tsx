@@ -1231,6 +1231,39 @@ describe("App conditional sliders", () => {
     expectSliderHidden("Petals");
   });
 
+  it("shows layer 3d finish controls and stores the enable toggle", async () => {
+    const user = userEvent.setup();
+    const state = createStoreState({
+      family: "grid",
+      shapeMode: "rect",
+      symmetryMode: "none",
+      strategy: "random",
+    });
+    mockStoreState(state);
+
+    render(<App />);
+
+    expect(screen.getByRole("switch", { name: "Layer 3D" })).not.toBeChecked();
+    expect(screen.getByLabelText("3D Rotate X")).toHaveAttribute("data-disabled");
+    expect(screen.getByLabelText("3D Rotate Y")).toHaveAttribute("data-disabled");
+    expect(screen.getByLabelText("3D Rotate Z")).toHaveAttribute("data-disabled");
+    expect(screen.getByLabelText("3D Pan X")).toHaveAttribute("data-disabled");
+    expect(screen.getByLabelText("3D Pan Y")).toHaveAttribute("data-disabled");
+    expect(screen.getByLabelText("3D Scale")).toHaveAttribute("data-disabled");
+    expect(screen.getByLabelText("3D Pivot X")).toHaveAttribute("data-disabled");
+    expect(screen.getByLabelText("3D Pivot Y")).toHaveAttribute("data-disabled");
+    expect(screen.getByLabelText("3D Perspective")).toHaveAttribute("data-disabled");
+    expect(screen.getByLabelText("3D Camera Distance")).toHaveAttribute("data-disabled");
+    expect(screen.getByLabelText("3D Z Offset")).toHaveAttribute("data-disabled");
+
+    await user.click(screen.getByRole("switch", { name: "Layer 3D" }));
+
+    expect(state.updateProject).toHaveBeenCalledTimes(1);
+    const [[update]] = state.updateProject.mock.calls;
+    const nextProject = createProjectEditorView(update(structuredClone(state.projects[0]!)));
+    expect(nextProject.finish.layer3DEnabled).toBe(true);
+  });
+
   it("stores the organic distribution slider as an integer variation seed", () => {
     const state = createStoreState({
       family: "organic",

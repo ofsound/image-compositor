@@ -34,6 +34,11 @@ interface TrianglePoint {
   x: number;
   y: number;
 }
+interface Point3D {
+  x: number;
+  y: number;
+  z: number;
+}
 const FULL_CIRCLE_RADIANS = Math.PI * 2;
 const MAX_RGB_NOISE_DELTA = 28;
 const MAX_MONO_NOISE_DELTA = 24;
@@ -1013,6 +1018,127 @@ function drawCanvasTriangle(
   context.restore();
 }
 
+function degToRad(degrees: number) {
+  return (degrees * Math.PI) / 180;
+}
+
+function rotateLayerPoint3D(
+  point: Point3D,
+  rotateX: number,
+  rotateY: number,
+  rotateZ: number,
+): Point3D {
+  const cosX = Math.cos(rotateX);
+  const sinX = Math.sin(rotateX);
+  const xRotated = {
+    x: point.x,
+    y: point.y * cosX - point.z * sinX,
+    z: point.y * sinX + point.z * cosX,
+  };
+  const cosY = Math.cos(rotateY);
+  const sinY = Math.sin(rotateY);
+  const yRotated = {
+    x: xRotated.x * cosY + xRotated.z * sinY,
+    y: xRotated.y,
+    z: -xRotated.x * sinY + xRotated.z * cosY,
+  };
+  const cosZ = Math.cos(rotateZ);
+  const sinZ = Math.sin(rotateZ);
+
+  return {
+    x: yRotated.x * cosZ - yRotated.y * sinZ,
+    y: yRotated.x * sinZ + yRotated.y * cosZ,
+    z: yRotated.z,
+  };
+}
+
+function hasActiveLayer3D(project: LayerRenderProject) {
+  return project.finish.layer3DEnabled;
+}
+
+function getLayer3DProjectedCorners(project: LayerRenderProject) {
+  const { finish, canvas } = project;
+  const width = canvas.width;
+  const height = canvas.height;
+  const minDimension = Math.max(1, Math.min(width, height));
+  const pivot = {
+    x: clamp(finish.layer3DPivotX, 0, 1) * width,
+    y: clamp(finish.layer3DPivotY, 0, 1) * height,
+  };
+  const pan = {
+    x: clamp(finish.layer3DPanX, -1, 1) * width,
+    y: clamp(finish.layer3DPanY, -1, 1) * height,
+  };
+  const scale = clamp(finish.layer3DScale, 0.05, 3);
+  const cameraDistance = minDimension * (0.65 + clamp(finish.layer3DCameraDistance, 0, 1) * 4.35);
+  const perspective = clamp(finish.layer3DPerspective, 0, 1);
+  const zOffset = clamp(finish.layer3DDepth, -1, 1) * minDimension;
+  const rotateX = degToRad(clamp(finish.layer3DRotateX, -89, 89));
+  const rotateY = degToRad(clamp(finish.layer3DRotateY, -89, 89));
+  const rotateZ = degToRad(clamp(finish.layer3DRotateZ, -180, 180));
+  const corners = [
+    { x: 0, y: 0 },
+    { x: width, y: 0 },
+    { x: width, y: height },
+    { x: 0, y: height },
+  ];
+
+  return corners.map((corner) => {
+    const localPoint = {
+      x: (corner.x - pivot.x) * scale,
+      y: (corner.y - pivot.y) * scale,
+      z: 0,
+    };
+    const rotated = rotateLayerPoint3D(localPoint, rotateX, rotateY, rotateZ);
+    const effectiveZ = (rotated.z - zOffset) * perspective;
+    const safeDepth = Math.max(cameraDistance + effectiveZ, cameraDistance * 0.12);
+    const projectionScale = cameraDistance / safeDepth;
+
+    return {
+      x: pivot.x + pan.x + rotated.x * projectionScale,
+      y: pivot.y + pan.y + rotated.y * projectionScale,
+    };
+  }) as [TrianglePoint, TrianglePoint, TrianglePoint, TrianglePoint];
+}
+
+function applyLayer3DTransform(
+  sourceCanvas: RenderCanvas,
+  project: LayerRenderProject,
+) {
+  if (!hasActiveLayer3D(project)) {
+    return sourceCanvas;
+  }
+
+  const transformedCanvas = createRenderCanvas(sourceCanvas.width, sourceCanvas.height);
+  const transformedContext = getRenderContext(transformedCanvas);
+  const [p0, p1, p2, p3] = getLayer3DProjectedCorners(project);
+  const width = sourceCanvas.width;
+  const height = sourceCanvas.height;
+
+  drawCanvasTriangle(
+    transformedContext,
+    sourceCanvas,
+    [
+      { x: 0, y: 0 },
+      { x: width, y: 0 },
+      { x: width, y: height },
+    ],
+    [p0, p1, p2],
+  );
+  drawCanvasTriangle(
+    transformedContext,
+    sourceCanvas,
+    [
+      { x: 0, y: 0 },
+      { x: width, y: height },
+      { x: 0, y: height },
+    ],
+    [p0, p2, p3],
+  );
+
+  return transformedCanvas;
+}
+
 async function renderSliceSurface(
   slice: RenderSlice,
   bitmap: ImageBitmap,
@@ -1169,6 +1295,7 @@ function hasActiveFinish(project: LayerRenderProject) {
     finish.shadowBlur > 0 ||
     finish.shadowOffsetX !== 0 ||
     finish.shadowOffsetY !== 0 ||
+    hasActiveLayer3D(project) ||
     finish.brightness !== DEFAULT_FINISH.brightness ||
     finish.contrast !== DEFAULT_FINISH.contrast ||
     finish.saturate !== DEFAULT_FINISH.saturate ||
@@ -1326,6 +1453,8 @@ function compositeFinishedLayer(
   layerCanvas: RenderCanvas,
   project: LayerRenderProject,
 ) {
+  const transformedLayerCanvas = applyLayer3DTransform(layerCanvas, project);
+
   context.save();
   context.globalCompositeOperation = project.compositing.blendMode;
   context.globalAlpha = clamp(project.compositing.opacity, 0, 1);
@@ -1345,8 +1474,10 @@ function compositeFinishedLayer(
     context.shadowOffsetY = 0;
   }
 
-  applyLayerContentPositionTransform(context, project);
-  context.drawImage(layerCanvas, 0, 0);
+  if (!hasActiveLayer3D(project)) {
+    applyLayerContentPositionTransform(context, project);
+  }
+  context.drawImage(transformedLayerCanvas, 0, 0);
   context.restore();
 }
 

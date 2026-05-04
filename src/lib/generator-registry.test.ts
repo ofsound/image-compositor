@@ -3,7 +3,12 @@ import { describe, expect, it } from "vitest";
 import { buildRenderSlices } from "@/lib/generator-registry";
 import { createProjectDocument } from "@/lib/project-defaults";
 import { createProjectEditorView } from "@/lib/project-editor-view";
-import type { CurveVariant, ImageSourceAsset, SourceAsset } from "@/types/project";
+import type {
+  CurveVariant,
+  ImageSourceAsset,
+  SourceAsset,
+  StripBendWaveform,
+} from "@/types/project";
 
 const assets: SourceAsset[] = [
   {
@@ -130,6 +135,38 @@ function getStripIntervals(
       return {
         start: center - bounds.width / 2,
         end: center + bounds.width / 2,
+      };
+    })
+    .sort((a, b) => a.start - b.start);
+
+  return { slices, intervals };
+}
+
+function getBentStripIntervals(
+  project: ReturnType<typeof createProjectView>,
+  angleDegrees: number,
+) {
+  const slices = buildRenderSlices(project, [assets[0]!]);
+  const intervals = slices
+    .map((slice) => {
+      const points =
+        slice.clipPathPoints ??
+        [
+          { x: slice.rect.x, y: slice.rect.y },
+          { x: slice.rect.x + slice.rect.width, y: slice.rect.y },
+          {
+            x: slice.rect.x + slice.rect.width,
+            y: slice.rect.y + slice.rect.height,
+          },
+          { x: slice.rect.x, y: slice.rect.y + slice.rect.height },
+        ];
+      const projections = points.map((point) =>
+        projectPoint(point.x, point.y, angleDegrees),
+      );
+
+      return {
+        start: Math.min(...projections),
+        end: Math.max(...projections),
       };
     })
     .sort((a, b) => a.start - b.start);
@@ -1177,6 +1214,156 @@ describe("buildRenderSlices", () => {
     expect(overlapped.intervals[0]!.end - overlapped.intervals[0]!.start).toBeGreaterThan(
       baseline.intervals[0]!.end - baseline.intervals[0]!.start,
     );
+  });
+
+  it("keeps default strips on the straight rectangular path", () => {
+    const project = createProjectView("Straight Strip Defaults");
+    project.sourceIds = [assets[0]!.id];
+    project.layout.family = "strips";
+    project.layout.density = 0;
+    project.layout.randomness = 0;
+    project.layout.gutter = 0;
+    project.layout.symmetryMode = "none";
+
+    const slices = buildRenderSlices(project, [assets[0]!]);
+
+    expect(slices).toHaveLength(4);
+    expect(slices.every((slice) => slice.clipRect)).toBe(true);
+    expect(slices.every((slice) => slice.clipPathPoints === null)).toBe(true);
+    expect(slices.every((slice) => slice.warpQuads === null)).toBe(true);
+  });
+
+  it.each(["sine", "triangle", "sawtooth", "square"] as StripBendWaveform[])(
+    "emits deterministic curved strip paths and warp quads for %s bends",
+    (waveform) => {
+      const project = createProjectView(`Bent ${waveform}`);
+      project.sourceIds = [assets[0]!.id];
+      project.layout.family = "strips";
+      project.layout.stripAngle = 55;
+      project.layout.density = 0;
+      project.layout.randomness = 0;
+      project.layout.gutter = 24;
+      project.layout.symmetryMode = "none";
+      project.layout.stripBendWaveform = waveform;
+      project.layout.stripBendAmount = 80;
+      project.layout.stripBendFrequency = 2;
+      project.layout.stripBendResolution = 12;
+      project.layout.stripBendDuty = 0.42;
+
+      const first = buildRenderSlices(project, [assets[0]!]);
+      const second = buildRenderSlices(project, [assets[0]!]);
+
+      expect(first).toEqual(second);
+      expect(first.every((slice) => slice.clipRect === null)).toBe(true);
+      expect(first.every((slice) => (slice.clipPathPoints?.length ?? 0) > 8)).toBe(true);
+      expect(first.every((slice) => (slice.warpQuads?.length ?? 0) >= 24)).toBe(true);
+    },
+  );
+
+  it("preserves bent strip coverage and perpendicular gaps when strips share a bend phase", () => {
+    for (const angle of [0, 55, 90, 135]) {
+      const project = createProjectView(`Bent Coverage ${angle}`);
+      project.sourceIds = [assets[0]!.id];
+      project.layout.family = "strips";
+      project.layout.stripAngle = angle;
+      project.layout.density = 0;
+      project.layout.randomness = 0;
+      project.layout.gutter = 24;
+      project.layout.symmetryMode = "none";
+      project.layout.stripBendWaveform = "sine";
+      project.layout.stripBendAmount = 70;
+      project.layout.stripBendFrequency = 1.5;
+      project.layout.stripBendPhaseOffset = 0;
+      project.sourceMapping.strategy = "round-robin";
+      project.sourceMapping.cropDistribution = "distributed";
+      project.sourceMapping.preserveAspect = false;
+
+      const { intervals } = getBentStripIntervals(project, angle);
+      const slices = buildRenderSlices(project, [assets[0]!]).sort((a, b) => {
+        const aQuad = a.warpQuads?.[0];
+        const bQuad = b.warpQuads?.[0];
+        const aProjection = aQuad
+          ? projectPoint(
+              (aQuad.destinationPoints[0].x + aQuad.destinationPoints[3].x) / 2,
+              (aQuad.destinationPoints[0].y + aQuad.destinationPoints[3].y) / 2,
+              angle,
+            )
+          : 0;
+        const bProjection = bQuad
+          ? projectPoint(
+              (bQuad.destinationPoints[0].x + bQuad.destinationPoints[3].x) / 2,
+              (bQuad.destinationPoints[0].y + bQuad.destinationPoints[3].y) / 2,
+              angle,
+            )
+          : 0;
+        return aProjection - bProjection;
+      });
+      const range = getInsetProjectionRange(project, angle);
+
+      expect(intervals[0]?.start).toBeLessThanOrEqual(range.min);
+      expect(intervals.at(-1)?.end).toBeGreaterThanOrEqual(range.max);
+      for (let index = 1; index < intervals.length; index += 1) {
+        const previousQuads = slices[index - 1]!.warpQuads!;
+        const nextQuads = slices[index]!.warpQuads!;
+        expect(previousQuads).toHaveLength(nextQuads.length);
+        for (let quadIndex = 0; quadIndex < previousQuads.length; quadIndex += 1) {
+          const previousQuad = previousQuads[quadIndex]!;
+          const nextQuad = nextQuads[quadIndex]!;
+          expect(
+            projectPoint(
+              nextQuad.destinationPoints[0].x,
+              nextQuad.destinationPoints[0].y,
+              angle,
+            ) -
+              projectPoint(
+                previousQuad.destinationPoints[3].x,
+                previousQuad.destinationPoints[3].y,
+                angle,
+              ),
+          ).toBeCloseTo(24, 4);
+          expect(
+            projectPoint(
+              nextQuad.destinationPoints[1].x,
+              nextQuad.destinationPoints[1].y,
+              angle,
+            ) -
+              projectPoint(
+                previousQuad.destinationPoints[2].x,
+                previousQuad.destinationPoints[2].y,
+                angle,
+              ),
+          ).toBeCloseTo(24, 4);
+        }
+      }
+    }
+  });
+
+  it("keeps distributed bent strips aligned to a full-canvas image rect", () => {
+    const project = createProjectView("Distributed Bent Strips");
+    project.sourceIds = assets.map((asset) => asset.id);
+    project.layout.family = "strips";
+    project.layout.density = 0;
+    project.layout.randomness = 0;
+    project.layout.gutter = 14;
+    project.layout.symmetryMode = "none";
+    project.layout.stripBendWaveform = "triangle";
+    project.layout.stripBendAmount = 96;
+    project.layout.stripBendFrequency = 2;
+    project.sourceMapping.strategy = "round-robin";
+    project.sourceMapping.cropDistribution = "distributed";
+    project.sourceMapping.preserveAspect = false;
+
+    const slices = buildRenderSlices(project, assets);
+
+    expect(slices.every((slice) => slice.sourceCrop === null)).toBe(true);
+    expect(slices.every((slice) => (slice.warpQuads?.length ?? 0) > 0)).toBe(true);
+    expect(new Set(slices.map((slice) => JSON.stringify(slice.imageRect))).size).toBe(1);
+    expect(slices[0]?.imageRect).toEqual({
+      x: project.canvas.inset,
+      y: project.canvas.inset,
+      width: project.canvas.width - project.canvas.inset * 2,
+      height: project.canvas.height - project.canvas.inset * 2,
+    });
   });
 
   it("keeps round-robin assignment while distributing unique crops per asset", () => {

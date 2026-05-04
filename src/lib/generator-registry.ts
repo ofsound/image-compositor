@@ -8,6 +8,7 @@ import type {
   LayoutFamily,
   NormalizedRect,
   RenderPoint,
+  RenderWarpQuad,
   ProjectDocument,
   RenderRect,
   RenderSlice,
@@ -43,6 +44,7 @@ interface LayoutCell extends RenderRect {
   clipRect?: RenderRect;
   clipPathPoints?: RenderPoint[];
   quadPoints?: RenderPoint[];
+  warpQuads?: RenderWarpQuad[];
   clipRotation?: number;
   rotation?: number;
   rotationX?: number;
@@ -341,6 +343,50 @@ function translatePoints(points: RenderPoint[], dx: number, dy: number) {
   }));
 }
 
+function mapWarpQuadPoints(
+  warpQuads: RenderWarpQuad[] | null,
+  mapPoint: (point: RenderPoint) => RenderPoint,
+) {
+  return (
+    warpQuads?.map((quad) => ({
+      sourcePoints: quad.sourcePoints.map(mapPoint) as [
+        RenderPoint,
+        RenderPoint,
+        RenderPoint,
+        RenderPoint,
+      ],
+      destinationPoints: quad.destinationPoints.map(mapPoint) as [
+        RenderPoint,
+        RenderPoint,
+        RenderPoint,
+        RenderPoint,
+      ],
+    })) ?? null
+  );
+}
+
+function translateWarpQuads(
+  warpQuads: RenderWarpQuad[] | null,
+  dx: number,
+  dy: number,
+) {
+  return mapWarpQuadPoints(warpQuads, (point) => ({
+    x: point.x + dx,
+    y: point.y + dy,
+  }));
+}
+
+function scaleWarpQuadsFromCenter(
+  warpQuads: RenderWarpQuad[] | null,
+  center: Point,
+  factor: number,
+) {
+  return mapWarpQuadPoints(warpQuads, (point) => ({
+    x: center.x + (point.x - center.x) * factor,
+    y: center.y + (point.y - center.y) * factor,
+  }));
+}
+
 function translateRect(rect: RenderRect | null, dx: number, dy: number) {
   if (!rect) return null;
 
@@ -377,6 +423,37 @@ function rotatePoints(points: RenderPoint[], angle: number, center: Point) {
       y: center.y + x * sin + y * cos,
     };
   });
+}
+
+function rotateWarpQuads(
+  warpQuads: RenderWarpQuad[] | null,
+  angle: number,
+  center: Point,
+) {
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+
+  return mapWarpQuadPoints(warpQuads, (point) => {
+    const x = point.x - center.x;
+    const y = point.y - center.y;
+
+    return {
+      x: center.x + x * cos - y * sin,
+      y: center.y + x * sin + y * cos,
+    };
+  });
+}
+
+function scaleWarpQuadsAroundCanvasCenter(
+  warpQuads: RenderWarpQuad[] | null,
+  canvasCenterX: number,
+  canvasCenterY: number,
+  scale: number,
+) {
+  return mapWarpQuadPoints(warpQuads, (point) => ({
+    x: canvasCenterX + (point.x - canvasCenterX) * scale,
+    y: canvasCenterY + (point.y - canvasCenterY) * scale,
+  }));
 }
 
 function interpolatePoint(from: Point, to: Point, t: number): Point {
@@ -962,13 +1039,15 @@ function generateStrips(context: GeneratorContext) {
   const maxTangent = Math.max(...tangentValues);
   const normalSpan = maxNormal - minNormal;
   const tangentSpan = maxTangent - minTangent + 2;
+  const tangentCenter = (minTangent + maxTangent) / 2;
+  const tangentStart = tangentCenter - tangentSpan / 2;
+  const tangentEnd = tangentCenter + tangentSpan / 2;
   const requestedGap = layout.gutter * (1 - compositing.overlap);
   const maxGap =
     count > 1 ? Math.max(0, (normalSpan - count) / (count - 1)) : 0;
   const interStripGap = Math.min(requestedGap, maxGap);
   const visibleSpan = Math.max(count, normalSpan - interStripGap * (count - 1));
   const thicknesses = buildStripThicknesses(count, visibleSpan, layout.randomness, rng);
-  const tangentCenter = (minTangent + maxTangent) / 2;
   let cursor = minNormal;
 
   for (let index = 0; index < count; index += 1) {
@@ -984,6 +1063,33 @@ function generateStrips(context: GeneratorContext) {
       width: thickness,
       height: tangentSpan,
     };
+    if (
+      layout.stripBendWaveform !== "none" &&
+      layout.stripBendAmount > 0.0001
+    ) {
+      const stripBend = buildBentStripGeometry(
+        context.project,
+        stripCenter,
+        thickness,
+        tangentStart,
+        tangentEnd,
+        normalAxis,
+        tangentAxis,
+        index,
+      );
+
+      cells.push({
+        ...getBoundsForPoints([
+          ...stripBend.clipPathPoints,
+          ...stripBend.sourcePathPoints,
+        ]),
+        clipPathPoints: stripBend.clipPathPoints,
+        warpQuads: stripBend.warpQuads,
+        shape: assignShape(index, layout.shapeMode, layout.family),
+      });
+      cursor += thickness + interStripGap;
+      continue;
+    }
     cells.push({
       ...getRotatedBounds(clipRect, angleRadians),
       clipRect,
@@ -994,6 +1100,150 @@ function generateStrips(context: GeneratorContext) {
   }
 
   return cells;
+}
+
+function getBentStripWaveValue(
+  waveform: LayerRenderProject["layout"]["stripBendWaveform"],
+  cyclePosition: number,
+  duty: number,
+) {
+  const phase = ((cyclePosition % 1) + 1) % 1;
+  const clampedDuty = clamp(duty, 0.05, 0.95);
+
+  if (waveform === "sine") {
+    return Math.sin(phase * Math.PI * 2);
+  }
+
+  if (waveform === "triangle") {
+    return phase < clampedDuty
+      ? lerp(-1, 1, phase / clampedDuty)
+      : lerp(1, -1, (phase - clampedDuty) / (1 - clampedDuty));
+  }
+
+  if (waveform === "sawtooth") {
+    return phase < clampedDuty ? lerp(-1, 1, phase / clampedDuty) : -1;
+  }
+
+  if (waveform === "square") {
+    return phase < clampedDuty ? 1 : -1;
+  }
+
+  return 0;
+}
+
+function getBentStripPoint(
+  normalAxis: Point,
+  tangentAxis: Point,
+  normalPosition: number,
+  tangentPosition: number,
+) {
+  return {
+    x: normalAxis.x * normalPosition + tangentAxis.x * tangentPosition,
+    y: normalAxis.y * normalPosition + tangentAxis.y * tangentPosition,
+  };
+}
+
+function buildBentStripGeometry(
+  project: LayerRenderProject,
+  stripCenter: number,
+  thickness: number,
+  tangentStart: number,
+  tangentEnd: number,
+  normalAxis: Point,
+  tangentAxis: Point,
+  stripIndex: number,
+) {
+  const {
+    stripBendAmount,
+    stripBendFrequency,
+    stripBendPhase,
+    stripBendPhaseOffset,
+    stripBendDuty,
+    stripBendResolution,
+    stripBendSkew,
+    stripBendWaveform,
+  } = project.layout;
+  const segmentCount = clamp(
+    Math.ceil(stripBendResolution * Math.max(1, stripBendFrequency)),
+    4,
+    256,
+  );
+  const phaseCycles = (stripBendPhase + stripIndex * stripBendPhaseOffset) / 360;
+  const span = Math.max(1, tangentEnd - tangentStart);
+  const topEdge: RenderPoint[] = [];
+  const bottomEdge: RenderPoint[] = [];
+  const straightTopEdge: RenderPoint[] = [];
+  const straightBottomEdge: RenderPoint[] = [];
+
+  for (let sampleIndex = 0; sampleIndex <= segmentCount; sampleIndex += 1) {
+    const u = sampleIndex / segmentCount;
+    const tangentPosition = tangentStart + span * u;
+    const waveOffset =
+      getBentStripWaveValue(
+        stripBendWaveform,
+        u * stripBendFrequency + phaseCycles,
+        stripBendDuty,
+      ) * stripBendAmount;
+    const skewOffset = stripBendAmount * stripBendSkew * (u - 0.5) * 2;
+    const centerNormal = stripCenter + waveOffset + skewOffset;
+    const straightCenterNormal = stripCenter;
+    topEdge.push(
+      getBentStripPoint(
+        normalAxis,
+        tangentAxis,
+        centerNormal - thickness / 2,
+        tangentPosition,
+      ),
+    );
+    bottomEdge.push(
+      getBentStripPoint(
+        normalAxis,
+        tangentAxis,
+        centerNormal + thickness / 2,
+        tangentPosition,
+      ),
+    );
+    straightTopEdge.push(
+      getBentStripPoint(
+        normalAxis,
+        tangentAxis,
+        straightCenterNormal - thickness / 2,
+        tangentPosition,
+      ),
+    );
+    straightBottomEdge.push(
+      getBentStripPoint(
+        normalAxis,
+        tangentAxis,
+        straightCenterNormal + thickness / 2,
+        tangentPosition,
+      ),
+    );
+  }
+
+  const warpQuads: RenderWarpQuad[] = [];
+  for (let index = 0; index < segmentCount; index += 1) {
+    warpQuads.push({
+      sourcePoints: [
+        straightTopEdge[index]!,
+        straightTopEdge[index + 1]!,
+        straightBottomEdge[index + 1]!,
+        straightBottomEdge[index]!,
+      ],
+      destinationPoints: [
+        topEdge[index]!,
+        topEdge[index + 1]!,
+        bottomEdge[index + 1]!,
+        bottomEdge[index]!,
+      ],
+    });
+  }
+
+  return {
+    clipPathPoints: [...topEdge, ...bottomEdge.reverse()],
+    sourcePathPoints: [...straightTopEdge, ...straightBottomEdge],
+    warpQuads,
+  };
 }
 
 function getBlockSplitRatio(
@@ -3459,6 +3709,7 @@ function reflectSlices(slices: RenderSlice[], project: LayerRenderProject) {
       quadPoints: slice.quadPoints
         ? translatePoints(slice.quadPoints, offsetX, offsetY)
         : null,
+      warpQuads: translateWarpQuads(slice.warpQuads, offsetX, offsetY),
       rotation: slice.rotation + rotationDrift,
       scale: Math.max(0.2, slice.scale * scaleDrift),
     };
@@ -3491,6 +3742,11 @@ function reflectSlices(slices: RenderSlice[], project: LayerRenderProject) {
               mirroredCenter.y - sliceCenter.y,
             )
           : null,
+        warpQuads: translateWarpQuads(
+          slice.warpQuads,
+          mirroredCenter.x - sliceCenter.x,
+          mirroredCenter.y - sliceCenter.y,
+        ),
         rotationY: -slice.rotationY,
         mirrorAxis: "x",
       }, "mirror-x", 1, symmetryCopies));
@@ -3522,6 +3778,11 @@ function reflectSlices(slices: RenderSlice[], project: LayerRenderProject) {
               mirroredCenter.y - sliceCenter.y,
             )
           : null,
+        warpQuads: translateWarpQuads(
+          slice.warpQuads,
+          mirroredCenter.x - sliceCenter.x,
+          mirroredCenter.y - sliceCenter.y,
+        ),
         rotationX: -slice.rotationX,
         mirrorAxis: "y",
       }, "mirror-y", symmetryMode === "quad" ? 2 : 1, symmetryCopies));
@@ -3548,6 +3809,10 @@ function reflectSlices(slices: RenderSlice[], project: LayerRenderProject) {
               y: centerY,
             })
           : null;
+        const warpQuads = rotateWarpQuads(slice.warpQuads, angle, {
+          x: centerX,
+          y: centerY,
+        });
         radialClones.push(applyCloneDrift({
           ...slice,
           id: `${slice.id}_r${copyIndex}`,
@@ -3577,6 +3842,7 @@ function reflectSlices(slices: RenderSlice[], project: LayerRenderProject) {
             : null,
           clipPathPoints,
           quadPoints,
+          warpQuads,
           clipRotation: slice.clipRotation + angle,
           rotation: slice.rotation + angle,
           rotationX: slice.rotationX,
@@ -3889,6 +4155,12 @@ function applyLetterbox(slices: RenderSlice[], project: LayerRenderProject) {
       x: canvasCenterX + (point.x - canvasCenterX) * scale,
       y: canvasCenterY + (point.y - canvasCenterY) * scale,
     })) ?? null;
+    const warpQuads = scaleWarpQuadsAroundCanvasCenter(
+      slice.warpQuads,
+      canvasCenterX,
+      canvasCenterY,
+      scale,
+    );
     const rect =
       quadPoints
         ? getBoundsForPoints(quadPoints)
@@ -3904,6 +4176,7 @@ function applyLetterbox(slices: RenderSlice[], project: LayerRenderProject) {
       clipRect,
       clipPathPoints,
       quadPoints,
+      warpQuads,
       imageRect,
     };
   });
@@ -3986,6 +4259,17 @@ function createRenderSliceFromCell(
           1 + overlapSize / Math.max(cell.width, cell.height, 1),
         )
       : null;
+  const warpQuads =
+    cell.warpQuads && cell.warpQuads.length > 0
+      ? scaleWarpQuadsFromCenter(
+          cell.warpQuads,
+          {
+            x: cell.x + cell.width / 2,
+            y: cell.y + cell.height / 2,
+          },
+          1 + overlapSize / Math.max(cell.width, cell.height, 1),
+        )
+      : null;
   if (cell.shape === "text" || cell.shape === "svg") {
     const modulationInput = { cell, index, count: cell.layoutCount };
     const rotationNoise =
@@ -4039,6 +4323,7 @@ function createRenderSliceFromCell(
       clipRect: null,
       clipPathPoints: null,
       quadPoints,
+      warpQuads,
       clipRotation: cell.clipRotation ?? 0,
       imageRect: null,
       rotation: (cell.rotation ?? 0) + (rotationNoise * Math.PI) / 180,
@@ -4143,6 +4428,7 @@ function createRenderSliceFromCell(
     mirrorAxis: "none",
     depth: cell.depthValue ?? rng.next(),
     fogAmount,
+    warpQuads,
   };
 }
 

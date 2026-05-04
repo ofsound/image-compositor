@@ -2334,6 +2334,68 @@ describe("renderProjectToCanvas", () => {
     expect(context.rotate).toHaveBeenCalledWith((135 * Math.PI) / 180);
     expect(context.rotate).toHaveBeenCalledWith((-135 * Math.PI) / 180);
   });
+
+  it("renders bent strips through multi-quad warp while keeping output nonblank", async () => {
+    const createStripProject = (title: string) => {
+      const project = createProjectView(title);
+      project.layout.family = "strips";
+      project.layout.stripAngle = 45;
+      project.layout.density = 0;
+      project.layout.randomness = 0;
+      project.layout.gutter = 12;
+      project.layout.symmetryMode = "none";
+      project.layout.shapeMode = "rect";
+      project.compositing.overlap = 0;
+      project.effects.rotationJitter = 0;
+      project.effects.scaleJitter = 0;
+      project.effects.displacement = 0;
+      project.effects.distortion = 0;
+      project.effects.sharpen = 0;
+      project.effects.kaleidoscopeSegments = 1;
+      project.sourceMapping.strategy = "round-robin";
+      project.sourceMapping.preserveAspect = false;
+      project.sourceMapping.cropDistribution = "distributed";
+      return project;
+    };
+    const straightProject = createStripProject("Straight Rendered Strips");
+    const bentProject = createStripProject("Bent Rendered Strips");
+    bentProject.layout.stripBendWaveform = "sine";
+    bentProject.layout.stripBendAmount = 72;
+    bentProject.layout.stripBendFrequency = 2;
+    bentProject.layout.stripBendResolution = 8;
+
+    const straightContext = createMockContext();
+    const bentContext = createMockContext();
+    const straightCanvas = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn(() => straightContext),
+    } as unknown as HTMLCanvasElement;
+    const bentCanvas = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn(() => bentContext),
+    } as unknown as HTMLCanvasElement;
+    const bitmaps = new Map([[asset.id, { asset, bitmap: {} as ImageBitmap }]]);
+    const getContextSpy = vi
+      .spyOn(HTMLCanvasElement.prototype, "getContext")
+      .mockImplementation(
+        () => createMockContext() as unknown as CanvasRenderingContext2D,
+      );
+
+    try {
+      await renderProjectToCanvas(straightProject, [asset], bitmaps, straightCanvas);
+      await renderProjectToCanvas(bentProject, [asset], bitmaps, bentCanvas);
+    } finally {
+      getContextSpy.mockRestore();
+    }
+
+    expect(bentContext.drawImage).toHaveBeenCalled();
+    expect(bentContext.transform).toHaveBeenCalled();
+    expect(bentContext.transform.mock.calls.length).toBeGreaterThan(
+      straightContext.transform.mock.calls.length,
+    );
+  });
 });
 
 describe("exportProjectImage", () => {

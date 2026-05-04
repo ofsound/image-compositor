@@ -5,6 +5,7 @@ import type {
   GradientDirection,
   GradientMode,
   SourceKind,
+  StripBendWaveform,
 } from "@/types/project";
 
 /** UI scaling factor applied to the raw density value for the slider display. */
@@ -31,6 +32,12 @@ export function formatCurveVariantLabel(variant: CurveVariant) {
 export function formatCurveAttractorTypeLabel(type: CurveAttractorType) {
   if (type === "rossler") return "Rossler";
   return type[0]!.toUpperCase() + type.slice(1);
+}
+
+export function formatStripBendWaveformLabel(waveform: StripBendWaveform) {
+  if (waveform === "none") return "None";
+  if (waveform === "sawtooth") return "Sawtooth";
+  return waveform[0]!.toUpperCase() + waveform.slice(1);
 }
 
 export function formatPercentValue(value: number) {

@@ -43,6 +43,12 @@ export type CurveVariant =
   | "phyllotaxis"
   | "strange-attractor";
 export type CurveAttractorType = "lorenz" | "rossler" | "thomas";
+export type StripBendWaveform =
+  | "none"
+  | "sine"
+  | "triangle"
+  | "sawtooth"
+  | "square";
 export type RadialChildRotationMode = "none" | "tangent" | "outward";
 export type ThreeDStructureMode = "sphere" | "torus" | "attractor";
 export type KaleidoscopeMirrorMode =
@@ -244,6 +250,14 @@ export interface LayoutSettings {
   blockMinSize: number;
   blockSplitBias: number;
   stripOrientation: "horizontal" | "vertical" | "mixed";
+  stripBendWaveform: StripBendWaveform;
+  stripBendAmount: number;
+  stripBendFrequency: number;
+  stripBendPhase: number;
+  stripBendPhaseOffset: number;
+  stripBendDuty: number;
+  stripBendSkew: number;
+  stripBendResolution: number;
   radialSegments: number;
   radialRings: number;
   radialAngleOffset: number;
@@ -607,6 +621,12 @@ export interface RenderSlice {
   mirrorAxis: "none" | "x" | "y";
   depth: number;
   fogAmount: number;
+  warpQuads: RenderWarpQuad[] | null;
+}
+
+export interface RenderWarpQuad {
+  sourcePoints: [RenderPoint, RenderPoint, RenderPoint, RenderPoint];
+  destinationPoints: [RenderPoint, RenderPoint, RenderPoint, RenderPoint];
 }
 
 export interface ProcessedAssetPayload {

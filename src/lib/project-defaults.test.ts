@@ -778,6 +778,35 @@ describe("createProjectDocument", () => {
     expect(normalizeProjectView(legacyProject).layout.stripAngle).toBe(0);
   });
 
+  it("normalizes legacy projects without strip bend controls to straight defaults", () => {
+    const project = createProjectView("Legacy Strip Bend");
+    const legacyProject = {
+      ...project,
+      layout: {
+        ...project.layout,
+        stripBendWaveform: undefined,
+        stripBendAmount: undefined,
+        stripBendFrequency: undefined,
+        stripBendPhase: undefined,
+        stripBendPhaseOffset: undefined,
+        stripBendDuty: undefined,
+        stripBendSkew: undefined,
+        stripBendResolution: undefined,
+      },
+    } as unknown as ProjectDocument;
+
+    expect(normalizeProjectView(legacyProject).layout).toMatchObject({
+      stripBendWaveform: "none",
+      stripBendAmount: 0,
+      stripBendFrequency: 1,
+      stripBendPhase: 0,
+      stripBendPhaseOffset: 0,
+      stripBendDuty: 0.5,
+      stripBendSkew: 0,
+      stripBendResolution: 24,
+    });
+  });
+
   it("normalizes legacy projects without grid angle to zero degrees", () => {
     const project = createProjectView("Legacy Grid Angle");
     const legacyProject = {

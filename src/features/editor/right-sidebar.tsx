@@ -31,6 +31,7 @@ import {
   formatCurveAttractorTypeLabel,
   formatCurveVariantLabel,
   formatFractalVariantLabel,
+  formatStripBendWaveformLabel,
   ORGANIC_DISTRIBUTION_MAX,
   THREE_D_DISTRIBUTION_MAX,
   formatPercentValue,
@@ -68,6 +69,7 @@ import {
   LAYOUT_FAMILY_OPTIONS,
   RADIAL_CHILD_ROTATION_OPTIONS,
   SOURCE_ASSIGNMENT_OPTIONS,
+  STRIP_BEND_WAVEFORM_OPTIONS,
   SYMMETRY_MODE_OPTIONS,
   THREE_D_STRUCTURE_OPTIONS,
   WORDS_FONT_OPTIONS,
@@ -1009,6 +1011,184 @@ export function RightSidebar({
                             layout: {
                               ...project.layout,
                               gutter: value,
+                            },
+                          }))
+                        }
+                      />
+                      <ControlBlock
+                        label="Bend Waveform"
+                        className="sm:col-span-2"
+                      >
+                        <Select
+                          value={activeProjectView.layout.stripBendWaveform}
+                          onValueChange={(value) => {
+                            if (!isOption(STRIP_BEND_WAVEFORM_OPTIONS, value)) {
+                              return;
+                            }
+                            patchProject((project) => ({
+                              ...project,
+                              layout: {
+                                ...project.layout,
+                                stripBendWaveform: value,
+                              },
+                            }));
+                          }}
+                        >
+                          <SelectTrigger aria-label="Bend Waveform">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {STRIP_BEND_WAVEFORM_OPTIONS.map((option) => (
+                              <SelectItem key={option} value={option}>
+                                {formatStripBendWaveformLabel(option)}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </ControlBlock>
+                      <SliderField
+                        label="Bend Amount"
+                        min={0}
+                        max={600}
+                        step={1}
+                        disabled={
+                          activeProjectView.layout.stripBendWaveform === "none"
+                        }
+                        value={activeProjectView.layout.stripBendAmount}
+                        defaultValue={DEFAULT_LAYOUT.stripBendAmount}
+                        formatter={(value) => `${Math.round(value)} px`}
+                        onChange={(value) =>
+                          patchProject((project) => ({
+                            ...project,
+                            layout: {
+                              ...project.layout,
+                              stripBendAmount: value,
+                            },
+                          }))
+                        }
+                      />
+                      <SliderField
+                        label="Bend Frequency"
+                        min={0.1}
+                        max={24}
+                        step={0.1}
+                        disabled={
+                          activeProjectView.layout.stripBendWaveform === "none"
+                        }
+                        value={activeProjectView.layout.stripBendFrequency}
+                        defaultValue={DEFAULT_LAYOUT.stripBendFrequency}
+                        formatter={(value) => `${value.toFixed(1)}x`}
+                        onChange={(value) =>
+                          patchProject((project) => ({
+                            ...project,
+                            layout: {
+                              ...project.layout,
+                              stripBendFrequency: value,
+                            },
+                          }))
+                        }
+                      />
+                      <SliderField
+                        label="Bend Phase"
+                        min={0}
+                        max={360}
+                        step={1}
+                        disabled={
+                          activeProjectView.layout.stripBendWaveform === "none"
+                        }
+                        value={activeProjectView.layout.stripBendPhase}
+                        defaultValue={DEFAULT_LAYOUT.stripBendPhase}
+                        formatter={formatDegreeValue}
+                        onChange={(value) =>
+                          patchProject((project) => ({
+                            ...project,
+                            layout: {
+                              ...project.layout,
+                              stripBendPhase: value,
+                            },
+                          }))
+                        }
+                      />
+                      <SliderField
+                        label="Phase Offset"
+                        min={-180}
+                        max={180}
+                        step={1}
+                        disabled={
+                          activeProjectView.layout.stripBendWaveform === "none"
+                        }
+                        value={activeProjectView.layout.stripBendPhaseOffset}
+                        defaultValue={DEFAULT_LAYOUT.stripBendPhaseOffset}
+                        formatter={formatDegreeValue}
+                        onChange={(value) =>
+                          patchProject((project) => ({
+                            ...project,
+                            layout: {
+                              ...project.layout,
+                              stripBendPhaseOffset: value,
+                            },
+                          }))
+                        }
+                      />
+                      <SliderField
+                        label="Duty"
+                        min={0.05}
+                        max={0.95}
+                        step={0.01}
+                        disabled={
+                          activeProjectView.layout.stripBendWaveform === "none"
+                        }
+                        value={activeProjectView.layout.stripBendDuty}
+                        defaultValue={DEFAULT_LAYOUT.stripBendDuty}
+                        formatter={formatPercentValue}
+                        onChange={(value) =>
+                          patchProject((project) => ({
+                            ...project,
+                            layout: {
+                              ...project.layout,
+                              stripBendDuty: value,
+                            },
+                          }))
+                        }
+                      />
+                      <SliderField
+                        label="Skew"
+                        min={-1}
+                        max={1}
+                        step={0.01}
+                        disabled={
+                          activeProjectView.layout.stripBendWaveform === "none"
+                        }
+                        value={activeProjectView.layout.stripBendSkew}
+                        defaultValue={DEFAULT_LAYOUT.stripBendSkew}
+                        formatter={formatPercentValue}
+                        onChange={(value) =>
+                          patchProject((project) => ({
+                            ...project,
+                            layout: {
+                              ...project.layout,
+                              stripBendSkew: value,
+                            },
+                          }))
+                        }
+                      />
+                      <SliderField
+                        label="Resolution"
+                        min={4}
+                        max={96}
+                        step={1}
+                        disabled={
+                          activeProjectView.layout.stripBendWaveform === "none"
+                        }
+                        value={activeProjectView.layout.stripBendResolution}
+                        defaultValue={DEFAULT_LAYOUT.stripBendResolution}
+                        formatter={(value) => `${Math.round(value)} seg`}
+                        onChange={(value) =>
+                          patchProject((project) => ({
+                            ...project,
+                            layout: {
+                              ...project.layout,
+                              stripBendResolution: Math.round(value),
                             },
                           }))
                         }

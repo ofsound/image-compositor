@@ -145,6 +145,14 @@ export const DEFAULT_LAYOUT: LayoutSettings = {
   blockMinSize: 140,
   blockSplitBias: 0.5,
   stripOrientation: "mixed",
+  stripBendWaveform: "none",
+  stripBendAmount: 0,
+  stripBendFrequency: 1,
+  stripBendPhase: 0,
+  stripBendPhaseOffset: 0,
+  stripBendDuty: 0.5,
+  stripBendSkew: 0,
+  stripBendResolution: 24,
   radialSegments: 9,
   radialRings: 4,
   radialAngleOffset: 0,
@@ -234,6 +242,22 @@ function normalizeStripAngle(layout: Partial<LayoutSettings> | undefined) {
   if (layout?.stripAngle !== undefined) return layout.stripAngle;
   if (layout?.stripOrientation === "horizontal") return 90;
   return DEFAULT_LAYOUT.stripAngle;
+}
+
+function normalizeStripBendWaveform(
+  value: LayoutSettings["stripBendWaveform"] | undefined,
+) {
+  if (
+    value === "none" ||
+    value === "sine" ||
+    value === "triangle" ||
+    value === "sawtooth" ||
+    value === "square"
+  ) {
+    return value;
+  }
+
+  return DEFAULT_LAYOUT.stripBendWaveform;
 }
 
 function normalizeCurveVariant(value: LayoutSettings["curveVariant"] | undefined) {
@@ -568,6 +592,44 @@ export function normalizeLayoutSettings(
     blockSplitBias: layout?.blockSplitBias ?? DEFAULT_LAYOUT.blockSplitBias,
     stripOrientation:
       layout?.stripOrientation ?? DEFAULT_LAYOUT.stripOrientation,
+    stripBendWaveform: normalizeStripBendWaveform(layout?.stripBendWaveform),
+    stripBendAmount: clamp(
+      layout?.stripBendAmount ?? DEFAULT_LAYOUT.stripBendAmount,
+      0,
+      600,
+    ),
+    stripBendFrequency: clamp(
+      layout?.stripBendFrequency ?? DEFAULT_LAYOUT.stripBendFrequency,
+      0.1,
+      24,
+    ),
+    stripBendPhase: clamp(
+      layout?.stripBendPhase ?? DEFAULT_LAYOUT.stripBendPhase,
+      0,
+      360,
+    ),
+    stripBendPhaseOffset: clamp(
+      layout?.stripBendPhaseOffset ?? DEFAULT_LAYOUT.stripBendPhaseOffset,
+      -180,
+      180,
+    ),
+    stripBendDuty: clamp(
+      layout?.stripBendDuty ?? DEFAULT_LAYOUT.stripBendDuty,
+      0.05,
+      0.95,
+    ),
+    stripBendSkew: clamp(
+      layout?.stripBendSkew ?? DEFAULT_LAYOUT.stripBendSkew,
+      -1,
+      1,
+    ),
+    stripBendResolution: clamp(
+      Math.round(
+        layout?.stripBendResolution ?? DEFAULT_LAYOUT.stripBendResolution,
+      ),
+      4,
+      96,
+    ),
     radialSegments: layout?.radialSegments ?? DEFAULT_LAYOUT.radialSegments,
     radialRings: layout?.radialRings ?? DEFAULT_LAYOUT.radialRings,
     radialAngleOffset:

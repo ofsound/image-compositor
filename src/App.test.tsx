@@ -128,6 +128,7 @@ function createStoreState(overrides?: {
     | "superformula"
     | "phyllotaxis"
     | "strange-attractor";
+  stripBendWaveform?: "none" | "sine" | "triangle" | "sawtooth" | "square";
   wordsMode?: "image-fill" | "plain-text";
   wordsFontFamily?: "dm-sans" | "cormorant-garamond" | "jetbrains-mono";
   wordsText?: string;
@@ -176,6 +177,10 @@ function createStoreState(overrides?: {
 
   if (overrides?.curveVariant) {
     selectedLayer.layout.curveVariant = overrides.curveVariant;
+  }
+
+  if (overrides?.stripBendWaveform) {
+    selectedLayer.layout.stripBendWaveform = overrides.stripBendWaveform;
   }
 
   if (overrides?.wordsMode) {
@@ -708,6 +713,14 @@ describe("App conditional sliders", () => {
     expectSliderEnabled("Gutter");
     expectSliderHidden("Gutter Horizontal");
     expectSliderHidden("Gutter Vertical");
+    expect(screen.getByLabelText("Bend Waveform")).toBeInTheDocument();
+    expect(screen.getByLabelText("Bend Amount")).toHaveAttribute("data-disabled");
+    expect(screen.getByLabelText("Bend Frequency")).toHaveAttribute("data-disabled");
+    expect(screen.getByLabelText("Bend Phase")).toHaveAttribute("data-disabled");
+    expect(screen.getByLabelText("Phase Offset")).toHaveAttribute("data-disabled");
+    expect(screen.getByLabelText("Duty")).toHaveAttribute("data-disabled");
+    expect(screen.getByLabelText("Skew")).toHaveAttribute("data-disabled");
+    expect(screen.getByLabelText("Resolution")).toHaveAttribute("data-disabled");
     expectSliderHidden("Radial Copies");
     expectSliderEnabled("Symmetry Center X");
     expectSliderEnabled("Symmetry Center Y");
@@ -717,6 +730,25 @@ describe("App conditional sliders", () => {
     expectSliderEnabled("Letterbox");
     expectSliderHidden("Distribution");
     expect(screen.queryByLabelText("Structure")).not.toBeInTheDocument();
+  });
+
+  it("enables strip bend sliders when a bend waveform is selected", () => {
+    renderApp({
+      family: "strips",
+      shapeMode: "rect",
+      symmetryMode: "none",
+      strategy: "random",
+      stripBendWaveform: "sine",
+    });
+
+    expect(screen.getByLabelText("Bend Waveform")).toBeInTheDocument();
+    expectSliderEnabled("Bend Amount");
+    expectSliderEnabled("Bend Frequency");
+    expectSliderEnabled("Bend Phase");
+    expectSliderEnabled("Phase Offset");
+    expectSliderEnabled("Duty");
+    expectSliderEnabled("Skew");
+    expectSliderEnabled("Resolution");
   });
 
   it("shows density on the new UI scale and stores quadruple the committed value", () => {

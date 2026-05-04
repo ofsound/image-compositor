@@ -9,6 +9,7 @@ import type {
   LayoutFamily,
   RadialChildRotationMode,
   SourceAssignmentStrategy,
+  StripBendWaveform,
   ThreeDStructureMode,
   WordFontFamily,
   WordsMode,
@@ -69,6 +70,14 @@ export const CURVE_ATTRACTOR_TYPE_OPTIONS: CurveAttractorType[] = [
   "lorenz",
   "rossler",
   "thomas",
+];
+
+export const STRIP_BEND_WAVEFORM_OPTIONS: StripBendWaveform[] = [
+  "none",
+  "sine",
+  "triangle",
+  "sawtooth",
+  "square",
 ];
 
 export const RADIAL_CHILD_ROTATION_OPTIONS: RadialChildRotationMode[] = [

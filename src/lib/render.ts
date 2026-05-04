@@ -1168,6 +1168,7 @@ async function renderSliceSurface(
     clipRect: null,
     clipPathPoints: null,
     quadPoints: null,
+    warpQuads: null,
     clipRotation: 0,
     imageRect: null,
     rotation: 0,
@@ -1202,6 +1203,129 @@ async function renderSliceSurface(
   surfaceContext.restore();
 
   return surface;
+}
+
+async function renderWarpSourceSurface(
+  slice: RenderSlice,
+  bitmap: ImageBitmap,
+  asset: SourceAsset,
+  project: LayerRenderProject,
+) {
+  const targetRect = slice.imageRect ?? slice.rect;
+  const width = Math.max(1, Math.ceil(targetRect.width));
+  const height = Math.max(1, Math.ceil(targetRect.height));
+  const surface = createRenderCanvas(width, height);
+  const surfaceContext = getRenderContext(surface);
+  const { sourceX, sourceY, sourceWidth, sourceHeight } = getSourceRect(
+    slice,
+    asset,
+    project,
+  );
+
+  surfaceContext.save();
+  surfaceContext.drawImage(
+    bitmap,
+    sourceX,
+    sourceY,
+    sourceWidth,
+    sourceHeight,
+    0,
+    0,
+    width,
+    height,
+  );
+  applySliceFogOverlay(
+    surfaceContext,
+    project,
+    slice.fogAmount,
+    { x: 0, y: 0, width, height },
+  );
+  surfaceContext.restore();
+
+  return { surface, targetRect };
+}
+
+function transformWarpDestinationPoint(
+  point: TrianglePoint,
+  slice: RenderSlice,
+  centerX: number,
+  centerY: number,
+  scaleX: number,
+  scaleY: number,
+) {
+  const angle = slice.rotation + slice.clipRotation;
+  const cos = Math.cos(angle);
+  const sin = Math.sin(angle);
+  const localX = (point.x - centerX) * scaleX;
+  const localY = (point.y - centerY) * scaleY;
+
+  return {
+    x:
+      centerX +
+      localX * cos -
+      localY * sin +
+      slice.displacementOffset.x,
+    y:
+      centerY +
+      localX * sin +
+      localY * cos +
+      slice.displacementOffset.y,
+  };
+}
+
+async function drawMultiWarpedSlice(
+  context: RenderContext,
+  slice: RenderSlice,
+  bitmap: ImageBitmap,
+  asset: SourceAsset,
+  project: LayerRenderProject,
+  centerX: number,
+  centerY: number,
+  scaleX: number,
+  scaleY: number,
+) {
+  if (!slice.warpQuads || slice.warpQuads.length === 0) {
+    return false;
+  }
+
+  const { surface, targetRect } = await renderWarpSourceSurface(
+    slice,
+    bitmap,
+    asset,
+    project,
+  );
+
+  for (const quad of slice.warpQuads) {
+    const sourcePoints = quad.sourcePoints.map((point) => ({
+      x: point.x - targetRect.x,
+      y: point.y - targetRect.y,
+    })) as [TrianglePoint, TrianglePoint, TrianglePoint, TrianglePoint];
+    const destinationPoints = quad.destinationPoints.map((point) =>
+      transformWarpDestinationPoint(
+        point,
+        slice,
+        centerX,
+        centerY,
+        scaleX,
+        scaleY,
+      ),
+    ) as [TrianglePoint, TrianglePoint, TrianglePoint, TrianglePoint];
+
+    drawCanvasTriangle(
+      context,
+      surface,
+      [sourcePoints[0], sourcePoints[1], sourcePoints[2]],
+      [destinationPoints[0], destinationPoints[1], destinationPoints[2]],
+    );
+    drawCanvasTriangle(
+      context,
+      surface,
+      [sourcePoints[0], sourcePoints[2], sourcePoints[3]],
+      [destinationPoints[0], destinationPoints[2], destinationPoints[3]],
+    );
+  }
+
+  return true;
 }
 
 async function drawWarpedSlice(
@@ -1505,6 +1629,23 @@ async function drawSlice(
   context.globalAlpha = slice.opacity;
   context.globalCompositeOperation = slice.blendMode;
   context.filter = `blur(${project.effects.blur}px)`;
+
+  if (
+    await drawMultiWarpedSlice(
+      context,
+      slice,
+      bitmap,
+      asset,
+      project,
+      centerX,
+      centerY,
+      scaleX,
+      scaleY,
+    )
+  ) {
+    context.restore();
+    return;
+  }
 
   if (await drawWarpedSlice(context, slice, bitmap, asset, project)) {
     context.restore();

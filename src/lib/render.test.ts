@@ -2030,6 +2030,51 @@ describe("renderProjectToCanvas", () => {
     ]);
   });
 
+  it("uses a tessellated mesh when layer 3d surface shaping is active", async () => {
+    const project = createProjectView("Layer 3D Surface Mesh");
+    project.effects.sharpen = 0;
+    project.effects.kaleidoscopeSegments = 1;
+    project.finish.layer3DEnabled = true;
+    project.finish.layer3DSurfaceMode = "wave";
+    project.finish.layer3DSurfaceAmount = 0.42;
+    project.finish.layer3DSurfaceFrequency = 3;
+    project.finish.layer3DSurfaceDetail = 6;
+
+    const context = createMockContext();
+    const layerContext = createMockContext();
+    const transformedContext = createMockContext();
+    const canvas = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn(() => context),
+    } as unknown as HTMLCanvasElement;
+    const layerCanvas = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn(() => layerContext),
+    } as unknown as HTMLCanvasElement;
+    const transformedCanvas = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn(() => transformedContext),
+    } as unknown as HTMLCanvasElement;
+    const createElementSpy = vi
+      .spyOn(document, "createElement")
+      .mockReturnValueOnce(layerCanvas as never)
+      .mockReturnValueOnce(transformedCanvas as never);
+
+    try {
+      await renderProjectToCanvas(project, [], new Map(), canvas);
+    } finally {
+      createElementSpy.mockRestore();
+    }
+
+    expect(transformedContext.drawImage).toHaveBeenCalledTimes(72);
+    expect(transformedContext.transform).toHaveBeenCalledTimes(72);
+    expect(transformedContext.drawImage.mock.calls[0]?.[0]).toBe(layerCanvas);
+    expect(context.drawImage).toHaveBeenCalledWith(transformedCanvas, 0, 0);
+  });
+
   it("applies finish color adjustments before the layer 3d warp", async () => {
     const project = createProjectView("Layer 3D Finish Order");
     project.effects.sharpen = 0;

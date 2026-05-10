@@ -39,7 +39,20 @@ interface Point3D {
   y: number;
   z: number;
 }
+interface Layer3DProjectionSettings {
+  pivot: TrianglePoint;
+  pan: TrianglePoint;
+  scale: number;
+  cameraDistance: number;
+  perspective: number;
+  zOffset: number;
+  rotateX: number;
+  rotateY: number;
+  rotateZ: number;
+  minDimension: number;
+}
 const FULL_CIRCLE_RADIANS = Math.PI * 2;
+const DEFAULT_LAYER_3D_MESH_DETAIL = 24;
 const MAX_RGB_NOISE_DELTA = 28;
 const MAX_MONO_NOISE_DELTA = 24;
 const SVG_MASK_CACHE_LIMIT = 96;
@@ -1064,26 +1077,168 @@ function hasActiveLayer3D(project: LayerRenderProject) {
   return project.finish.layer3DEnabled;
 }
 
-function getLayer3DProjectedCorners(project: LayerRenderProject) {
+function hasActiveLayer3DSurface(project: LayerRenderProject) {
+  const { finish } = project;
+  return (
+    finish.layer3DEnabled &&
+    finish.layer3DSurfaceMode !== "none" &&
+    Math.abs(finish.layer3DSurfaceAmount) > 0.0001
+  );
+}
+
+function getLayer3DProjectionSettings(
+  project: LayerRenderProject,
+): Layer3DProjectionSettings {
   const { finish, canvas } = project;
   const width = canvas.width;
   const height = canvas.height;
   const minDimension = Math.max(1, Math.min(width, height));
-  const pivot = {
-    x: clamp(finish.layer3DPivotX, 0, 1) * width,
-    y: clamp(finish.layer3DPivotY, 0, 1) * height,
+
+  return {
+    pivot: {
+      x: clamp(finish.layer3DPivotX, 0, 1) * width,
+      y: clamp(finish.layer3DPivotY, 0, 1) * height,
+    },
+    pan: {
+      x: clamp(finish.layer3DPanX, -1, 1) * width,
+      y: clamp(finish.layer3DPanY, -1, 1) * height,
+    },
+    scale: clamp(finish.layer3DScale, 0.05, 3),
+    cameraDistance:
+      minDimension * (0.65 + clamp(finish.layer3DCameraDistance, 0, 1) * 4.35),
+    perspective: clamp(finish.layer3DPerspective, 0, 1),
+    zOffset: clamp(finish.layer3DDepth, -1, 1) * minDimension,
+    rotateX: degToRad(clamp(finish.layer3DRotateX, -89, 89)),
+    rotateY: degToRad(clamp(finish.layer3DRotateY, -89, 89)),
+    rotateZ: degToRad(clamp(finish.layer3DRotateZ, -180, 180)),
+    minDimension,
   };
-  const pan = {
-    x: clamp(finish.layer3DPanX, -1, 1) * width,
-    y: clamp(finish.layer3DPanY, -1, 1) * height,
+}
+
+function getLayer3DWaveAxes(
+  xUnit: number,
+  yUnit: number,
+  angle: number,
+) {
+  const nx = (xUnit - 0.5) * 2;
+  const ny = (yUnit - 0.5) * 2;
+  const radians = degToRad(angle);
+  const cos = Math.cos(radians);
+  const sin = Math.sin(radians);
+
+  return {
+    a: nx * cos + ny * sin,
+    b: -nx * sin + ny * cos,
+    radius: Math.min(1.4142, Math.hypot(nx, ny)),
   };
-  const scale = clamp(finish.layer3DScale, 0.05, 3);
-  const cameraDistance = minDimension * (0.65 + clamp(finish.layer3DCameraDistance, 0, 1) * 4.35);
-  const perspective = clamp(finish.layer3DPerspective, 0, 1);
-  const zOffset = clamp(finish.layer3DDepth, -1, 1) * minDimension;
-  const rotateX = degToRad(clamp(finish.layer3DRotateX, -89, 89));
-  const rotateY = degToRad(clamp(finish.layer3DRotateY, -89, 89));
-  const rotateZ = degToRad(clamp(finish.layer3DRotateZ, -180, 180));
+}
+
+function applyLayer3DSurfacePoint(
+  localPoint: Point3D,
+  xUnit: number,
+  yUnit: number,
+  project: LayerRenderProject,
+  settings: Layer3DProjectionSettings,
+) {
+  if (!hasActiveLayer3DSurface(project)) {
+    return localPoint;
+  }
+
+  const { finish } = project;
+  const amount = clamp(finish.layer3DSurfaceAmount, -1, 1);
+  const amplitude = amount * settings.minDimension * 0.65;
+  const frequency = clamp(finish.layer3DSurfaceFrequency, 0.1, 12);
+  const phase = degToRad(clamp(finish.layer3DSurfacePhase, -180, 180));
+  const focus = clamp(finish.layer3DSurfaceFocus, 0, 1);
+  const { a, b, radius } = getLayer3DWaveAxes(
+    xUnit,
+    yUnit,
+    finish.layer3DSurfaceAngle,
+  );
+
+  if (finish.layer3DSurfaceMode === "wave") {
+    const primary = Math.sin(a * Math.PI * frequency + phase);
+    const cross = Math.sin(b * Math.PI * frequency * 0.65 - phase) * 0.45;
+    return { ...localPoint, z: localPoint.z + ((primary + cross) / 1.45) * amplitude };
+  }
+
+  if (finish.layer3DSurfaceMode === "cylinder") {
+    const profile = Math.cos(clamp(a, -1, 1) * Math.PI * 0.5);
+    return { ...localPoint, z: localPoint.z + profile * amplitude };
+  }
+
+  if (finish.layer3DSurfaceMode === "dome") {
+    const normalizedRadius = Math.min(1, radius / Math.SQRT2);
+    const exponent = 0.55 + focus * 2.4;
+    const profile = Math.max(0, 1 - normalizedRadius ** exponent);
+    const radialPull = 1 - amount * 0.12 * (1 - focus) * normalizedRadius;
+    return {
+      x: localPoint.x * radialPull,
+      y: localPoint.y * radialPull,
+      z: localPoint.z + profile * amplitude,
+    };
+  }
+
+  if (finish.layer3DSurfaceMode === "saddle") {
+    return { ...localPoint, z: localPoint.z + (a * a - b * b) * amplitude };
+  }
+
+  if (finish.layer3DSurfaceMode === "ripple") {
+    const decay = 1 - smoothstep(focus, Math.SQRT2, radius);
+    const ripple = Math.sin(radius * Math.PI * frequency * 2 + phase);
+    return { ...localPoint, z: localPoint.z + ripple * decay * amplitude };
+  }
+
+  const twist = b * amount * Math.PI * (0.25 + frequency * 0.075);
+  const cos = Math.cos(twist);
+  const sin = Math.sin(twist);
+  return {
+    x: localPoint.x * cos - localPoint.y * sin,
+    y: localPoint.x * sin + localPoint.y * cos,
+    z: localPoint.z + a * amplitude * (0.55 + focus * 0.45),
+  };
+}
+
+function projectLayer3DPoint(
+  sourcePoint: TrianglePoint,
+  project: LayerRenderProject,
+  settings: Layer3DProjectionSettings,
+) {
+  const { canvas } = project;
+  const localPoint = {
+    x: (sourcePoint.x - settings.pivot.x) * settings.scale,
+    y: (sourcePoint.y - settings.pivot.y) * settings.scale,
+    z: 0,
+  };
+  const surfacedPoint = applyLayer3DSurfacePoint(
+    localPoint,
+    sourcePoint.x / Math.max(canvas.width, 1),
+    sourcePoint.y / Math.max(canvas.height, 1),
+    project,
+    settings,
+  );
+  const rotated = rotateLayerPoint3D(
+    surfacedPoint,
+    settings.rotateX,
+    settings.rotateY,
+    settings.rotateZ,
+  );
+  const effectiveZ = (rotated.z - settings.zOffset) * settings.perspective;
+  const safeDepth = Math.max(
+    settings.cameraDistance + effectiveZ,
+    settings.cameraDistance * 0.12,
+  );
+  const projectionScale = settings.cameraDistance / safeDepth;
+
+  return {
+    x: settings.pivot.x + settings.pan.x + rotated.x * projectionScale,
+    y: settings.pivot.y + settings.pan.y + rotated.y * projectionScale,
+  };
+}
+
+function getLayer3DProjectedCorners(project: LayerRenderProject) {
+  const settings = getLayer3DProjectionSettings(project);
+  const { width, height } = project.canvas;
   const corners = [
     { x: 0, y: 0 },
     { x: width, y: 0 },
@@ -1091,22 +1246,59 @@ function getLayer3DProjectedCorners(project: LayerRenderProject) {
     { x: 0, y: height },
   ];
 
-  return corners.map((corner) => {
-    const localPoint = {
-      x: (corner.x - pivot.x) * scale,
-      y: (corner.y - pivot.y) * scale,
-      z: 0,
-    };
-    const rotated = rotateLayerPoint3D(localPoint, rotateX, rotateY, rotateZ);
-    const effectiveZ = (rotated.z - zOffset) * perspective;
-    const safeDepth = Math.max(cameraDistance + effectiveZ, cameraDistance * 0.12);
-    const projectionScale = cameraDistance / safeDepth;
+  return corners.map((corner) =>
+    projectLayer3DPoint(corner, project, settings),
+  ) as [TrianglePoint, TrianglePoint, TrianglePoint, TrianglePoint];
+}
 
-    return {
-      x: pivot.x + pan.x + rotated.x * projectionScale,
-      y: pivot.y + pan.y + rotated.y * projectionScale,
-    };
-  }) as [TrianglePoint, TrianglePoint, TrianglePoint, TrianglePoint];
+function drawLayer3DSurfaceMesh(
+  context: RenderContext,
+  sourceCanvas: RenderCanvas,
+  project: LayerRenderProject,
+) {
+  const settings = getLayer3DProjectionSettings(project);
+  const width = sourceCanvas.width;
+  const height = sourceCanvas.height;
+  const detail = clamp(
+    Math.round(
+      project.finish.layer3DSurfaceDetail ?? DEFAULT_LAYER_3D_MESH_DETAIL,
+    ),
+    4,
+    48,
+  );
+  const stepX = width / detail;
+  const stepY = height / detail;
+
+  for (let row = 0; row < detail; row += 1) {
+    for (let column = 0; column < detail; column += 1) {
+      const left = column * stepX;
+      const top = row * stepY;
+      const right = column === detail - 1 ? width : (column + 1) * stepX;
+      const bottom = row === detail - 1 ? height : (row + 1) * stepY;
+      const sourcePoints: [TrianglePoint, TrianglePoint, TrianglePoint, TrianglePoint] = [
+        { x: left, y: top },
+        { x: right, y: top },
+        { x: right, y: bottom },
+        { x: left, y: bottom },
+      ];
+      const destinationPoints = sourcePoints.map((point) =>
+        projectLayer3DPoint(point, project, settings),
+      ) as [TrianglePoint, TrianglePoint, TrianglePoint, TrianglePoint];
+
+      drawCanvasTriangle(
+        context,
+        sourceCanvas,
+        [sourcePoints[0], sourcePoints[1], sourcePoints[2]],
+        [destinationPoints[0], destinationPoints[1], destinationPoints[2]],
+      );
+      drawCanvasTriangle(
+        context,
+        sourceCanvas,
+        [sourcePoints[0], sourcePoints[2], sourcePoints[3]],
+        [destinationPoints[0], destinationPoints[2], destinationPoints[3]],
+      );
+    }
+  }
 }
 
 function applyLayer3DTransform(
@@ -1119,9 +1311,15 @@ function applyLayer3DTransform(
 
   const transformedCanvas = createRenderCanvas(sourceCanvas.width, sourceCanvas.height);
   const transformedContext = getRenderContext(transformedCanvas);
-  const [p0, p1, p2, p3] = getLayer3DProjectedCorners(project);
   const width = sourceCanvas.width;
   const height = sourceCanvas.height;
+
+  if (hasActiveLayer3DSurface(project)) {
+    drawLayer3DSurfaceMesh(transformedContext, sourceCanvas, project);
+    return transformedCanvas;
+  }
+
+  const [p0, p1, p2, p3] = getLayer3DProjectedCorners(project);
 
   drawCanvasTriangle(
     transformedContext,

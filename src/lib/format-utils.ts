@@ -4,6 +4,7 @@ import type {
   FractalVariant,
   GradientDirection,
   GradientMode,
+  Layer3DSurfaceMode,
   SourceKind,
   StripBendWaveform,
 } from "@/types/project";
@@ -38,6 +39,16 @@ export function formatStripBendWaveformLabel(waveform: StripBendWaveform) {
   if (waveform === "none") return "None";
   if (waveform === "sawtooth") return "Sawtooth";
   return waveform[0]!.toUpperCase() + waveform.slice(1);
+}
+
+export function formatLayer3DSurfaceModeLabel(mode: Layer3DSurfaceMode) {
+  if (mode === "none") return "None";
+  if (mode === "wave") return "Standing Wave";
+  if (mode === "cylinder") return "Cylindrical Bend";
+  if (mode === "dome") return "Dome / Funnel";
+  if (mode === "saddle") return "Saddle";
+  if (mode === "ripple") return "Radial Ripple";
+  return "Twist";
 }
 
 export function formatPercentValue(value: number) {

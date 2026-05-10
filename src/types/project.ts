@@ -51,6 +51,14 @@ export type StripBendWaveform =
   | "square";
 export type RadialChildRotationMode = "none" | "tangent" | "outward";
 export type ThreeDStructureMode = "sphere" | "torus" | "attractor";
+export type Layer3DSurfaceMode =
+  | "none"
+  | "wave"
+  | "cylinder"
+  | "dome"
+  | "saddle"
+  | "ripple"
+  | "twist";
 export type KaleidoscopeMirrorMode =
   | "rotate-only"
   | "alternate"
@@ -425,6 +433,13 @@ export interface FinishSettings {
   layer3DPerspective: number;
   layer3DCameraDistance: number;
   layer3DDepth: number;
+  layer3DSurfaceMode: Layer3DSurfaceMode;
+  layer3DSurfaceAmount: number;
+  layer3DSurfaceFrequency: number;
+  layer3DSurfacePhase: number;
+  layer3DSurfaceAngle: number;
+  layer3DSurfaceFocus: number;
+  layer3DSurfaceDetail: number;
   brightness: number;
   contrast: number;
   saturate: number;

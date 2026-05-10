@@ -11,6 +11,7 @@ import type {
   ExportSettings,
   FinishSettings,
   GeneratorPreset,
+  Layer3DSurfaceMode,
   LayoutSettings,
   LayerRenderProject,
   ProjectDocument,
@@ -36,6 +37,16 @@ type LegacyEffectSettings = Partial<EffectSettings> & {
 type LegacyCompositingSettings = Partial<CompositingSettings> & {
   shadow?: number;
 };
+
+const LAYER_3D_SURFACE_MODES: Layer3DSurfaceMode[] = [
+  "none",
+  "wave",
+  "cylinder",
+  "dome",
+  "saddle",
+  "ripple",
+  "twist",
+];
 
 type LegacyProjectLike = {
   canvas?: Partial<CanvasSettings> & { inset?: number };
@@ -506,6 +517,13 @@ export const DEFAULT_FINISH: FinishSettings = {
   layer3DPerspective: 0.68,
   layer3DCameraDistance: 0.62,
   layer3DDepth: 0,
+  layer3DSurfaceMode: "none",
+  layer3DSurfaceAmount: 0,
+  layer3DSurfaceFrequency: 2,
+  layer3DSurfacePhase: 0,
+  layer3DSurfaceAngle: 0,
+  layer3DSurfaceFocus: 0.5,
+  layer3DSurfaceDetail: 24,
   brightness: 1,
   contrast: 1,
   saturate: 1,
@@ -520,6 +538,12 @@ export const DEFAULT_FINISH: FinishSettings = {
   vignetteRoundness: 0,
   vignetteFeather: 0.5,
 };
+
+function normalizeLayer3DSurfaceMode(
+  mode: Layer3DSurfaceMode | undefined,
+): Layer3DSurfaceMode {
+  return mode && LAYER_3D_SURFACE_MODES.includes(mode) ? mode : "none";
+}
 
 export const DEFAULT_DRAW: DrawSettings = {
   brushSize: 160,
@@ -1060,6 +1084,42 @@ function normalizeFinishSettings(
       finish?.layer3DDepth ?? DEFAULT_FINISH.layer3DDepth,
       -1,
       1,
+    ),
+    layer3DSurfaceMode: normalizeLayer3DSurfaceMode(
+      finish?.layer3DSurfaceMode,
+    ),
+    layer3DSurfaceAmount: clamp(
+      finish?.layer3DSurfaceAmount ?? DEFAULT_FINISH.layer3DSurfaceAmount,
+      -1,
+      1,
+    ),
+    layer3DSurfaceFrequency: clamp(
+      finish?.layer3DSurfaceFrequency ??
+        DEFAULT_FINISH.layer3DSurfaceFrequency,
+      0.1,
+      12,
+    ),
+    layer3DSurfacePhase: clamp(
+      finish?.layer3DSurfacePhase ?? DEFAULT_FINISH.layer3DSurfacePhase,
+      -180,
+      180,
+    ),
+    layer3DSurfaceAngle: clamp(
+      finish?.layer3DSurfaceAngle ?? DEFAULT_FINISH.layer3DSurfaceAngle,
+      -180,
+      180,
+    ),
+    layer3DSurfaceFocus: clamp(
+      finish?.layer3DSurfaceFocus ?? DEFAULT_FINISH.layer3DSurfaceFocus,
+      0,
+      1,
+    ),
+    layer3DSurfaceDetail: clamp(
+      Math.round(
+        finish?.layer3DSurfaceDetail ?? DEFAULT_FINISH.layer3DSurfaceDetail,
+      ),
+      4,
+      48,
     ),
     brightness: finish?.brightness ?? DEFAULT_FINISH.brightness,
     contrast: finish?.contrast ?? DEFAULT_FINISH.contrast,

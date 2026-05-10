@@ -1351,6 +1351,12 @@ describe("App conditional sliders", () => {
     expect(screen.getByLabelText("3D Perspective")).toHaveAttribute("data-disabled");
     expect(screen.getByLabelText("3D Camera Distance")).toHaveAttribute("data-disabled");
     expect(screen.getByLabelText("3D Z Offset")).toHaveAttribute("data-disabled");
+    expect(screen.getByLabelText("Surface Amount")).toHaveAttribute("data-disabled");
+    expect(screen.getByLabelText("Surface Frequency")).toHaveAttribute("data-disabled");
+    expect(screen.getByLabelText("Surface Phase")).toHaveAttribute("data-disabled");
+    expect(screen.getByLabelText("Surface Angle")).toHaveAttribute("data-disabled");
+    expect(screen.getByLabelText("Surface Focus")).toHaveAttribute("data-disabled");
+    expect(screen.getByLabelText("Surface Detail")).toHaveAttribute("data-disabled");
 
     await user.click(screen.getByRole("switch", { name: "Layer 3D" }));
 

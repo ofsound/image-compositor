@@ -6,6 +6,7 @@ import type {
   FractalVariant,
   GeometryShape,
   KaleidoscopeMirrorMode,
+  Layer3DSurfaceMode,
   LayoutFamily,
   RadialChildRotationMode,
   SourceAssignmentStrategy,
@@ -90,6 +91,16 @@ export const THREE_D_STRUCTURE_OPTIONS: ThreeDStructureMode[] = [
   "sphere",
   "torus",
   "attractor",
+];
+
+export const LAYER_3D_SURFACE_OPTIONS: Layer3DSurfaceMode[] = [
+  "none",
+  "wave",
+  "cylinder",
+  "dome",
+  "saddle",
+  "ripple",
+  "twist",
 ];
 
 export const SYMMETRY_MODE_OPTIONS: ProjectEditorView["layout"]["symmetryMode"][] = [

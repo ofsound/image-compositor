@@ -32,6 +32,7 @@ import {
   formatCurveAttractorTypeLabel,
   formatCurveVariantLabel,
   formatFractalVariantLabel,
+  formatLayer3DSurfaceModeLabel,
   formatStripBendWaveformLabel,
   ORGANIC_DISTRIBUTION_MAX,
   THREE_D_DISTRIBUTION_MAX,
@@ -67,6 +68,7 @@ import {
   isOption,
   isOptionValue,
   KALEIDOSCOPE_MIRROR_MODE_OPTIONS,
+  LAYER_3D_SURFACE_OPTIONS,
   LAYOUT_FAMILY_OPTIONS,
   RADIAL_CHILD_ROTATION_OPTIONS,
   SOURCE_ASSIGNMENT_OPTIONS,
@@ -4096,6 +4098,169 @@ export function RightSidebar({
                           finish: {
                             ...project.finish,
                             layer3DDepth: value,
+                          },
+                        }))
+                      }
+                    />
+                    <ControlBlock
+                      label="Surface Shape"
+                      value={
+                        <Select
+                          value={activeProjectView.finish.layer3DSurfaceMode}
+                          disabled={!activeProjectView.finish.layer3DEnabled}
+                          onValueChange={(value) => {
+                            if (!isOption(LAYER_3D_SURFACE_OPTIONS, value)) return;
+                            patchProject((project) => ({
+                              ...project,
+                              finish: {
+                                ...project.finish,
+                                layer3DSurfaceMode: value,
+                              },
+                            }));
+                          }}
+                        >
+                          <SelectTrigger aria-label="Surface Shape">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {LAYER_3D_SURFACE_OPTIONS.map((option) => (
+                              <SelectItem key={option} value={option}>
+                                {formatLayer3DSurfaceModeLabel(option)}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      }
+                      className="sm:col-span-2"
+                    >
+                      <div className="h-px bg-border-subtle" />
+                    </ControlBlock>
+                    <SliderField
+                      label="Surface Amount"
+                      min={-1}
+                      max={1}
+                      step={0.01}
+                      disabled={
+                        !activeProjectView.finish.layer3DEnabled ||
+                        activeProjectView.finish.layer3DSurfaceMode === "none"
+                      }
+                      value={activeProjectView.finish.layer3DSurfaceAmount}
+                      defaultValue={DEFAULT_FINISH.layer3DSurfaceAmount}
+                      formatter={formatPercentValue}
+                      onChange={(value) =>
+                        patchProject((project) => ({
+                          ...project,
+                          finish: {
+                            ...project.finish,
+                            layer3DSurfaceAmount: value,
+                          },
+                        }))
+                      }
+                    />
+                    <SliderField
+                      label="Surface Frequency"
+                      min={0.1}
+                      max={12}
+                      step={0.1}
+                      disabled={
+                        !activeProjectView.finish.layer3DEnabled ||
+                        activeProjectView.finish.layer3DSurfaceMode === "none"
+                      }
+                      value={activeProjectView.finish.layer3DSurfaceFrequency}
+                      defaultValue={DEFAULT_FINISH.layer3DSurfaceFrequency}
+                      onChange={(value) =>
+                        patchProject((project) => ({
+                          ...project,
+                          finish: {
+                            ...project.finish,
+                            layer3DSurfaceFrequency: value,
+                          },
+                        }))
+                      }
+                    />
+                    <SliderField
+                      label="Surface Phase"
+                      min={-180}
+                      max={180}
+                      step={1}
+                      disabled={
+                        !activeProjectView.finish.layer3DEnabled ||
+                        activeProjectView.finish.layer3DSurfaceMode === "none"
+                      }
+                      value={activeProjectView.finish.layer3DSurfacePhase}
+                      defaultValue={DEFAULT_FINISH.layer3DSurfacePhase}
+                      formatter={formatDegreeValue}
+                      onChange={(value) =>
+                        patchProject((project) => ({
+                          ...project,
+                          finish: {
+                            ...project.finish,
+                            layer3DSurfacePhase: value,
+                          },
+                        }))
+                      }
+                    />
+                    <SliderField
+                      label="Surface Angle"
+                      min={-180}
+                      max={180}
+                      step={1}
+                      disabled={
+                        !activeProjectView.finish.layer3DEnabled ||
+                        activeProjectView.finish.layer3DSurfaceMode === "none"
+                      }
+                      value={activeProjectView.finish.layer3DSurfaceAngle}
+                      defaultValue={DEFAULT_FINISH.layer3DSurfaceAngle}
+                      formatter={formatDegreeValue}
+                      onChange={(value) =>
+                        patchProject((project) => ({
+                          ...project,
+                          finish: {
+                            ...project.finish,
+                            layer3DSurfaceAngle: value,
+                          },
+                        }))
+                      }
+                    />
+                    <SliderField
+                      label="Surface Focus"
+                      min={0}
+                      max={1}
+                      step={0.01}
+                      disabled={
+                        !activeProjectView.finish.layer3DEnabled ||
+                        activeProjectView.finish.layer3DSurfaceMode === "none"
+                      }
+                      value={activeProjectView.finish.layer3DSurfaceFocus}
+                      defaultValue={DEFAULT_FINISH.layer3DSurfaceFocus}
+                      formatter={formatPercentValue}
+                      onChange={(value) =>
+                        patchProject((project) => ({
+                          ...project,
+                          finish: {
+                            ...project.finish,
+                            layer3DSurfaceFocus: value,
+                          },
+                        }))
+                      }
+                    />
+                    <SliderField
+                      label="Surface Detail"
+                      min={4}
+                      max={48}
+                      step={1}
+                      disabled={
+                        !activeProjectView.finish.layer3DEnabled ||
+                        activeProjectView.finish.layer3DSurfaceMode === "none"
+                      }
+                      value={activeProjectView.finish.layer3DSurfaceDetail}
+                      defaultValue={DEFAULT_FINISH.layer3DSurfaceDetail}
+                      onChange={(value) =>
+                        patchProject((project) => ({
+                          ...project,
+                          finish: {
+                            ...project.finish,
+                            layer3DSurfaceDetail: value,
                           },
                         }))
                       }

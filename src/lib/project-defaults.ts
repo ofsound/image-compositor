@@ -48,6 +48,11 @@ const LAYER_3D_SURFACE_MODES: Layer3DSurfaceMode[] = [
   "twist",
 ];
 
+const PIXEL_SWAP_MODES: FinishSettings["pixelSwapMode"][] = [
+  "uniform",
+  "spectrum",
+];
+
 type LegacyProjectLike = {
   canvas?: Partial<CanvasSettings> & { inset?: number };
   sourceIds?: string[];
@@ -532,6 +537,11 @@ export const DEFAULT_FINISH: FinishSettings = {
   invert: 0,
   noise: 0,
   noiseMonochrome: 0,
+  pixelSwapDensity: 0,
+  pixelSwapWidth: 16,
+  pixelSwapHeight: 16,
+  pixelSwapMode: "uniform",
+  pixelSwapSeed: 187310,
   vignetteStrength: 0,
   vignetteColor: "#000000",
   vignetteMidpoint: 0.5,
@@ -543,6 +553,14 @@ function normalizeLayer3DSurfaceMode(
   mode: Layer3DSurfaceMode | undefined,
 ): Layer3DSurfaceMode {
   return mode && LAYER_3D_SURFACE_MODES.includes(mode) ? mode : "none";
+}
+
+function normalizePixelSwapMode(
+  mode: FinishSettings["pixelSwapMode"] | undefined,
+): FinishSettings["pixelSwapMode"] {
+  return mode && PIXEL_SWAP_MODES.includes(mode)
+    ? mode
+    : DEFAULT_FINISH.pixelSwapMode;
 }
 
 export const DEFAULT_DRAW: DrawSettings = {
@@ -1129,6 +1147,27 @@ function normalizeFinishSettings(
     invert: finish?.invert ?? DEFAULT_FINISH.invert,
     noise: finish?.noise ?? DEFAULT_FINISH.noise,
     noiseMonochrome: finish?.noiseMonochrome ?? DEFAULT_FINISH.noiseMonochrome,
+    pixelSwapDensity: clamp(
+      finish?.pixelSwapDensity ?? DEFAULT_FINISH.pixelSwapDensity,
+      0,
+      1,
+    ),
+    pixelSwapWidth: clamp(
+      Math.round(finish?.pixelSwapWidth ?? DEFAULT_FINISH.pixelSwapWidth),
+      1,
+      100,
+    ),
+    pixelSwapHeight: clamp(
+      Math.round(finish?.pixelSwapHeight ?? DEFAULT_FINISH.pixelSwapHeight),
+      1,
+      100,
+    ),
+    pixelSwapMode: normalizePixelSwapMode(finish?.pixelSwapMode),
+    pixelSwapSeed: clamp(
+      Math.round(finish?.pixelSwapSeed ?? DEFAULT_FINISH.pixelSwapSeed),
+      0,
+      999999,
+    ),
     vignetteStrength: clamp(
       finish?.vignetteStrength ?? DEFAULT_FINISH.vignetteStrength,
       0,

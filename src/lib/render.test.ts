@@ -262,6 +262,79 @@ async function renderNoiseOutput(options: {
   return Array.from(imageData.data);
 }
 
+async function renderPixelSwapOutput(options: {
+  width: number;
+  height: number;
+  pixels: number[];
+  density: number;
+  rectWidth: number;
+  rectHeight: number;
+  mode?: "uniform" | "spectrum";
+  seed?: number;
+  layerId?: string;
+}) {
+  const {
+    width,
+    height,
+    pixels,
+    density,
+    rectWidth,
+    rectHeight,
+    mode = "uniform",
+    seed = 187310,
+    layerId = "layer_pixel_swap",
+  } = options;
+  const project = createProjectView("Pixel Swap Render");
+  project.canvas.width = width;
+  project.canvas.height = height;
+  project.effects.sharpen = 0;
+  project.effects.kaleidoscopeSegments = 1;
+  project.finish.pixelSwapDensity = density;
+  project.finish.pixelSwapWidth = rectWidth;
+  project.finish.pixelSwapHeight = rectHeight;
+  project.finish.pixelSwapMode = mode;
+  project.finish.pixelSwapSeed = seed;
+  project.layers[0]!.finish.pixelSwapDensity = density;
+  project.layers[0]!.finish.pixelSwapWidth = rectWidth;
+  project.layers[0]!.finish.pixelSwapHeight = rectHeight;
+  project.layers[0]!.finish.pixelSwapMode = mode;
+  project.layers[0]!.finish.pixelSwapSeed = seed;
+  project.layers[0]!.id = layerId;
+
+  const context = createMockContext();
+  const layerContext = createMockContext();
+  layerContext.getImageData.mockImplementation(() => ({
+    data: new Uint8ClampedArray(pixels),
+    width,
+    height,
+  }) as ImageData);
+  const canvas = {
+    width: 0,
+    height: 0,
+    getContext: vi.fn(() => context),
+  } as unknown as HTMLCanvasElement;
+  const layerCanvas = {
+    width: 0,
+    height: 0,
+    getContext: vi.fn(() => layerContext),
+  } as unknown as HTMLCanvasElement;
+  const createElementSpy = vi
+    .spyOn(document, "createElement")
+    .mockReturnValueOnce(layerCanvas as never);
+
+  try {
+    await renderProjectToCanvas(project, [], new Map(), canvas);
+  } finally {
+    createElementSpy.mockRestore();
+  }
+
+  const putImageDataCall = layerContext.putImageData.mock.calls.at(-1);
+  expect(putImageDataCall).toBeDefined();
+
+  const imageData = putImageDataCall?.[0] as ImageData;
+  return Array.from(imageData.data);
+}
+
 async function renderVignetteOutput(options: {
   width: number;
   height: number;
@@ -1864,6 +1937,67 @@ describe("renderProjectToCanvas", () => {
     expect(opaquePeak).toBeGreaterThan(0);
     expect(translucentPeak).toBeLessThan(opaquePeak);
     expect(translucentPeak).toBeLessThanOrEqual(Math.ceil(opaquePeak * 0.35));
+  });
+
+  it("applies pixel swap deterministically for identical settings", async () => {
+    const pixels = [
+      255, 0, 0, 255,
+      0, 255, 0, 255,
+      0, 0, 255, 255,
+      255, 255, 0, 255,
+      0, 0, 0, 0,
+    ];
+    const first = await renderPixelSwapOutput({
+      width: 5,
+      height: 1,
+      pixels,
+      density: 1,
+      rectWidth: 1,
+      rectHeight: 1,
+      seed: 42,
+      layerId: "layer_deterministic_swap",
+    });
+    const second = await renderPixelSwapOutput({
+      width: 5,
+      height: 1,
+      pixels,
+      density: 1,
+      rectWidth: 1,
+      rectHeight: 1,
+      seed: 42,
+      layerId: "layer_deterministic_swap",
+    });
+
+    expect(second).toEqual(first);
+    expect(first).not.toEqual(pixels);
+  });
+
+  it("includes transparent pixels in pixel swap rectangles", async () => {
+    const pixels = [
+      255, 0, 0, 255,
+      0, 255, 0, 255,
+      0, 0, 255, 255,
+      0, 0, 0, 0,
+    ];
+    const output = await renderPixelSwapOutput({
+      width: 4,
+      height: 1,
+      pixels,
+      density: 1,
+      rectWidth: 1,
+      rectHeight: 1,
+      seed: 7,
+      layerId: "layer_alpha_swap",
+    });
+    const transparentPixelIndex = output.findIndex(
+      (_value, index) => index % 4 === 3 && output[index] === 0,
+    );
+    const transparentPixelCount = output.filter(
+      (_value, index) => index % 4 === 3 && output[index] === 0,
+    ).length;
+
+    expect(transparentPixelIndex).not.toBe(15);
+    expect(transparentPixelCount).toBe(1);
   });
 
   it("translates layer content by canvas width and height fractions on the direct composite path", async () => {

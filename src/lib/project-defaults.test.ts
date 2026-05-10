@@ -184,6 +184,11 @@ describe("createProjectDocument", () => {
     expect(project.finish.invert).toBe(0);
     expect(project.finish.noise).toBe(0);
     expect(project.finish.noiseMonochrome).toBe(0);
+    expect(project.finish.pixelSwapDensity).toBe(0);
+    expect(project.finish.pixelSwapWidth).toBe(16);
+    expect(project.finish.pixelSwapHeight).toBe(16);
+    expect(project.finish.pixelSwapMode).toBe("uniform");
+    expect(project.finish.pixelSwapSeed).toBe(187310);
     expect(project.finish.vignetteStrength).toBe(0);
     expect(project.finish.vignetteColor).toBe("#000000");
     expect(project.finish.vignetteMidpoint).toBe(0.5);
@@ -416,6 +421,39 @@ describe("createProjectDocument", () => {
     expect(missing.finish.vignetteMidpoint).toBe(0.5);
     expect(missing.finish.vignetteRoundness).toBe(0);
     expect(missing.finish.vignetteFeather).toBe(0.5);
+  });
+
+  it("normalizes missing and out-of-range pixel swap finish settings", () => {
+    const project = createProjectView("Legacy Pixel Swap");
+    const legacyProject = {
+      ...project,
+      finish: {
+        ...project.finish,
+        pixelSwapDensity: 1.5,
+        pixelSwapWidth: 140.2,
+        pixelSwapHeight: -8,
+        pixelSwapMode: "invalid",
+        pixelSwapSeed: 1000002.8,
+      },
+    } as unknown as ProjectDocument;
+
+    const normalized = normalizeProjectView(legacyProject);
+
+    expect(normalized.finish.pixelSwapDensity).toBe(1);
+    expect(normalized.finish.pixelSwapWidth).toBe(100);
+    expect(normalized.finish.pixelSwapHeight).toBe(1);
+    expect(normalized.finish.pixelSwapMode).toBe("uniform");
+    expect(normalized.finish.pixelSwapSeed).toBe(999999);
+
+    const missing = normalizeProjectView({
+      ...project,
+      finish: undefined,
+    } as unknown as ProjectDocument);
+    expect(missing.finish.pixelSwapDensity).toBe(0);
+    expect(missing.finish.pixelSwapWidth).toBe(16);
+    expect(missing.finish.pixelSwapHeight).toBe(16);
+    expect(missing.finish.pixelSwapMode).toBe("uniform");
+    expect(missing.finish.pixelSwapSeed).toBe(187310);
   });
 
   it("normalizes legacy projects without background alpha to transparent", () => {

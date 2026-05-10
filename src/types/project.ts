@@ -448,6 +448,11 @@ export interface FinishSettings {
   invert: number;
   noise: number;
   noiseMonochrome: number;
+  pixelSwapDensity: number;
+  pixelSwapWidth: number;
+  pixelSwapHeight: number;
+  pixelSwapMode: "uniform" | "spectrum";
+  pixelSwapSeed: number;
   vignetteStrength: number;
   vignetteColor: string;
   vignetteMidpoint: number;

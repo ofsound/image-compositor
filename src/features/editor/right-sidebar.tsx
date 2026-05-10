@@ -152,6 +152,10 @@ function isElementModulationPattern(value: string): value is ElementModulationPa
   return ELEMENT_MODULATION_PATTERN_OPTIONS.some((option) => option.value === value);
 }
 
+function formatPixelValue(value: number) {
+  return `${Math.round(value)} px`;
+}
+
 function getElementModulationAmountConfig(target: ElementModulationTarget) {
   if (target === "rotation" || target === "wedgeSweep" || target === "threeDTwist") {
     return {
@@ -4371,6 +4375,82 @@ export function RightSidebar({
                             noiseMonochrome: value,
                           },
                         }))
+                      }
+                    />
+                    <SliderField
+                      label="Pixel Swap Density"
+                      min={0}
+                      max={1}
+                      step={0.01}
+                      value={activeProjectView.finish.pixelSwapDensity}
+                      defaultValue={DEFAULT_FINISH.pixelSwapDensity}
+                      formatter={formatPercentValue}
+                      onChange={(value) =>
+                        patchFinishSetting("pixelSwapDensity", value)
+                      }
+                    />
+                    <SliderField
+                      label="Pixel Swap Width"
+                      min={1}
+                      max={100}
+                      step={1}
+                      value={activeProjectView.finish.pixelSwapWidth}
+                      defaultValue={DEFAULT_FINISH.pixelSwapWidth}
+                      formatter={formatPixelValue}
+                      onChange={(value) =>
+                        patchFinishSetting("pixelSwapWidth", Math.round(value))
+                      }
+                    />
+                    <SliderField
+                      label="Pixel Swap Height"
+                      min={1}
+                      max={100}
+                      step={1}
+                      value={activeProjectView.finish.pixelSwapHeight}
+                      defaultValue={DEFAULT_FINISH.pixelSwapHeight}
+                      formatter={formatPixelValue}
+                      onChange={(value) =>
+                        patchFinishSetting("pixelSwapHeight", Math.round(value))
+                      }
+                    />
+                    <ControlBlock
+                      label="Pixel Swap Spectrum"
+                      value={
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-text-muted">
+                            {activeProjectView.finish.pixelSwapMode ===
+                            "spectrum"
+                              ? "Spectrum"
+                              : "Uniform"}
+                          </span>
+                          <Switch
+                            aria-label="Pixel Swap Spectrum"
+                            checked={
+                              activeProjectView.finish.pixelSwapMode ===
+                              "spectrum"
+                            }
+                            onCheckedChange={(checked) =>
+                              patchFinishSetting(
+                                "pixelSwapMode",
+                                checked ? "spectrum" : "uniform",
+                              )
+                            }
+                          />
+                        </div>
+                      }
+                    >
+                      <div className="h-px bg-border-subtle" />
+                    </ControlBlock>
+                    <SliderField
+                      label="Pixel Swap Seed"
+                      min={0}
+                      max={999999}
+                      step={1}
+                      value={activeProjectView.finish.pixelSwapSeed}
+                      defaultValue={DEFAULT_FINISH.pixelSwapSeed}
+                      formatter={(value) => Math.round(value).toString()}
+                      onChange={(value) =>
+                        patchFinishSetting("pixelSwapSeed", Math.round(value))
                       }
                     />
                     <SliderField

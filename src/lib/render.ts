@@ -55,6 +55,7 @@ const FULL_CIRCLE_RADIANS = Math.PI * 2;
 const DEFAULT_LAYER_3D_MESH_DETAIL = 24;
 const MAX_RGB_NOISE_DELTA = 28;
 const MAX_MONO_NOISE_DELTA = 24;
+const MAX_PIXEL_SWAP_OPERATIONS = 120000;
 const SVG_MASK_CACHE_LIMIT = 96;
 
 const bitmapCache = new WeakMap<Blob, Promise<ImageBitmap>>();
@@ -1655,6 +1656,7 @@ function hasActiveFinish(project: LayerRenderProject) {
     finish.invert !== DEFAULT_FINISH.invert ||
     finish.noise > 0 ||
     finish.noiseMonochrome > 0 ||
+    finish.pixelSwapDensity > 0 ||
     finish.vignetteStrength > 0
   );
 }
@@ -1775,6 +1777,258 @@ function applyFinishNoise(
       data[index + 1] = clamp((data[index + 1] ?? 0) + greenDelta, 0, 255);
       data[index + 2] = clamp((data[index + 2] ?? 0) + blueDelta, 0, 255);
     }
+  }
+
+  context.putImageData(imageData, 0, 0);
+  return sourceCanvas;
+}
+
+interface PixelSwapRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+function isPixelSwapRectOccupied(
+  occupied: Uint8Array,
+  canvasWidth: number,
+  rect: PixelSwapRect,
+) {
+  for (let y = rect.y; y < rect.y + rect.height; y += 1) {
+    const rowOffset = y * canvasWidth;
+    for (let x = rect.x; x < rect.x + rect.width; x += 1) {
+      if (occupied[rowOffset + x]) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+function markPixelSwapRectOccupied(
+  occupied: Uint8Array,
+  canvasWidth: number,
+  rect: PixelSwapRect,
+) {
+  for (let y = rect.y; y < rect.y + rect.height; y += 1) {
+    const rowOffset = y * canvasWidth;
+    for (let x = rect.x; x < rect.x + rect.width; x += 1) {
+      occupied[rowOffset + x] = 1;
+    }
+  }
+}
+
+function pixelSwapRectsOverlap(a: PixelSwapRect, b: PixelSwapRect) {
+  return (
+    a.x < b.x + b.width &&
+    a.x + a.width > b.x &&
+    a.y < b.y + b.height &&
+    a.y + a.height > b.y
+  );
+}
+
+function pixelSwapRectsMatch(a: PixelSwapRect, b: PixelSwapRect) {
+  return (
+    a.x === b.x &&
+    a.y === b.y &&
+    a.width === b.width &&
+    a.height === b.height
+  );
+}
+
+function createPixelSwapRect(
+  rng: ReturnType<typeof mulberry32>,
+  canvasWidth: number,
+  canvasHeight: number,
+  rectWidth: number,
+  rectHeight: number,
+): PixelSwapRect {
+  return {
+    x: rng.int(0, canvasWidth - rectWidth),
+    y: rng.int(0, canvasHeight - rectHeight),
+    width: rectWidth,
+    height: rectHeight,
+  };
+}
+
+function choosePixelSwapRect(options: {
+  rng: ReturnType<typeof mulberry32>;
+  canvasWidth: number;
+  canvasHeight: number;
+  rectWidth: number;
+  rectHeight: number;
+  occupied: Uint8Array;
+  avoidOverlap: boolean;
+  disallowedRect?: PixelSwapRect;
+}) {
+  const {
+    rng,
+    canvasWidth,
+    canvasHeight,
+    rectWidth,
+    rectHeight,
+    occupied,
+    avoidOverlap,
+    disallowedRect,
+  } = options;
+  const maxAttempts = avoidOverlap ? 48 : 1;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    const rect = createPixelSwapRect(
+      rng,
+      canvasWidth,
+      canvasHeight,
+      rectWidth,
+      rectHeight,
+    );
+    if (disallowedRect && pixelSwapRectsOverlap(rect, disallowedRect)) {
+      continue;
+    }
+    if (avoidOverlap && isPixelSwapRectOccupied(occupied, canvasWidth, rect)) {
+      continue;
+    }
+    return rect;
+  }
+
+  for (let attempt = 0; attempt < 16; attempt += 1) {
+    const rect = createPixelSwapRect(
+      rng,
+      canvasWidth,
+      canvasHeight,
+      rectWidth,
+      rectHeight,
+    );
+    if (disallowedRect && pixelSwapRectsMatch(rect, disallowedRect)) {
+      continue;
+    }
+    return rect;
+  }
+
+  return null;
+}
+
+function swapPixelRects(
+  data: Uint8ClampedArray,
+  canvasWidth: number,
+  source: PixelSwapRect,
+  target: PixelSwapRect,
+) {
+  const rowLength = source.width * 4;
+  const bufferLength = rowLength * source.height;
+  const sourceBuffer = new Uint8ClampedArray(bufferLength);
+  const targetBuffer = new Uint8ClampedArray(bufferLength);
+
+  for (let row = 0; row < source.height; row += 1) {
+    const sourceStart = ((source.y + row) * canvasWidth + source.x) * 4;
+    const targetStart = ((target.y + row) * canvasWidth + target.x) * 4;
+    sourceBuffer.set(
+      data.subarray(sourceStart, sourceStart + rowLength),
+      row * rowLength,
+    );
+    targetBuffer.set(
+      data.subarray(targetStart, targetStart + rowLength),
+      row * rowLength,
+    );
+  }
+
+  for (let row = 0; row < source.height; row += 1) {
+    const sourceStart = ((source.y + row) * canvasWidth + source.x) * 4;
+    const targetStart = ((target.y + row) * canvasWidth + target.x) * 4;
+    const bufferStart = row * rowLength;
+    data.set(
+      targetBuffer.subarray(bufferStart, bufferStart + rowLength),
+      sourceStart,
+    );
+    data.set(
+      sourceBuffer.subarray(bufferStart, bufferStart + rowLength),
+      targetStart,
+    );
+  }
+}
+
+function applyPixelSwap(
+  sourceCanvas: RenderCanvas,
+  project: LayerRenderProject,
+  layerId: string,
+) {
+  const density = clamp(project.finish.pixelSwapDensity, 0, 1);
+  if (density <= 0) {
+    return sourceCanvas;
+  }
+
+  const canvasWidth = sourceCanvas.width;
+  const canvasHeight = sourceCanvas.height;
+  const maxRectWidth = clamp(
+    Math.round(project.finish.pixelSwapWidth),
+    1,
+    Math.min(100, canvasWidth),
+  );
+  const maxRectHeight = clamp(
+    Math.round(project.finish.pixelSwapHeight),
+    1,
+    Math.min(100, canvasHeight),
+  );
+  const context = getRenderContext(sourceCanvas);
+  const imageData = context.getImageData(0, 0, canvasWidth, canvasHeight);
+  const data = imageData.data;
+  const rng = mulberry32(
+    hashToSeed(`${project.finish.pixelSwapSeed}:${layerId}:pixel-swap`),
+  );
+  const averageRectWidth =
+    project.finish.pixelSwapMode === "spectrum"
+      ? (maxRectWidth + 1) / 2
+      : maxRectWidth;
+  const averageRectHeight =
+    project.finish.pixelSwapMode === "spectrum"
+      ? (maxRectHeight + 1) / 2
+      : maxRectHeight;
+  const averageRectArea = Math.max(1, averageRectWidth * averageRectHeight);
+  const swapCount = Math.min(
+    MAX_PIXEL_SWAP_OPERATIONS,
+    Math.ceil((canvasWidth * canvasHeight * density) / averageRectArea),
+  );
+  const occupied = new Uint8Array(canvasWidth * canvasHeight);
+
+  for (let swapIndex = 0; swapIndex < swapCount; swapIndex += 1) {
+    const rectWidth =
+      project.finish.pixelSwapMode === "spectrum"
+        ? rng.int(1, maxRectWidth)
+        : maxRectWidth;
+    const rectHeight =
+      project.finish.pixelSwapMode === "spectrum"
+        ? rng.int(1, maxRectHeight)
+        : maxRectHeight;
+    const avoidOverlap = density < 0.9;
+    const source = choosePixelSwapRect({
+      rng,
+      canvasWidth,
+      canvasHeight,
+      rectWidth,
+      rectHeight,
+      occupied,
+      avoidOverlap,
+    });
+    if (!source) {
+      continue;
+    }
+    const target = choosePixelSwapRect({
+      rng,
+      canvasWidth,
+      canvasHeight,
+      rectWidth,
+      rectHeight,
+      occupied,
+      avoidOverlap,
+      disallowedRect: source,
+    });
+    if (!target) {
+      continue;
+    }
+
+    swapPixelRects(data, canvasWidth, source, target);
+    markPixelSwapRectOccupied(occupied, canvasWidth, source);
+    markPixelSwapRectOccupied(occupied, canvasWidth, target);
   }
 
   context.putImageData(imageData, 0, 0);
@@ -2205,7 +2459,11 @@ async function renderCompositorLayer(
     project.canvas.height,
   );
   await renderLayerToCanvas(neutralLayerProject, layerAssets, bitmaps, layerCanvas);
-  const colorAdjustedLayerCanvas = applyLayerColorAdjustments(layerCanvas, layerProject);
+  const pixelSwappedLayerCanvas = applyPixelSwap(layerCanvas, layerProject, layer.id);
+  const colorAdjustedLayerCanvas = applyLayerColorAdjustments(
+    pixelSwappedLayerCanvas,
+    layerProject,
+  );
   const finishedLayerCanvas = applyFinishNoise(
     colorAdjustedLayerCanvas,
     layerProject,

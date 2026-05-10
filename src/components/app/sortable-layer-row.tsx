@@ -34,8 +34,9 @@ export function SortableLayerRow({
     transition,
     isDragging,
   } = useSortable({ id: layer.id });
+  const verticalTransform = transform ? { ...transform, x: 0 } : null;
   const style = {
-    transform: CSS.Transform.toString(transform),
+    transform: CSS.Transform.toString(verticalTransform),
     transition,
   };
   const sourceCountLabel = `${layer.sourceIds.length} source${
@@ -46,7 +47,7 @@ export function SortableLayerRow({
     <div
       ref={setNodeRef}
       style={style}
-      className={`rounded-lg border p-3 ${
+      className={`w-full max-w-full rounded-lg border p-3 ${
         isSelected
           ? "border-border-strong bg-surface-sunken"
           : "border-border bg-surface-muted/50"

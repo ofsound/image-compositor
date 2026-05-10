@@ -212,7 +212,7 @@ export function LeftSidebar({
             Add Layer
           </Button>
         }
-        contentClassName="min-h-0 overflow-y-auto pr-1"
+        contentClassName="min-h-0 overflow-x-hidden overflow-y-auto pr-1"
       >
         <DndContext
           sensors={layerSensors}
@@ -223,7 +223,7 @@ export function LeftSidebar({
             items={displayLayers.map((layer) => layer.id)}
             strategy={verticalListSortingStrategy}
           >
-            <div className="flex flex-col gap-2">
+            <div className="flex min-w-0 flex-col gap-2 overflow-x-hidden">
               {displayLayers.map((layer) => (
                 <SortableLayerRow
                   key={layer.id}

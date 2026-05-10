@@ -7,7 +7,7 @@ import type {
   RenderSlice,
   SourceAsset,
 } from "@/types/project";
-import { withAlpha } from "@/lib/color";
+import { hexToRgb, withAlpha } from "@/lib/color";
 import { buildRenderSlices } from "@/lib/generator-registry";
 import { lockExportDimensionsToCanvas } from "@/lib/export-sizing";
 import {
@@ -1456,7 +1456,8 @@ function hasActiveFinish(project: LayerRenderProject) {
     finish.grayscale !== DEFAULT_FINISH.grayscale ||
     finish.invert !== DEFAULT_FINISH.invert ||
     finish.noise > 0 ||
-    finish.noiseMonochrome > 0
+    finish.noiseMonochrome > 0 ||
+    finish.vignetteStrength > 0
   );
 }
 
@@ -1575,6 +1576,90 @@ function applyFinishNoise(
       data[index] = clamp((data[index] ?? 0) + redDelta, 0, 255);
       data[index + 1] = clamp((data[index + 1] ?? 0) + greenDelta, 0, 255);
       data[index + 2] = clamp((data[index + 2] ?? 0) + blueDelta, 0, 255);
+    }
+  }
+
+  context.putImageData(imageData, 0, 0);
+  return sourceCanvas;
+}
+
+function smoothstep(edge0: number, edge1: number, value: number) {
+  if (edge0 === edge1) {
+    return value < edge0 ? 0 : 1;
+  }
+  const t = clamp((value - edge0) / (edge1 - edge0), 0, 1);
+  return t * t * (3 - 2 * t);
+}
+
+function getVignetteDistance(
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  roundness: number,
+) {
+  const nx = ((x + 0.5) / Math.max(width, 1) - 0.5) * 2;
+  const ny = ((y + 0.5) / Math.max(height, 1) - 0.5) * 2;
+  const rectangularDistance = Math.max(Math.abs(nx), Math.abs(ny));
+  const circularDistance = Math.min(1, Math.hypot(nx, ny));
+  const circularMix = (clamp(roundness, -1, 1) + 1) / 2;
+  return (
+    rectangularDistance * (1 - circularMix) +
+    circularDistance * circularMix
+  );
+}
+
+function applyFinishVignette(
+  sourceCanvas: RenderCanvas,
+  project: LayerRenderProject,
+) {
+  const strength = clamp(project.finish.vignetteStrength, 0, 1);
+  if (strength <= 0) {
+    return sourceCanvas;
+  }
+
+  const context = getRenderContext(sourceCanvas);
+  const width = sourceCanvas.width;
+  const height = sourceCanvas.height;
+  const imageData = context.getImageData(0, 0, width, height);
+  const data = imageData.data;
+  const color = hexToRgb(project.finish.vignetteColor);
+  const midpoint = clamp(project.finish.vignetteMidpoint, 0, 1);
+  const feather = clamp(project.finish.vignetteFeather, 0, 1);
+  const transitionSpan = Math.max(0.001, (1 - midpoint) * feather);
+  const outerEdge = Math.min(1, midpoint + transitionSpan);
+
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const index = (y * width + x) * 4;
+      const alpha = data[index + 3] ?? 0;
+      if (alpha === 0) continue;
+
+      const distance = getVignetteDistance(
+        x,
+        y,
+        width,
+        height,
+        project.finish.vignetteRoundness,
+      );
+      const mask = smoothstep(midpoint, outerEdge, distance) * strength;
+      if (mask <= 0) continue;
+
+      data[index] = clamp(
+        (data[index] ?? 0) * (1 - mask) + color.r * mask,
+        0,
+        255,
+      );
+      data[index + 1] = clamp(
+        (data[index + 1] ?? 0) * (1 - mask) + color.g * mask,
+        0,
+        255,
+      );
+      data[index + 2] = clamp(
+        (data[index + 2] ?? 0) * (1 - mask) + color.b * mask,
+        0,
+        255,
+      );
     }
   }
 
@@ -1928,7 +2013,11 @@ async function renderCompositorLayer(
     layerProject,
     layer.id,
   );
-  compositeFinishedLayer(context, finishedLayerCanvas, layerProject);
+  const vignettedLayerCanvas = applyFinishVignette(
+    finishedLayerCanvas,
+    layerProject,
+  );
+  compositeFinishedLayer(context, vignettedLayerCanvas, layerProject);
 }
 
 export async function buildBitmapMap(

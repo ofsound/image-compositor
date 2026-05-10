@@ -4209,6 +4209,62 @@ export function RightSidebar({
                       }
                     />
                     <SliderField
+                      label="Vignette Strength"
+                      min={0}
+                      max={1}
+                      step={0.01}
+                      value={activeProjectView.finish.vignetteStrength}
+                      defaultValue={DEFAULT_FINISH.vignetteStrength}
+                      formatter={formatPercentValue}
+                      onChange={(value) =>
+                        patchFinishSetting("vignetteStrength", value)
+                      }
+                    />
+                    <SourceColorField
+                      id="finish-vignette-color"
+                      label="Vignette Color"
+                      value={activeProjectView.finish.vignetteColor}
+                      onChange={(value) =>
+                        patchFinishSetting("vignetteColor", value)
+                      }
+                    />
+                    <SliderField
+                      label="Vignette Midpoint"
+                      min={0}
+                      max={1}
+                      step={0.01}
+                      value={activeProjectView.finish.vignetteMidpoint}
+                      defaultValue={DEFAULT_FINISH.vignetteMidpoint}
+                      formatter={formatPercentValue}
+                      onChange={(value) =>
+                        patchFinishSetting("vignetteMidpoint", value)
+                      }
+                    />
+                    <SliderField
+                      label="Vignette Roundness"
+                      min={-1}
+                      max={1}
+                      step={0.01}
+                      value={activeProjectView.finish.vignetteRoundness}
+                      defaultValue={DEFAULT_FINISH.vignetteRoundness}
+                      formatter={formatPercentValue}
+                      onChange={(value) =>
+                        patchFinishSetting("vignetteRoundness", value)
+                      }
+                    />
+                    <SliderField
+                      label="Vignette Feather"
+                      min={0}
+                      max={1}
+                      step={0.01}
+                      value={activeProjectView.finish.vignetteFeather}
+                      defaultValue={DEFAULT_FINISH.vignetteFeather}
+                      formatter={formatPercentValue}
+                      onChange={(value) =>
+                        patchFinishSetting("vignetteFeather", value)
+                      }
+                    />
+                    <SliderField
                       className="sm:col-span-2"
                       label="Invert"
                       min={0}

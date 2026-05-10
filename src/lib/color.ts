@@ -25,6 +25,15 @@ export function rgbToHex(r: number, g: number, b: number) {
     .join("")}`;
 }
 
+export function hexToRgb(hex: string) {
+  const normalized = normalizeHexColor(hex).slice(1);
+  return {
+    r: Number.parseInt(normalized.slice(0, 2), 16),
+    g: Number.parseInt(normalized.slice(2, 4), 16),
+    b: Number.parseInt(normalized.slice(4, 6), 16),
+  };
+}
+
 export function luminanceFromRgb(r: number, g: number, b: number) {
   const [nr, ng, nb] = [r, g, b].map((value) => value / 255);
   return 0.2126 * nr + 0.7152 * ng + 0.0722 * nb;

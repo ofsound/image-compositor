@@ -184,6 +184,11 @@ describe("createProjectDocument", () => {
     expect(project.finish.invert).toBe(0);
     expect(project.finish.noise).toBe(0);
     expect(project.finish.noiseMonochrome).toBe(0);
+    expect(project.finish.vignetteStrength).toBe(0);
+    expect(project.finish.vignetteColor).toBe("#000000");
+    expect(project.finish.vignetteMidpoint).toBe(0.5);
+    expect(project.finish.vignetteRoundness).toBe(0);
+    expect(project.finish.vignetteFeather).toBe(0.5);
     expect(project.draw.brushSize).toBe(160);
     expect(project.draw.strokes).toEqual([]);
     expect(project.words.mode).toBe("image-fill");
@@ -378,6 +383,39 @@ describe("createProjectDocument", () => {
     expect(normalized.finish.shadowBlur).toBe(36);
     expect(normalized.finish.shadowOpacity).toBeCloseTo(0.27);
     expect(normalized.finish.shadowColor).toBe("#180f08");
+  });
+
+  it("normalizes missing and out-of-range vignette finish settings", () => {
+    const project = createProjectView("Legacy Vignette");
+    const legacyProject = {
+      ...project,
+      finish: {
+        ...project.finish,
+        vignetteStrength: 1.8,
+        vignetteColor: "ff00aa",
+        vignetteMidpoint: -0.25,
+        vignetteRoundness: 2,
+        vignetteFeather: 1.5,
+      },
+    } as unknown as ProjectDocument;
+
+    const normalized = normalizeProjectView(legacyProject);
+
+    expect(normalized.finish.vignetteStrength).toBe(1);
+    expect(normalized.finish.vignetteColor).toBe("#ff00aa");
+    expect(normalized.finish.vignetteMidpoint).toBe(0);
+    expect(normalized.finish.vignetteRoundness).toBe(1);
+    expect(normalized.finish.vignetteFeather).toBe(1);
+
+    const missing = normalizeProjectView({
+      ...project,
+      finish: undefined,
+    } as unknown as ProjectDocument);
+    expect(missing.finish.vignetteStrength).toBe(0);
+    expect(missing.finish.vignetteColor).toBe("#000000");
+    expect(missing.finish.vignetteMidpoint).toBe(0.5);
+    expect(missing.finish.vignetteRoundness).toBe(0);
+    expect(missing.finish.vignetteFeather).toBe(0.5);
   });
 
   it("normalizes legacy projects without background alpha to transparent", () => {

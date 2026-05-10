@@ -262,6 +262,76 @@ async function renderNoiseOutput(options: {
   return Array.from(imageData.data);
 }
 
+async function renderVignetteOutput(options: {
+  width: number;
+  height: number;
+  pixels: number[];
+  strength: number;
+  color?: string;
+  midpoint?: number;
+  roundness?: number;
+  feather?: number;
+}) {
+  const {
+    width,
+    height,
+    pixels,
+    strength,
+    color = "#000000",
+    midpoint = 0.4,
+    roundness = 0,
+    feather = 1,
+  } = options;
+  const project = createProjectView("Vignette Render");
+  project.canvas.width = width;
+  project.canvas.height = height;
+  project.effects.sharpen = 0;
+  project.effects.kaleidoscopeSegments = 1;
+  project.finish.vignetteStrength = strength;
+  project.finish.vignetteColor = color;
+  project.finish.vignetteMidpoint = midpoint;
+  project.finish.vignetteRoundness = roundness;
+  project.finish.vignetteFeather = feather;
+  project.layers[0]!.finish.vignetteStrength = strength;
+  project.layers[0]!.finish.vignetteColor = color;
+  project.layers[0]!.finish.vignetteMidpoint = midpoint;
+  project.layers[0]!.finish.vignetteRoundness = roundness;
+  project.layers[0]!.finish.vignetteFeather = feather;
+
+  const context = createMockContext();
+  const layerContext = createMockContext();
+  layerContext.getImageData.mockImplementation(() => ({
+    data: new Uint8ClampedArray(pixels),
+    width,
+    height,
+  }) as ImageData);
+  const canvas = {
+    width: 0,
+    height: 0,
+    getContext: vi.fn(() => context),
+  } as unknown as HTMLCanvasElement;
+  const layerCanvas = {
+    width: 0,
+    height: 0,
+    getContext: vi.fn(() => layerContext),
+  } as unknown as HTMLCanvasElement;
+  const createElementSpy = vi
+    .spyOn(document, "createElement")
+    .mockReturnValueOnce(layerCanvas as never);
+
+  try {
+    await renderProjectToCanvas(project, [], new Map(), canvas);
+  } finally {
+    createElementSpy.mockRestore();
+  }
+
+  const putImageDataCall = layerContext.putImageData.mock.calls.at(-1);
+  expect(putImageDataCall).toBeDefined();
+
+  const imageData = putImageDataCall?.[0] as ImageData;
+  return Array.from(imageData.data);
+}
+
 describe("renderProjectToCanvas", () => {
   it("rebuilds image bitmaps for distinct blobs with identical metadata", async () => {
     const createImageBitmapMock = vi.fn(async () => ({}) as ImageBitmap);
@@ -1594,6 +1664,119 @@ describe("renderProjectToCanvas", () => {
     });
 
     expect(output).not.toEqual([100, 120, 140, 255, 100, 120, 140, 255]);
+  });
+
+  it("does not isolate layers for a disabled vignette", async () => {
+    const project = createProjectView("Disabled Vignette");
+    project.canvas.width = 3;
+    project.canvas.height = 3;
+    project.effects.sharpen = 0;
+    project.effects.kaleidoscopeSegments = 1;
+    project.finish.vignetteStrength = 0;
+    project.layers[0]!.finish.vignetteStrength = 0;
+
+    const context = createMockContext();
+    const canvas = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn(() => context),
+    } as unknown as HTMLCanvasElement;
+    const createElementSpy = vi.spyOn(document, "createElement");
+
+    try {
+      await renderProjectToCanvas(project, [], new Map(), canvas);
+    } finally {
+      createElementSpy.mockRestore();
+    }
+
+    expect(createElementSpy).not.toHaveBeenCalled();
+  });
+
+  it("tints vignette edges more than the layer center", async () => {
+    const output = await renderVignetteOutput({
+      width: 3,
+      height: 3,
+      pixels: Array.from({ length: 9 }).flatMap(() => [100, 120, 140, 255]),
+      strength: 1,
+      color: "#000000",
+      midpoint: 0.4,
+      feather: 1,
+    });
+
+    const centerIndex = (1 * 3 + 1) * 4;
+    const edgeIndex = 0;
+
+    expect(output[centerIndex]).toBe(100);
+    expect(output[centerIndex + 1]).toBe(120);
+    expect(output[centerIndex + 2]).toBe(140);
+    expect(output[edgeIndex]).toBeLessThan(output[centerIndex]!);
+    expect(output[edgeIndex + 1]).toBeLessThan(output[centerIndex + 1]!);
+    expect(output[edgeIndex + 2]).toBeLessThan(output[centerIndex + 2]!);
+    expect(output[edgeIndex + 3]).toBe(255);
+  });
+
+  it("uses the selected vignette color", async () => {
+    const redOutput = await renderVignetteOutput({
+      width: 3,
+      height: 3,
+      pixels: Array.from({ length: 9 }).flatMap(() => [20, 20, 20, 255]),
+      strength: 1,
+      color: "#ff0000",
+      midpoint: 0.4,
+      feather: 1,
+    });
+    const blueOutput = await renderVignetteOutput({
+      width: 3,
+      height: 3,
+      pixels: Array.from({ length: 9 }).flatMap(() => [20, 20, 20, 255]),
+      strength: 1,
+      color: "#0000ff",
+      midpoint: 0.4,
+      feather: 1,
+    });
+
+    expect(redOutput[0]).toBeGreaterThan(blueOutput[0]!);
+    expect(blueOutput[2]).toBeGreaterThan(redOutput[2]!);
+  });
+
+  it("changes vignette falloff with midpoint and feather", async () => {
+    const pixels = Array.from({ length: 9 }).flatMap(() => [100, 100, 100, 255]);
+    const lowerMidpoint = await renderVignetteOutput({
+      width: 3,
+      height: 3,
+      pixels,
+      strength: 1,
+      midpoint: 0.25,
+      feather: 1,
+    });
+    const higherMidpoint = await renderVignetteOutput({
+      width: 3,
+      height: 3,
+      pixels,
+      strength: 1,
+      midpoint: 0.75,
+      feather: 1,
+    });
+    const softerFeather = await renderVignetteOutput({
+      width: 3,
+      height: 3,
+      pixels,
+      strength: 1,
+      midpoint: 0.4,
+      feather: 1,
+    });
+    const harderFeather = await renderVignetteOutput({
+      width: 3,
+      height: 3,
+      pixels,
+      strength: 1,
+      midpoint: 0.4,
+      feather: 0.1,
+    });
+    const edgeSideIndex = (1 * 3 + 0) * 4;
+
+    expect(lowerMidpoint[edgeSideIndex]).toBeLessThan(higherMidpoint[edgeSideIndex]!);
+    expect(harderFeather[edgeSideIndex]).toBeLessThan(softerFeather[edgeSideIndex]!);
   });
 
   it("applies finish noise deterministically for identical layer seed and id", async () => {

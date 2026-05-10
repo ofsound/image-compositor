@@ -433,6 +433,11 @@ export interface FinishSettings {
   invert: number;
   noise: number;
   noiseMonochrome: number;
+  vignetteStrength: number;
+  vignetteColor: string;
+  vignetteMidpoint: number;
+  vignetteRoundness: number;
+  vignetteFeather: number;
 }
 
 export interface DrawStrokePoint {

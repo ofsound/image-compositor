@@ -26,6 +26,7 @@ import { makeId } from "@/lib/id";
 import { getFractalIterationLimit } from "@/lib/layout-utils";
 import { normalizeSourceWeights } from "@/lib/source-weights";
 import { clamp } from "@/lib/utils";
+import { normalizeHexColor } from "@/lib/color";
 
 type LegacyEffectSettings = Partial<EffectSettings> & {
   mirror?: boolean;
@@ -513,6 +514,11 @@ export const DEFAULT_FINISH: FinishSettings = {
   invert: 0,
   noise: 0,
   noiseMonochrome: 0,
+  vignetteStrength: 0,
+  vignetteColor: "#000000",
+  vignetteMidpoint: 0.5,
+  vignetteRoundness: 0,
+  vignetteFeather: 0.5,
 };
 
 export const DEFAULT_DRAW: DrawSettings = {
@@ -1063,6 +1069,30 @@ function normalizeFinishSettings(
     invert: finish?.invert ?? DEFAULT_FINISH.invert,
     noise: finish?.noise ?? DEFAULT_FINISH.noise,
     noiseMonochrome: finish?.noiseMonochrome ?? DEFAULT_FINISH.noiseMonochrome,
+    vignetteStrength: clamp(
+      finish?.vignetteStrength ?? DEFAULT_FINISH.vignetteStrength,
+      0,
+      1,
+    ),
+    vignetteColor: normalizeHexColor(
+      finish?.vignetteColor ?? DEFAULT_FINISH.vignetteColor,
+      DEFAULT_FINISH.vignetteColor,
+    ),
+    vignetteMidpoint: clamp(
+      finish?.vignetteMidpoint ?? DEFAULT_FINISH.vignetteMidpoint,
+      0,
+      1,
+    ),
+    vignetteRoundness: clamp(
+      finish?.vignetteRoundness ?? DEFAULT_FINISH.vignetteRoundness,
+      -1,
+      1,
+    ),
+    vignetteFeather: clamp(
+      finish?.vignetteFeather ?? DEFAULT_FINISH.vignetteFeather,
+      0,
+      1,
+    ),
   };
 }
 

@@ -64,6 +64,14 @@ const WORDS_FONT_WEIGHT: Record<LayerRenderProject["words"]["fontFamily"], numbe
 const WORDS_MIN_FONT_SIZE = 8;
 const WORDS_LINE_HEIGHT = 0.92;
 
+interface LayerEffectSettings {
+  offsetX: number;
+  offsetY: number;
+  blur: number;
+  opacity: number;
+  color: string;
+}
+
 function getHollowRatio(project: LayerRenderProject) {
   return clamp(project.layout.hollowRatio, 0, 0.95);
 }
@@ -1419,6 +1427,27 @@ function hasActiveFinish(project: LayerRenderProject) {
     finish.shadowBlur > 0 ||
     finish.shadowOffsetX !== 0 ||
     finish.shadowOffsetY !== 0 ||
+    hasActiveLayerEffect({
+      offsetX: finish.outerGlowOffsetX,
+      offsetY: finish.outerGlowOffsetY,
+      blur: finish.outerGlowBlur,
+      opacity: finish.outerGlowOpacity,
+      color: finish.outerGlowColor,
+    }) ||
+    hasActiveLayerEffect({
+      offsetX: finish.innerGlowOffsetX,
+      offsetY: finish.innerGlowOffsetY,
+      blur: finish.innerGlowBlur,
+      opacity: finish.innerGlowOpacity,
+      color: finish.innerGlowColor,
+    }) ||
+    hasActiveLayerEffect({
+      offsetX: finish.innerShadowOffsetX,
+      offsetY: finish.innerShadowOffsetY,
+      blur: finish.innerShadowBlur,
+      opacity: finish.innerShadowOpacity,
+      color: finish.innerShadowColor,
+    }) ||
     hasActiveLayer3D(project) ||
     finish.brightness !== DEFAULT_FINISH.brightness ||
     finish.contrast !== DEFAULT_FINISH.contrast ||
@@ -1428,6 +1457,13 @@ function hasActiveFinish(project: LayerRenderProject) {
     finish.invert !== DEFAULT_FINISH.invert ||
     finish.noise > 0 ||
     finish.noiseMonochrome > 0
+  );
+}
+
+function hasActiveLayerEffect(effect: LayerEffectSettings) {
+  return (
+    effect.opacity > 0 &&
+    (effect.blur > 0 || effect.offsetX !== 0 || effect.offsetY !== 0)
   );
 }
 
@@ -1552,6 +1588,73 @@ function getLayerContentPixelOffset(project: LayerRenderProject) {
   return { ox, oy };
 }
 
+function createOuterLayerEffectCanvas(
+  sourceCanvas: RenderCanvas,
+  effect: LayerEffectSettings,
+) {
+  if (!hasActiveLayerEffect(effect)) {
+    return null;
+  }
+
+  const effectCanvas = createRenderCanvas(sourceCanvas.width, sourceCanvas.height);
+  const effectContext = getRenderContext(effectCanvas);
+  effectContext.filter = `blur(${Math.max(0, effect.blur)}px)`;
+  effectContext.drawImage(sourceCanvas, effect.offsetX, effect.offsetY);
+  effectContext.filter = "none";
+  effectContext.globalCompositeOperation = "source-in";
+  effectContext.fillStyle = withAlpha(effect.color, clamp(effect.opacity, 0, 1));
+  effectContext.fillRect(0, 0, sourceCanvas.width, sourceCanvas.height);
+  effectContext.globalCompositeOperation = "destination-out";
+  effectContext.drawImage(sourceCanvas, 0, 0);
+  effectContext.globalCompositeOperation = "source-over";
+  return effectCanvas;
+}
+
+function createInverseAlphaCanvas(sourceCanvas: RenderCanvas) {
+  const inverseCanvas = createRenderCanvas(sourceCanvas.width, sourceCanvas.height);
+  const inverseContext = getRenderContext(inverseCanvas);
+  inverseContext.fillStyle = "#fff";
+  inverseContext.fillRect(0, 0, sourceCanvas.width, sourceCanvas.height);
+  inverseContext.globalCompositeOperation = "destination-out";
+  inverseContext.drawImage(sourceCanvas, 0, 0);
+  inverseContext.globalCompositeOperation = "source-over";
+  return inverseCanvas;
+}
+
+function createInnerLayerEffectCanvas(
+  sourceCanvas: RenderCanvas,
+  effect: LayerEffectSettings,
+) {
+  if (!hasActiveLayerEffect(effect)) {
+    return null;
+  }
+
+  const inverseCanvas = createInverseAlphaCanvas(sourceCanvas);
+  const effectCanvas = createRenderCanvas(sourceCanvas.width, sourceCanvas.height);
+  const effectContext = getRenderContext(effectCanvas);
+  effectContext.filter = `blur(${Math.max(0, effect.blur)}px)`;
+  effectContext.drawImage(inverseCanvas, effect.offsetX, effect.offsetY);
+  effectContext.filter = "none";
+  effectContext.globalCompositeOperation = "source-in";
+  effectContext.fillStyle = withAlpha(effect.color, clamp(effect.opacity, 0, 1));
+  effectContext.fillRect(0, 0, sourceCanvas.width, sourceCanvas.height);
+  effectContext.globalCompositeOperation = "destination-in";
+  effectContext.drawImage(sourceCanvas, 0, 0);
+  effectContext.globalCompositeOperation = "source-over";
+  return effectCanvas;
+}
+
+function drawLayerEffectCanvas(
+  context: RenderContext,
+  effectCanvas: RenderCanvas | null,
+) {
+  if (!effectCanvas) {
+    return;
+  }
+
+  context.drawImage(effectCanvas, 0, 0);
+}
+
 /** T(ox,oy)·T(cx,cy)·R(θ)·T(-cx,-cy): rotate whole layer about canvas center, then shift by offset. */
 function applyLayerContentPositionTransform(
   context: RenderContext,
@@ -1578,19 +1681,35 @@ function compositeFinishedLayer(
   project: LayerRenderProject,
 ) {
   const transformedLayerCanvas = applyLayer3DTransform(layerCanvas, project);
+  const { finish } = project;
 
   context.save();
   context.globalCompositeOperation = project.compositing.blendMode;
   context.globalAlpha = clamp(project.compositing.opacity, 0, 1);
 
-  if (project.finish.shadowOpacity > 0) {
+  if (!hasActiveLayer3D(project)) {
+    applyLayerContentPositionTransform(context, project);
+  }
+
+  drawLayerEffectCanvas(
+    context,
+    createOuterLayerEffectCanvas(transformedLayerCanvas, {
+      offsetX: finish.outerGlowOffsetX,
+      offsetY: finish.outerGlowOffsetY,
+      blur: finish.outerGlowBlur,
+      opacity: finish.outerGlowOpacity,
+      color: finish.outerGlowColor,
+    }),
+  );
+
+  if (finish.shadowOpacity > 0) {
     context.shadowColor = withAlpha(
-      project.finish.shadowColor,
-      clamp(project.finish.shadowOpacity, 0, 1),
+      finish.shadowColor,
+      clamp(finish.shadowOpacity, 0, 1),
     );
-    context.shadowBlur = Math.max(0, project.finish.shadowBlur);
-    context.shadowOffsetX = project.finish.shadowOffsetX;
-    context.shadowOffsetY = project.finish.shadowOffsetY;
+    context.shadowBlur = Math.max(0, finish.shadowBlur);
+    context.shadowOffsetX = finish.shadowOffsetX;
+    context.shadowOffsetY = finish.shadowOffsetY;
   } else {
     context.shadowColor = "rgba(0, 0, 0, 0)";
     context.shadowBlur = 0;
@@ -1598,10 +1717,32 @@ function compositeFinishedLayer(
     context.shadowOffsetY = 0;
   }
 
-  if (!hasActiveLayer3D(project)) {
-    applyLayerContentPositionTransform(context, project);
-  }
   context.drawImage(transformedLayerCanvas, 0, 0);
+  context.shadowColor = "rgba(0, 0, 0, 0)";
+  context.shadowBlur = 0;
+  context.shadowOffsetX = 0;
+  context.shadowOffsetY = 0;
+
+  drawLayerEffectCanvas(
+    context,
+    createInnerLayerEffectCanvas(transformedLayerCanvas, {
+      offsetX: finish.innerGlowOffsetX,
+      offsetY: finish.innerGlowOffsetY,
+      blur: finish.innerGlowBlur,
+      opacity: finish.innerGlowOpacity,
+      color: finish.innerGlowColor,
+    }),
+  );
+  drawLayerEffectCanvas(
+    context,
+    createInnerLayerEffectCanvas(transformedLayerCanvas, {
+      offsetX: finish.innerShadowOffsetX,
+      offsetY: finish.innerShadowOffsetY,
+      blur: finish.innerShadowBlur,
+      opacity: finish.innerShadowOpacity,
+      color: finish.innerShadowColor,
+    }),
+  );
   context.restore();
 }
 

@@ -478,6 +478,21 @@ export const DEFAULT_FINISH: FinishSettings = {
   shadowBlur: 0,
   shadowOpacity: 0,
   shadowColor: "#180f08",
+  outerGlowOffsetX: 0,
+  outerGlowOffsetY: 0,
+  outerGlowBlur: 0,
+  outerGlowOpacity: 0,
+  outerGlowColor: "#ffffff",
+  innerGlowOffsetX: 0,
+  innerGlowOffsetY: 0,
+  innerGlowBlur: 0,
+  innerGlowOpacity: 0,
+  innerGlowColor: "#ffffff",
+  innerShadowOffsetX: 0,
+  innerShadowOffsetY: 0,
+  innerShadowBlur: 0,
+  innerShadowOpacity: 0,
+  innerShadowColor: "#180f08",
   layer3DEnabled: false,
   layer3DRotateX: 0,
   layer3DRotateY: 0,
@@ -958,6 +973,32 @@ function normalizeFinishSettings(
         ? Math.min(0.35, legacyShadow * 2.25)
         : DEFAULT_FINISH.shadowOpacity),
     shadowColor: finish?.shadowColor ?? DEFAULT_FINISH.shadowColor,
+    outerGlowOffsetX:
+      finish?.outerGlowOffsetX ?? DEFAULT_FINISH.outerGlowOffsetX,
+    outerGlowOffsetY:
+      finish?.outerGlowOffsetY ?? DEFAULT_FINISH.outerGlowOffsetY,
+    outerGlowBlur: finish?.outerGlowBlur ?? DEFAULT_FINISH.outerGlowBlur,
+    outerGlowOpacity:
+      finish?.outerGlowOpacity ?? DEFAULT_FINISH.outerGlowOpacity,
+    outerGlowColor: finish?.outerGlowColor ?? DEFAULT_FINISH.outerGlowColor,
+    innerGlowOffsetX:
+      finish?.innerGlowOffsetX ?? DEFAULT_FINISH.innerGlowOffsetX,
+    innerGlowOffsetY:
+      finish?.innerGlowOffsetY ?? DEFAULT_FINISH.innerGlowOffsetY,
+    innerGlowBlur: finish?.innerGlowBlur ?? DEFAULT_FINISH.innerGlowBlur,
+    innerGlowOpacity:
+      finish?.innerGlowOpacity ?? DEFAULT_FINISH.innerGlowOpacity,
+    innerGlowColor: finish?.innerGlowColor ?? DEFAULT_FINISH.innerGlowColor,
+    innerShadowOffsetX:
+      finish?.innerShadowOffsetX ?? DEFAULT_FINISH.innerShadowOffsetX,
+    innerShadowOffsetY:
+      finish?.innerShadowOffsetY ?? DEFAULT_FINISH.innerShadowOffsetY,
+    innerShadowBlur:
+      finish?.innerShadowBlur ?? DEFAULT_FINISH.innerShadowBlur,
+    innerShadowOpacity:
+      finish?.innerShadowOpacity ?? DEFAULT_FINISH.innerShadowOpacity,
+    innerShadowColor:
+      finish?.innerShadowColor ?? DEFAULT_FINISH.innerShadowColor,
     layer3DEnabled: finish?.layer3DEnabled ?? DEFAULT_FINISH.layer3DEnabled,
     layer3DRotateX: clamp(
       finish?.layer3DRotateX ?? DEFAULT_FINISH.layer3DRotateX,

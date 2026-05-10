@@ -22,6 +22,7 @@ import type {
   ElementModulationPattern,
   ElementModulationSettings,
   ElementModulationTarget,
+  FinishSettings,
   GeometryShape,
 } from "@/types/project";
 
@@ -189,6 +190,62 @@ function getElementModulationAmountConfig(target: ElementModulationTarget) {
   };
 }
 
+type FinishNumberSetting = {
+  [Key in keyof FinishSettings]: FinishSettings[Key] extends number ? Key : never;
+}[keyof FinishSettings];
+
+interface ShadowGlowFieldConfig {
+  label: string;
+  id: string;
+  offsetXKey: FinishNumberSetting;
+  offsetYKey: FinishNumberSetting;
+  blurKey: FinishNumberSetting;
+  opacityKey: FinishNumberSetting;
+  colorKey: keyof Pick<
+    FinishSettings,
+    "shadowColor" | "outerGlowColor" | "innerGlowColor" | "innerShadowColor"
+  >;
+}
+
+const SHADOW_GLOW_FIELD_CONFIGS: ShadowGlowFieldConfig[] = [
+  {
+    label: "Drop Shadow",
+    id: "drop-shadow",
+    offsetXKey: "shadowOffsetX",
+    offsetYKey: "shadowOffsetY",
+    blurKey: "shadowBlur",
+    opacityKey: "shadowOpacity",
+    colorKey: "shadowColor",
+  },
+  {
+    label: "Outer Glow",
+    id: "outer-glow",
+    offsetXKey: "outerGlowOffsetX",
+    offsetYKey: "outerGlowOffsetY",
+    blurKey: "outerGlowBlur",
+    opacityKey: "outerGlowOpacity",
+    colorKey: "outerGlowColor",
+  },
+  {
+    label: "Inner Glow",
+    id: "inner-glow",
+    offsetXKey: "innerGlowOffsetX",
+    offsetYKey: "innerGlowOffsetY",
+    blurKey: "innerGlowBlur",
+    opacityKey: "innerGlowOpacity",
+    colorKey: "innerGlowColor",
+  },
+  {
+    label: "Inner Shadow",
+    id: "inner-shadow",
+    offsetXKey: "innerShadowOffsetX",
+    offsetYKey: "innerShadowOffsetY",
+    blurKey: "innerShadowBlur",
+    opacityKey: "innerShadowOpacity",
+    colorKey: "innerShadowColor",
+  },
+];
+
 export function RightSidebar({
   previewExpanded,
   activeProjectView,
@@ -254,6 +311,18 @@ export function RightSidebar({
             ...patch,
           },
         },
+      },
+    }));
+  };
+  const patchFinishSetting = <Key extends keyof FinishSettings>(
+    key: Key,
+    value: FinishSettings[Key],
+  ) => {
+    patchProject((project) => ({
+      ...project,
+      finish: {
+        ...project.finish,
+        [key]: value,
       },
     }));
   };
@@ -3695,6 +3764,75 @@ export function RightSidebar({
                   </InspectorFieldGrid>
                 </InspectorGroup>
 
+                <InspectorGroup title="Shadow and Glow" className="xl:col-span-2">
+                  <InspectorFieldGrid className="sm:grid-cols-2">
+                    {SHADOW_GLOW_FIELD_CONFIGS.map((effect) => (
+                      <div
+                        key={effect.id}
+                        className="contents"
+                      >
+                        <SliderField
+                          label={`${effect.label} X`}
+                          min={-200}
+                          max={200}
+                          step={1}
+                          value={activeProjectView.finish[effect.offsetXKey]}
+                          defaultValue={DEFAULT_FINISH[effect.offsetXKey]}
+                          formatter={(value) => `${Math.round(value)} px`}
+                          onChange={(value) =>
+                            patchFinishSetting(effect.offsetXKey, value)
+                          }
+                        />
+                        <SliderField
+                          label={`${effect.label} Y`}
+                          min={-200}
+                          max={200}
+                          step={1}
+                          value={activeProjectView.finish[effect.offsetYKey]}
+                          defaultValue={DEFAULT_FINISH[effect.offsetYKey]}
+                          formatter={(value) => `${Math.round(value)} px`}
+                          onChange={(value) =>
+                            patchFinishSetting(effect.offsetYKey, value)
+                          }
+                        />
+                        <SliderField
+                          label={`${effect.label} Blur`}
+                          min={0}
+                          max={200}
+                          step={1}
+                          value={activeProjectView.finish[effect.blurKey]}
+                          defaultValue={DEFAULT_FINISH[effect.blurKey]}
+                          formatter={(value) => `${Math.round(value)} px`}
+                          onChange={(value) =>
+                            patchFinishSetting(effect.blurKey, value)
+                          }
+                        />
+                        <SliderField
+                          label={`${effect.label} Opacity`}
+                          min={0}
+                          max={1}
+                          step={0.01}
+                          value={activeProjectView.finish[effect.opacityKey]}
+                          defaultValue={DEFAULT_FINISH[effect.opacityKey]}
+                          formatter={formatPercentValue}
+                          onChange={(value) =>
+                            patchFinishSetting(effect.opacityKey, value)
+                          }
+                        />
+                        <SourceColorField
+                          id={`finish-${effect.id}-color`}
+                          label={`${effect.label} Color`}
+                          className="sm:col-span-2"
+                          value={activeProjectView.finish[effect.colorKey]}
+                          onChange={(value) =>
+                            patchFinishSetting(effect.colorKey, value)
+                          }
+                        />
+                      </div>
+                    ))}
+                  </InspectorFieldGrid>
+                </InspectorGroup>
+
                 <InspectorGroup title="Layer Finish" className="xl:col-span-2">
                   <InspectorFieldGrid className="sm:grid-cols-2">
                     <SliderField
@@ -3728,93 +3866,6 @@ export function RightSidebar({
                           effects: {
                             ...project.effects,
                             sharpen: value,
-                          },
-                        }))
-                      }
-                    />
-                    <SliderField
-                      label="Shadow X"
-                      min={-200}
-                      max={200}
-                      step={1}
-                      value={activeProjectView.finish.shadowOffsetX}
-                      defaultValue={DEFAULT_FINISH.shadowOffsetX}
-                      formatter={(value) => `${Math.round(value)} px`}
-                      onChange={(value) =>
-                        patchProject((project) => ({
-                          ...project,
-                          finish: {
-                            ...project.finish,
-                            shadowOffsetX: value,
-                          },
-                        }))
-                      }
-                    />
-                    <SliderField
-                      label="Shadow Y"
-                      min={-200}
-                      max={200}
-                      step={1}
-                      value={activeProjectView.finish.shadowOffsetY}
-                      defaultValue={DEFAULT_FINISH.shadowOffsetY}
-                      formatter={(value) => `${Math.round(value)} px`}
-                      onChange={(value) =>
-                        patchProject((project) => ({
-                          ...project,
-                          finish: {
-                            ...project.finish,
-                            shadowOffsetY: value,
-                          },
-                        }))
-                      }
-                    />
-                    <SliderField
-                      label="Shadow Blur"
-                      min={0}
-                      max={200}
-                      step={1}
-                      value={activeProjectView.finish.shadowBlur}
-                      defaultValue={DEFAULT_FINISH.shadowBlur}
-                      formatter={(value) => `${Math.round(value)} px`}
-                      onChange={(value) =>
-                        patchProject((project) => ({
-                          ...project,
-                          finish: {
-                            ...project.finish,
-                            shadowBlur: value,
-                          },
-                        }))
-                      }
-                    />
-                    <SliderField
-                      label="Shadow Opacity"
-                      min={0}
-                      max={1}
-                      step={0.01}
-                      value={activeProjectView.finish.shadowOpacity}
-                      defaultValue={DEFAULT_FINISH.shadowOpacity}
-                      formatter={formatPercentValue}
-                      onChange={(value) =>
-                        patchProject((project) => ({
-                          ...project,
-                          finish: {
-                            ...project.finish,
-                            shadowOpacity: value,
-                          },
-                        }))
-                      }
-                    />
-                    <SourceColorField
-                      id="finish-shadow-color"
-                      label="Shadow Color"
-                      className="sm:col-span-2"
-                      value={activeProjectView.finish.shadowColor}
-                      onChange={(value) =>
-                        patchProject((project) => ({
-                          ...project,
-                          finish: {
-                            ...project.finish,
-                            shadowColor: value,
                           },
                         }))
                       }

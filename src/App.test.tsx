@@ -1452,6 +1452,7 @@ describe("App inspector grouping", () => {
     expect(within(layerControls).getByText("Shape")).toBeInTheDocument();
     expect(within(layerControls).getByText("Assignment")).toBeInTheDocument();
     expect(within(layerControls).getByText("Motion")).toBeInTheDocument();
+    expect(within(layerControls).getByText("Shadow and Glow")).toBeInTheDocument();
     expect(within(layerControls).getByText("Layer Finish")).toBeInTheDocument();
     const getInspectorGroup = (title: string) => {
       const group = within(layerControls).getByText(title).closest("section");
@@ -1459,11 +1460,19 @@ describe("App inspector grouping", () => {
       return group as HTMLElement;
     };
     const motionGroup = getInspectorGroup("Motion");
+    const shadowGlowGroup = getInspectorGroup("Shadow and Glow");
     const layerFinishGroup = getInspectorGroup("Layer Finish");
     expect(within(motionGroup).queryByLabelText("Blur")).not.toBeInTheDocument();
     expect(within(motionGroup).queryByLabelText("Sharpen")).not.toBeInTheDocument();
+    expect(within(shadowGlowGroup).getByLabelText("Drop Shadow X")).toBeInTheDocument();
+    expect(within(shadowGlowGroup).getByLabelText("Outer Glow X")).toBeInTheDocument();
+    expect(within(shadowGlowGroup).getByLabelText("Inner Glow X")).toBeInTheDocument();
+    expect(within(shadowGlowGroup).getByLabelText("Inner Shadow X")).toBeInTheDocument();
     expect(within(layerFinishGroup).getByLabelText("Blur")).toBeInTheDocument();
     expect(within(layerFinishGroup).getByLabelText("Sharpen")).toBeInTheDocument();
+    expect(
+      within(layerFinishGroup).queryByLabelText("Drop Shadow X"),
+    ).not.toBeInTheDocument();
     expect(
       within(layerControls).queryByText("Canvas Background"),
     ).not.toBeInTheDocument();

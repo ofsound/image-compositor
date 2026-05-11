@@ -84,7 +84,10 @@ export const Slider = React.forwardRef<
     }, []);
 
     const getValueFromPointer = React.useCallback(
-      (event: PointerEvent | React.PointerEvent) => {
+      (
+        event: PointerEvent | React.PointerEvent,
+        { clampToBounds = true }: { clampToBounds?: boolean } = {},
+      ) => {
         const root = rootRef.current;
         if (!root) {
           return min;
@@ -96,7 +99,8 @@ export const Slider = React.forwardRef<
 
         if (orientation === "vertical") {
           const height = rect.height || 1;
-          const offset = clamp((event.clientY - rect.top) / height, 0, 1);
+          const rawOffset = (event.clientY - rect.top) / height;
+          const offset = clampToBounds ? clamp(rawOffset, 0, 1) : rawOffset;
           const outputStart = inverted ? min : max;
           const outputEnd = inverted ? max : min;
 
@@ -104,7 +108,8 @@ export const Slider = React.forwardRef<
         }
 
         const width = rect.width || 1;
-        const offset = clamp((event.clientX - rect.left) / width, 0, 1);
+        const rawOffset = (event.clientX - rect.left) / width;
+        const offset = clampToBounds ? clamp(rawOffset, 0, 1) : rawOffset;
         const isSlidingFromLeft =
           (documentDirection === "ltr" && !inverted) ||
           (documentDirection === "rtl" && inverted);
@@ -123,7 +128,7 @@ export const Slider = React.forwardRef<
           return;
         }
 
-        const pointerValue = getValueFromPointer(event);
+        const pointerValue = getValueFromPointer(event, { clampToBounds: false });
         if (event.shiftKey !== session.fineAdjustmentActive) {
           session.fineAdjustmentActive = event.shiftKey;
           session.anchorPointerValue = pointerValue;

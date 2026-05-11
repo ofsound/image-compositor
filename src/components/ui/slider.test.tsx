@@ -196,6 +196,26 @@ describe("Slider", () => {
     expect(onValueCommit).toHaveBeenCalledWith([0.51]);
   });
 
+  it("continues fine pointer drags beyond the track bounds", () => {
+    const { onValueChange, onValueCommit, root, thumb } = renderSlider();
+
+    fireEvent.pointerDown(thumb, {
+      button: 0,
+      clientX: 50,
+      pointerId: 1,
+      shiftKey: true,
+    });
+    fireEvent.pointerMove(root, {
+      clientX: 650,
+      pointerId: 1,
+      shiftKey: true,
+    });
+    fireEvent.pointerUp(root, { pointerId: 1 });
+
+    expect(onValueChange).toHaveBeenCalledWith([1]);
+    expect(onValueCommit).toHaveBeenCalledWith([1]);
+  });
+
   it("re-anchors when shift is toggled during a drag so the value does not jump", () => {
     const { onValueChange, onValueCommit, root, thumb } = renderSlider();
 

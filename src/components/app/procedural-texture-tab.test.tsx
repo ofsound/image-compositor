@@ -35,6 +35,56 @@ describe("SliderField", () => {
     expect(screen.queryByRole("textbox", { name: "Opacity value" })).toBeNull();
   });
 
+  it("treats bare numbers as percentages for scaled percent fields", async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+
+    render(
+      <SliderField
+        label="Opacity"
+        min={0}
+        max={1}
+        step={0.01}
+        value={0.5}
+        formatter={formatPercentValue}
+        onChange={onChange}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Edit Opacity value" }));
+    const input = screen.getByRole("textbox", { name: "Opacity value" });
+    await user.clear(input);
+    await user.type(input, "8");
+    await user.keyboard("{Enter}");
+
+    expect(onChange).toHaveBeenCalledWith(0.08);
+  });
+
+  it("keeps bare numbers raw for raw percent fields", async () => {
+    const user = userEvent.setup();
+    const onChange = vi.fn();
+
+    render(
+      <SliderField
+        label="Opacity Amount"
+        min={0}
+        max={100}
+        step={1}
+        value={50}
+        formatter={(value) => `${Math.round(value)}%`}
+        onChange={onChange}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Edit Opacity Amount value" }));
+    const input = screen.getByRole("textbox", { name: "Opacity Amount value" });
+    await user.clear(input);
+    await user.type(input, "8");
+    await user.keyboard("{Enter}");
+
+    expect(onChange).toHaveBeenCalledWith(8);
+  });
+
   it("snaps and clamps committed values", async () => {
     const user = userEvent.setup();
     const onChange = vi.fn();

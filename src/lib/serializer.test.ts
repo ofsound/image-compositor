@@ -716,6 +716,9 @@ describe("loadProjectBundle", () => {
               mode: "plain-text",
               fontFamily: "cormorant-garamond",
               text: "HELLO\nWORLD",
+              letterSpacing: 0.12,
+              marginTop: 0.18,
+              lineHeight: 1.25,
               textColor: "#224466",
             },
           }
@@ -757,6 +760,9 @@ describe("loadProjectBundle", () => {
       mode: "plain-text",
       fontFamily: "cormorant-garamond",
       text: "HELLO\nWORLD",
+      letterSpacing: 0.12,
+      marginTop: 0.18,
+      lineHeight: 1.25,
       textColor: "#224466",
     });
     expect(loadedVersionLayer.words.fontFamily).toBe("cormorant-garamond");
@@ -780,6 +786,9 @@ describe("loadProjectBundle", () => {
               mode: "plain-text",
               fontFamily: "jetbrains-mono",
               text: "TILED\nPHRASE",
+              letterSpacing: 0.08,
+              marginTop: 0.22,
+              lineHeight: 1.4,
               textColor: "#113355",
             },
           }
@@ -820,6 +829,9 @@ describe("loadProjectBundle", () => {
     expect(loadedLayer.layout.shapeMode).toBe("text");
     expect(loadedLayer.words.fontFamily).toBe("jetbrains-mono");
     expect(loadedLayer.words.text).toBe("TILED\nPHRASE");
+    expect(loadedLayer.words.letterSpacing).toBe(0.08);
+    expect(loadedLayer.words.marginTop).toBe(0.22);
+    expect(loadedLayer.words.lineHeight).toBe(1.4);
     expect(loadedVersionLayer.layout.shapeMode).toBe("text");
     expect(loadedVersionLayer.words.textColor).toBe("#113355");
   });

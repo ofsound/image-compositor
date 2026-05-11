@@ -17,7 +17,7 @@ import {
   syncLegacyProjectFieldsToSelectedLayer,
 } from "@/lib/project-defaults";
 import { hashToSeed, mulberry32 } from "@/lib/rng";
-import { clamp } from "@/lib/utils";
+import { clamp, lerp } from "@/lib/utils";
 
 export interface AssetBitmapEntry {
   asset: SourceAsset;
@@ -76,7 +76,6 @@ const WORDS_FONT_WEIGHT: Record<LayerRenderProject["words"]["fontFamily"], numbe
   "jetbrains-mono": 500,
 };
 const WORDS_MIN_FONT_SIZE = 8;
-const WORDS_LINE_HEIGHT = 0.92;
 
 interface LayerEffectSettings {
   offsetX: number;
@@ -108,12 +107,68 @@ function createWordsMeasurementContext() {
 }
 
 function getWordsContentRect(project: LayerRenderProject) {
-  return {
+  const rect = {
     x: project.canvas.inset,
     y: project.canvas.inset,
     width: Math.max(1, project.canvas.width - project.canvas.inset * 2),
     height: Math.max(1, project.canvas.height - project.canvas.inset * 2),
   };
+  const amount = clamp(project.layout.letterbox, 0, 1);
+  if (amount <= 0) {
+    return rect;
+  }
+
+  const scale = lerp(1, 0.02, amount);
+  const canvasCenterX = project.canvas.width / 2;
+  const canvasCenterY = project.canvas.height / 2;
+  const rectCenterX = rect.x + rect.width / 2;
+  const rectCenterY = rect.y + rect.height / 2;
+  const width = Math.max(1, rect.width * scale);
+  const height = Math.max(1, rect.height * scale);
+  const centerX = canvasCenterX + (rectCenterX - canvasCenterX) * scale;
+  const centerY = canvasCenterY + (rectCenterY - canvasCenterY) * scale;
+
+  return {
+    x: centerX - width / 2,
+    y: centerY - height / 2,
+    width,
+    height,
+  };
+}
+
+function getTextGlyphs(text: string) {
+  return Array.from(text || " ");
+}
+
+function getWordsLetterSpacingPx(
+  words: LayerRenderProject["words"],
+  fontSize: number,
+) {
+  return fontSize * clamp(words.letterSpacing, -0.08, 0.4);
+}
+
+function getWordsLineHeight(words: LayerRenderProject["words"]) {
+  return clamp(words.lineHeight, 0.5, 2);
+}
+
+function getWordsMarginTopPx(
+  words: LayerRenderProject["words"],
+  contentRect: RenderRect,
+) {
+  return contentRect.height * clamp(words.marginTop, 0, 0.95);
+}
+
+function measureWordsLineWidth(
+  context: RenderContext,
+  line: string,
+  letterSpacingPx: number,
+) {
+  const glyphs = getTextGlyphs(line);
+  const textWidth = glyphs.reduce(
+    (width, glyph) => width + context.measureText(glyph).width,
+    0,
+  );
+  return Math.max(0, textWidth + letterSpacingPx * Math.max(0, glyphs.length - 1));
 }
 
 function resolveWordsFontSize(
@@ -122,11 +177,12 @@ function resolveWordsFontSize(
   rect: RenderRect,
 ) {
   const measureContext = createWordsMeasurementContext();
+  const lineHeight = getWordsLineHeight(words);
   const maxFontSize = Math.max(
     WORDS_MIN_FONT_SIZE,
     Math.floor(
       Math.min(
-        rect.height / Math.max(lines.length * WORDS_LINE_HEIGHT, 1),
+        rect.height / Math.max(lines.length * lineHeight, 1),
         rect.width,
       ),
     ),
@@ -134,10 +190,13 @@ function resolveWordsFontSize(
 
   for (let fontSize = maxFontSize; fontSize >= WORDS_MIN_FONT_SIZE; fontSize -= 2) {
     measureContext.font = getWordsFont(words.fontFamily, fontSize);
+    const letterSpacingPx = getWordsLetterSpacingPx(words, fontSize);
     const widestLine = Math.max(
-      ...lines.map((line) => measureContext.measureText(line || " ").width),
+      ...lines.map((line) =>
+        measureWordsLineWidth(measureContext, line, letterSpacingPx),
+      ),
     );
-    const totalHeight = fontSize * WORDS_LINE_HEIGHT * lines.length;
+    const totalHeight = fontSize * lineHeight * lines.length;
 
     if (widestLine <= rect.width && totalHeight <= rect.height) {
       return fontSize;
@@ -159,11 +218,15 @@ function createTextCanvas(
   }
 
   const fontSize = resolveWordsFontSize(words, lines, contentRect);
-  const lineHeight = fontSize * WORDS_LINE_HEIGHT;
+  const lineHeight = fontSize * getWordsLineHeight(words);
   const totalHeight = lineHeight * lines.length;
   const centerX = contentRect.x + contentRect.width / 2;
   const startY =
-    contentRect.y + contentRect.height / 2 - totalHeight / 2 + lineHeight / 2;
+    contentRect.y +
+    getWordsMarginTopPx(words, contentRect) +
+    contentRect.height / 2 -
+    totalHeight / 2 +
+    lineHeight / 2;
   const canvas = createRenderCanvas(canvasRect.width, canvasRect.height);
   const context = getRenderContext(canvas);
 
@@ -172,8 +235,23 @@ function createTextCanvas(
   context.textBaseline = "middle";
   context.fillStyle = fillStyle;
 
+  const letterSpacingPx = getWordsLetterSpacingPx(words, fontSize);
   lines.forEach((line, index) => {
-    context.fillText(line || " ", centerX, startY + index * lineHeight);
+    const y = startY + index * lineHeight;
+    if (letterSpacingPx === 0) {
+      context.fillText(line || " ", centerX, y);
+      return;
+    }
+
+    const glyphs = getTextGlyphs(line);
+    const lineWidth = measureWordsLineWidth(context, line, letterSpacingPx);
+    let x = centerX - lineWidth / 2;
+    context.textAlign = "left";
+    glyphs.forEach((glyph) => {
+      context.fillText(glyph, x, y);
+      x += context.measureText(glyph).width + letterSpacingPx;
+    });
+    context.textAlign = "center";
   });
 
   return canvas;

@@ -199,6 +199,9 @@ describe("createProjectDocument", () => {
     expect(project.words.mode).toBe("image-fill");
     expect(project.words.fontFamily).toBe("dm-sans");
     expect(project.words.text).toBe("TYPE\nHERE");
+    expect(project.words.letterSpacing).toBe(0);
+    expect(project.words.marginTop).toBe(0);
+    expect(project.words.lineHeight).toBe(0.92);
     expect(project.words.textColor).toBe("#180f08");
     expect(project.svgGeometry.markup).toBeNull();
     expect(project.svgGeometry.fileName).toBeNull();
@@ -320,6 +323,9 @@ describe("createProjectDocument", () => {
     expect(normalizedLayer.words.mode).toBe("image-fill");
     expect(normalizedLayer.words.fontFamily).toBe("dm-sans");
     expect(normalizedLayer.words.text).toBe("TYPE\nHERE");
+    expect(normalizedLayer.words.letterSpacing).toBe(0);
+    expect(normalizedLayer.words.marginTop).toBe(0);
+    expect(normalizedLayer.words.lineHeight).toBe(0.92);
     expect(normalizedLayer.words.textColor).toBe("#180f08");
   });
 

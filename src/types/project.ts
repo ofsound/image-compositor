@@ -480,6 +480,9 @@ export interface WordsSettings {
   mode: WordsMode;
   fontFamily: WordFontFamily;
   text: string;
+  letterSpacing: number;
+  marginTop: number;
+  lineHeight: number;
   textColor: string;
 }
 

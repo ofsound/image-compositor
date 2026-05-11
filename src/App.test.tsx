@@ -132,6 +132,9 @@ function createStoreState(overrides?: {
   wordsMode?: "image-fill" | "plain-text";
   wordsFontFamily?: "dm-sans" | "cormorant-garamond" | "jetbrains-mono";
   wordsText?: string;
+  wordsLetterSpacing?: number;
+  wordsMarginTop?: number;
+  wordsLineHeight?: number;
   wordsTextColor?: string;
   assets?: SourceAsset[];
   enabledSourceIds?: string[];
@@ -193,6 +196,18 @@ function createStoreState(overrides?: {
 
   if (overrides?.wordsText !== undefined) {
     selectedLayer.words.text = overrides.wordsText;
+  }
+
+  if (overrides?.wordsLetterSpacing !== undefined) {
+    selectedLayer.words.letterSpacing = overrides.wordsLetterSpacing;
+  }
+
+  if (overrides?.wordsMarginTop !== undefined) {
+    selectedLayer.words.marginTop = overrides.wordsMarginTop;
+  }
+
+  if (overrides?.wordsLineHeight !== undefined) {
+    selectedLayer.words.lineHeight = overrides.wordsLineHeight;
   }
 
   if (overrides?.wordsTextColor) {
@@ -1028,6 +1043,9 @@ describe("App conditional sliders", () => {
     expect(screen.getByRole("combobox", { name: "Render Mode" })).toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: "Font" })).toBeInTheDocument();
     expect(screen.getByLabelText("Words Text")).toBeInTheDocument();
+    expectSliderEnabled("Letter Spacing");
+    expectSliderEnabled("Margin Top");
+    expectSliderEnabled("Line Height");
     expect(screen.getByLabelText("Text Color")).toBeInTheDocument();
     expect(screen.queryByText("Geometry")).not.toBeInTheDocument();
     expectSliderHidden("Corner Radius");
@@ -1044,6 +1062,9 @@ describe("App conditional sliders", () => {
 
     expect(screen.getByLabelText("Words Text")).toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: "Font" })).toBeInTheDocument();
+    expectSliderEnabled("Letter Spacing");
+    expectSliderEnabled("Margin Top");
+    expectSliderEnabled("Line Height");
     expect(screen.queryByRole("combobox", { name: "Render Mode" })).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Text Color")).not.toBeInTheDocument();
     expectSliderHidden("Corner Radius");
@@ -1093,7 +1114,7 @@ describe("App conditional sliders", () => {
     expect(await screen.findByRole("option", { name: "svg" })).toBeInTheDocument();
   });
 
-  it("commits words mode, font, text, and color changes through project updates", async () => {
+  it("commits words mode, font, text, spacing, margin, line height, and color changes through project updates", async () => {
     const state = createStoreState({
       family: "words",
       wordsMode: "plain-text",
@@ -1128,6 +1149,30 @@ describe("App conditional sliders", () => {
     [[update]] = state.updateProject.mock.calls.slice(-1);
     nextProject = createProjectEditorView(update(structuredClone(state.projects[0]!)));
     expect(nextProject.words.text).toBe("STACKED\nLINES");
+
+    state.updateProject.mockClear();
+
+    fireEvent.keyDown(screen.getByLabelText("Letter Spacing"), { key: "End" });
+
+    [[update]] = state.updateProject.mock.calls.slice(-1);
+    nextProject = createProjectEditorView(update(structuredClone(state.projects[0]!)));
+    expect(nextProject.words.letterSpacing).toBe(0.4);
+
+    state.updateProject.mockClear();
+
+    fireEvent.keyDown(screen.getByLabelText("Margin Top"), { key: "End" });
+
+    [[update]] = state.updateProject.mock.calls.slice(-1);
+    nextProject = createProjectEditorView(update(structuredClone(state.projects[0]!)));
+    expect(nextProject.words.marginTop).toBe(0.95);
+
+    state.updateProject.mockClear();
+
+    fireEvent.keyDown(screen.getByLabelText("Line Height"), { key: "End" });
+
+    [[update]] = state.updateProject.mock.calls.slice(-1);
+    nextProject = createProjectEditorView(update(structuredClone(state.projects[0]!)));
+    expect(nextProject.words.lineHeight).toBe(2);
 
     state.updateProject.mockClear();
 
@@ -1534,6 +1579,7 @@ describe("App inspector grouping", () => {
     selectInspectorTab("Finish");
     const finishShadowGlowGroup = getInspectorGroup("Shadow and Glow");
     const finishLayerFinishGroup = getInspectorGroup("Layer Finish");
+    const finishPixelSwapGroup = getInspectorGroup("Pixel Swap");
     const finishLayer3DGroup = getInspectorGroup("Layer 3D");
     const finishGroupTitles = Array.from(
       layerControls.querySelectorAll("section > div:first-child"),
@@ -1547,12 +1593,27 @@ describe("App inspector grouping", () => {
     expect(within(finishLayerFinishGroup).getByLabelText("Blur")).toBeInTheDocument();
     expect(within(finishLayerFinishGroup).getByLabelText("Sharpen")).toBeInTheDocument();
     expect(
+      within(finishLayerFinishGroup).queryByLabelText("Pixel Swap Density"),
+    ).not.toBeInTheDocument();
+    expect(within(finishPixelSwapGroup).getByLabelText("Pixel Swap Density")).toBeInTheDocument();
+    expect(within(finishPixelSwapGroup).getByLabelText("Pixel Swap Width")).toBeInTheDocument();
+    expect(within(finishPixelSwapGroup).getByLabelText("Pixel Swap Height")).toBeInTheDocument();
+    expect(
+      within(finishPixelSwapGroup).getByRole("switch", {
+        name: "Pixel Swap Spectrum",
+      }),
+    ).toBeInTheDocument();
+    expect(within(finishPixelSwapGroup).getByLabelText("Pixel Swap Seed")).toBeInTheDocument();
+    expect(
       within(finishLayerFinishGroup).queryByRole("switch", { name: "Layer 3D" }),
     ).not.toBeInTheDocument();
     expect(
       within(finishLayer3DGroup).getByRole("switch", { name: "Layer 3D" }),
     ).toBeInTheDocument();
     expect(within(finishLayer3DGroup).getByLabelText("Surface Shape")).toBeInTheDocument();
+    expect(
+      finishGroupTitles.indexOf("Pixel Swap"),
+    ).toBe(finishGroupTitles.indexOf("Layer Finish") + 1);
     expect(finishGroupTitles[finishGroupTitles.length - 1]).toBe("Layer 3D");
     expect(
       within(finishLayerFinishGroup).queryByLabelText("Drop Shadow X"),

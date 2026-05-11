@@ -49,6 +49,7 @@ import {
   DEFAULT_LAYOUT,
   DEFAULT_SVG_GEOMETRY,
   DEFAULT_SOURCE_MAPPING,
+  DEFAULT_WORDS,
 } from "@/lib/project-defaults";
 import {
   readSvgGeometryFile,
@@ -951,6 +952,60 @@ export function RightSidebar({
                           }}
                         />
                       </ControlBlock>
+                      <SliderField
+                        label="Letter Spacing"
+                        min={-0.08}
+                        max={0.4}
+                        step={0.01}
+                        value={activeProjectView.words.letterSpacing}
+                        defaultValue={DEFAULT_WORDS.letterSpacing}
+                        formatter={(value) => `${Math.round(value * 100)}%`}
+                        onChange={(value) =>
+                          patchProject((project) => ({
+                            ...project,
+                            words: {
+                              ...project.words,
+                              letterSpacing: value,
+                            },
+                          }))
+                        }
+                      />
+                      <SliderField
+                        label="Margin Top"
+                        min={0}
+                        max={0.95}
+                        step={0.01}
+                        value={activeProjectView.words.marginTop}
+                        defaultValue={DEFAULT_WORDS.marginTop}
+                        formatter={(value) => `${Math.round(value * 100)}%`}
+                        onChange={(value) =>
+                          patchProject((project) => ({
+                            ...project,
+                            words: {
+                              ...project.words,
+                              marginTop: value,
+                            },
+                          }))
+                        }
+                      />
+                      <SliderField
+                        label="Line Height"
+                        min={0.5}
+                        max={2}
+                        step={0.01}
+                        value={activeProjectView.words.lineHeight}
+                        defaultValue={DEFAULT_WORDS.lineHeight}
+                        formatter={(value) => `${Math.round(value * 100)}%`}
+                        onChange={(value) =>
+                          patchProject((project) => ({
+                            ...project,
+                            words: {
+                              ...project.words,
+                              lineHeight: value,
+                            },
+                          }))
+                        }
+                      />
                       {activeProjectView.words.mode === "plain-text" ? (
                         isWordsFamily ? (
                           <div className="sm:col-span-2">
@@ -4044,6 +4099,85 @@ export function RightSidebar({
                       }
                     />
                     <SliderField
+                      label="Vignette Strength"
+                      min={0}
+                      max={1}
+                      step={0.01}
+                      value={activeProjectView.finish.vignetteStrength}
+                      defaultValue={DEFAULT_FINISH.vignetteStrength}
+                      formatter={formatPercentValue}
+                      onChange={(value) =>
+                        patchFinishSetting("vignetteStrength", value)
+                      }
+                    />
+                    <SourceColorField
+                      id="finish-vignette-color"
+                      label="Vignette Color"
+                      value={activeProjectView.finish.vignetteColor}
+                      onChange={(value) =>
+                        patchFinishSetting("vignetteColor", value)
+                      }
+                    />
+                    <SliderField
+                      label="Vignette Midpoint"
+                      min={0}
+                      max={1}
+                      step={0.01}
+                      value={activeProjectView.finish.vignetteMidpoint}
+                      defaultValue={DEFAULT_FINISH.vignetteMidpoint}
+                      formatter={formatPercentValue}
+                      onChange={(value) =>
+                        patchFinishSetting("vignetteMidpoint", value)
+                      }
+                    />
+                    <SliderField
+                      label="Vignette Roundness"
+                      min={-1}
+                      max={1}
+                      step={0.01}
+                      value={activeProjectView.finish.vignetteRoundness}
+                      defaultValue={DEFAULT_FINISH.vignetteRoundness}
+                      formatter={formatPercentValue}
+                      onChange={(value) =>
+                        patchFinishSetting("vignetteRoundness", value)
+                      }
+                    />
+                    <SliderField
+                      label="Vignette Feather"
+                      min={0}
+                      max={1}
+                      step={0.01}
+                      value={activeProjectView.finish.vignetteFeather}
+                      defaultValue={DEFAULT_FINISH.vignetteFeather}
+                      formatter={formatPercentValue}
+                      onChange={(value) =>
+                        patchFinishSetting("vignetteFeather", value)
+                      }
+                    />
+                    <SliderField
+                      className="sm:col-span-2"
+                      label="Invert"
+                      min={0}
+                      max={1}
+                      step={0.01}
+                      value={activeProjectView.finish.invert}
+                      defaultValue={DEFAULT_FINISH.invert}
+                      formatter={formatPercentValue}
+                      onChange={(value) =>
+                        patchProject((project) => ({
+                          ...project,
+                          finish: {
+                            ...project.finish,
+                            invert: value,
+                          },
+                        }))
+                      }
+                    />
+                  </InspectorFieldGrid>
+                </InspectorGroup>
+                <InspectorGroup title="Pixel Swap" className="xl:col-span-2">
+                  <InspectorFieldGrid className="sm:grid-cols-2">
+                    <SliderField
                       label="Pixel Swap Density"
                       min={0}
                       max={1}
@@ -4117,81 +4251,6 @@ export function RightSidebar({
                       formatter={(value) => Math.round(value).toString()}
                       onChange={(value) =>
                         patchFinishSetting("pixelSwapSeed", Math.round(value))
-                      }
-                    />
-                    <SliderField
-                      label="Vignette Strength"
-                      min={0}
-                      max={1}
-                      step={0.01}
-                      value={activeProjectView.finish.vignetteStrength}
-                      defaultValue={DEFAULT_FINISH.vignetteStrength}
-                      formatter={formatPercentValue}
-                      onChange={(value) =>
-                        patchFinishSetting("vignetteStrength", value)
-                      }
-                    />
-                    <SourceColorField
-                      id="finish-vignette-color"
-                      label="Vignette Color"
-                      value={activeProjectView.finish.vignetteColor}
-                      onChange={(value) =>
-                        patchFinishSetting("vignetteColor", value)
-                      }
-                    />
-                    <SliderField
-                      label="Vignette Midpoint"
-                      min={0}
-                      max={1}
-                      step={0.01}
-                      value={activeProjectView.finish.vignetteMidpoint}
-                      defaultValue={DEFAULT_FINISH.vignetteMidpoint}
-                      formatter={formatPercentValue}
-                      onChange={(value) =>
-                        patchFinishSetting("vignetteMidpoint", value)
-                      }
-                    />
-                    <SliderField
-                      label="Vignette Roundness"
-                      min={-1}
-                      max={1}
-                      step={0.01}
-                      value={activeProjectView.finish.vignetteRoundness}
-                      defaultValue={DEFAULT_FINISH.vignetteRoundness}
-                      formatter={formatPercentValue}
-                      onChange={(value) =>
-                        patchFinishSetting("vignetteRoundness", value)
-                      }
-                    />
-                    <SliderField
-                      label="Vignette Feather"
-                      min={0}
-                      max={1}
-                      step={0.01}
-                      value={activeProjectView.finish.vignetteFeather}
-                      defaultValue={DEFAULT_FINISH.vignetteFeather}
-                      formatter={formatPercentValue}
-                      onChange={(value) =>
-                        patchFinishSetting("vignetteFeather", value)
-                      }
-                    />
-                    <SliderField
-                      className="sm:col-span-2"
-                      label="Invert"
-                      min={0}
-                      max={1}
-                      step={0.01}
-                      value={activeProjectView.finish.invert}
-                      defaultValue={DEFAULT_FINISH.invert}
-                      formatter={formatPercentValue}
-                      onChange={(value) =>
-                        patchProject((project) => ({
-                          ...project,
-                          finish: {
-                            ...project.finish,
-                            invert: value,
-                          },
-                        }))
                       }
                     />
                   </InspectorFieldGrid>

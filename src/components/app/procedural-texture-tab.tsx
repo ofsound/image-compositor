@@ -12,6 +12,7 @@ import {
   formatPercentValue,
   normalizeSliderInputValue,
   parseFormattedSliderInputValue,
+  parsePercentInputValue,
 } from "@/lib/format-utils";
 import { cn } from "@/lib/utils";
 import type { ProjectDocument, SourceAsset, SourceKind } from "@/types/project";
@@ -132,7 +133,19 @@ export function SliderField({
 
   const displayValue = draftValue ?? value;
   const displayLabel = formatter(displayValue);
-  const sliderInputParser = parseInput ?? parseFormattedSliderInputValue;
+  const formatterUsesScaledPercent =
+    !parseInput &&
+    formatter(1).includes("%") &&
+    parsePercentInputValue(formatter(1)) === 1;
+  const sliderInputParser =
+    parseInput ??
+    ((nextText: string) => {
+      if (formatterUsesScaledPercent && !nextText.includes("%")) {
+        return parsePercentInputValue(nextText);
+      }
+
+      return parseFormattedSliderInputValue(nextText);
+    });
   const canEditValue = !disabled && sliderInputParser(displayLabel) !== null;
 
   const commitValueText = (nextText: string) => {

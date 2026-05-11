@@ -572,6 +572,9 @@ export const DEFAULT_WORDS: WordsSettings = {
   mode: "image-fill",
   fontFamily: "dm-sans",
   text: "TYPE\nHERE",
+  letterSpacing: 0,
+  marginTop: 0,
+  lineHeight: 0.92,
   textColor: "#180f08",
 };
 
@@ -1248,6 +1251,18 @@ function normalizeWordsSettings(
       typeof words?.text === "string" && words.text.length > 0
         ? words.text
         : DEFAULT_WORDS.text,
+    letterSpacing:
+      typeof words?.letterSpacing === "number" && Number.isFinite(words.letterSpacing)
+        ? clamp(words.letterSpacing, -0.08, 0.4)
+        : DEFAULT_WORDS.letterSpacing,
+    marginTop:
+      typeof words?.marginTop === "number" && Number.isFinite(words.marginTop)
+        ? clamp(words.marginTop, 0, 0.95)
+        : DEFAULT_WORDS.marginTop,
+    lineHeight:
+      typeof words?.lineHeight === "number" && Number.isFinite(words.lineHeight)
+        ? clamp(words.lineHeight, 0.5, 2)
+        : DEFAULT_WORDS.lineHeight,
     textColor:
       typeof words?.textColor === "string" && words.textColor.length > 0
         ? words.textColor

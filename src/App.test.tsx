@@ -1484,7 +1484,11 @@ describe("App inspector grouping", () => {
     expect(within(layerControls).getByText("Assignment")).toBeInTheDocument();
     expect(within(layerControls).getByText("Motion")).toBeInTheDocument();
     const getInspectorGroup = (title: string) => {
-      const group = within(layerControls).getByText(title).closest("section");
+      const groupTitle = within(layerControls)
+        .getAllByText(title)
+        .find((node) => node.closest("section")?.firstElementChild === node);
+      expect(groupTitle).toBeDefined();
+      const group = groupTitle?.closest("section");
       expect(group).not.toBeNull();
       return group as HTMLElement;
     };
@@ -1496,12 +1500,26 @@ describe("App inspector grouping", () => {
     selectInspectorTab("Finish");
     const finishShadowGlowGroup = getInspectorGroup("Shadow and Glow");
     const finishLayerFinishGroup = getInspectorGroup("Layer Finish");
+    const finishLayer3DGroup = getInspectorGroup("Layer 3D");
+    const finishGroupTitles = Array.from(
+      layerControls.querySelectorAll("section > div:first-child"),
+    )
+      .map((node) => node.textContent)
+      .filter(Boolean);
     expect(within(finishShadowGlowGroup).getByLabelText("Drop Shadow X")).toBeInTheDocument();
     expect(within(finishShadowGlowGroup).getByLabelText("Outer Glow X")).toBeInTheDocument();
     expect(within(finishShadowGlowGroup).getByLabelText("Inner Glow X")).toBeInTheDocument();
     expect(within(finishShadowGlowGroup).getByLabelText("Inner Shadow X")).toBeInTheDocument();
     expect(within(finishLayerFinishGroup).getByLabelText("Blur")).toBeInTheDocument();
     expect(within(finishLayerFinishGroup).getByLabelText("Sharpen")).toBeInTheDocument();
+    expect(
+      within(finishLayerFinishGroup).queryByRole("switch", { name: "Layer 3D" }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(finishLayer3DGroup).getByRole("switch", { name: "Layer 3D" }),
+    ).toBeInTheDocument();
+    expect(within(finishLayer3DGroup).getByLabelText("Surface Shape")).toBeInTheDocument();
+    expect(finishGroupTitles[finishGroupTitles.length - 1]).toBe("Layer 3D");
     expect(
       within(finishLayerFinishGroup).queryByLabelText("Drop Shadow X"),
     ).not.toBeInTheDocument();

@@ -3897,6 +3897,7 @@ export function RightSidebar({
                 ) : null}
 
                 {isFinishTab ? (
+                <>
                 <InspectorGroup title="Layer Finish" className="xl:col-span-2">
                   <InspectorFieldGrid className="sm:grid-cols-2">
                     <SliderField
@@ -3934,6 +3935,269 @@ export function RightSidebar({
                         }))
                       }
                     />
+                    <SliderField
+                      label="Brightness"
+                      min={0}
+                      max={2}
+                      step={0.01}
+                      value={activeProjectView.finish.brightness}
+                      defaultValue={DEFAULT_FINISH.brightness}
+                      formatter={formatPercentValue}
+                      onChange={(value) =>
+                        patchProject((project) => ({
+                          ...project,
+                          finish: {
+                            ...project.finish,
+                            brightness: value,
+                          },
+                        }))
+                      }
+                    />
+                    <SliderField
+                      label="Contrast"
+                      min={0}
+                      max={2}
+                      step={0.01}
+                      value={activeProjectView.finish.contrast}
+                      defaultValue={DEFAULT_FINISH.contrast}
+                      formatter={formatPercentValue}
+                      onChange={(value) =>
+                        patchProject((project) => ({
+                          ...project,
+                          finish: {
+                            ...project.finish,
+                            contrast: value,
+                          },
+                        }))
+                      }
+                    />
+                    <SliderField
+                      label="Saturate"
+                      min={0}
+                      max={2}
+                      step={0.01}
+                      value={activeProjectView.finish.saturate}
+                      defaultValue={DEFAULT_FINISH.saturate}
+                      formatter={formatPercentValue}
+                      onChange={(value) =>
+                        patchProject((project) => ({
+                          ...project,
+                          finish: {
+                            ...project.finish,
+                            saturate: value,
+                          },
+                        }))
+                      }
+                    />
+                    <SliderField
+                      label="Hue Rotate"
+                      min={-180}
+                      max={180}
+                      step={1}
+                      value={activeProjectView.finish.hueRotate}
+                      defaultValue={DEFAULT_FINISH.hueRotate}
+                      formatter={formatDegreeValue}
+                      onChange={(value) =>
+                        patchProject((project) => ({
+                          ...project,
+                          finish: {
+                            ...project.finish,
+                            hueRotate: value,
+                          },
+                        }))
+                      }
+                    />
+                    <SliderField
+                      label="Noise"
+                      min={0}
+                      max={1}
+                      step={0.01}
+                      value={activeProjectView.finish.noise}
+                      defaultValue={DEFAULT_FINISH.noise}
+                      formatter={formatPercentValue}
+                      onChange={(value) =>
+                        patchProject((project) => ({
+                          ...project,
+                          finish: {
+                            ...project.finish,
+                            noise: value,
+                          },
+                        }))
+                      }
+                    />
+                    <SliderField
+                      label="Monochromatic Noise"
+                      min={0}
+                      max={1}
+                      step={0.01}
+                      value={activeProjectView.finish.noiseMonochrome}
+                      defaultValue={DEFAULT_FINISH.noiseMonochrome}
+                      formatter={formatPercentValue}
+                      onChange={(value) =>
+                        patchProject((project) => ({
+                          ...project,
+                          finish: {
+                            ...project.finish,
+                            noiseMonochrome: value,
+                          },
+                        }))
+                      }
+                    />
+                    <SliderField
+                      label="Pixel Swap Density"
+                      min={0}
+                      max={1}
+                      step={0.01}
+                      value={activeProjectView.finish.pixelSwapDensity}
+                      defaultValue={DEFAULT_FINISH.pixelSwapDensity}
+                      formatter={formatPercentValue}
+                      onChange={(value) =>
+                        patchFinishSetting("pixelSwapDensity", value)
+                      }
+                    />
+                    <SliderField
+                      label="Pixel Swap Width"
+                      min={1}
+                      max={100}
+                      step={1}
+                      value={activeProjectView.finish.pixelSwapWidth}
+                      defaultValue={DEFAULT_FINISH.pixelSwapWidth}
+                      formatter={formatPixelValue}
+                      onChange={(value) =>
+                        patchFinishSetting("pixelSwapWidth", Math.round(value))
+                      }
+                    />
+                    <SliderField
+                      label="Pixel Swap Height"
+                      min={1}
+                      max={100}
+                      step={1}
+                      value={activeProjectView.finish.pixelSwapHeight}
+                      defaultValue={DEFAULT_FINISH.pixelSwapHeight}
+                      formatter={formatPixelValue}
+                      onChange={(value) =>
+                        patchFinishSetting("pixelSwapHeight", Math.round(value))
+                      }
+                    />
+                    <ControlBlock
+                      label="Pixel Swap Spectrum"
+                      value={
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-text-muted">
+                            {activeProjectView.finish.pixelSwapMode ===
+                            "spectrum"
+                              ? "Spectrum"
+                              : "Uniform"}
+                          </span>
+                          <Switch
+                            aria-label="Pixel Swap Spectrum"
+                            checked={
+                              activeProjectView.finish.pixelSwapMode ===
+                              "spectrum"
+                            }
+                            onCheckedChange={(checked) =>
+                              patchFinishSetting(
+                                "pixelSwapMode",
+                                checked ? "spectrum" : "uniform",
+                              )
+                            }
+                          />
+                        </div>
+                      }
+                    >
+                      <div className="h-px bg-border-subtle" />
+                    </ControlBlock>
+                    <SliderField
+                      label="Pixel Swap Seed"
+                      min={0}
+                      max={999999}
+                      step={1}
+                      value={activeProjectView.finish.pixelSwapSeed}
+                      defaultValue={DEFAULT_FINISH.pixelSwapSeed}
+                      formatter={(value) => Math.round(value).toString()}
+                      onChange={(value) =>
+                        patchFinishSetting("pixelSwapSeed", Math.round(value))
+                      }
+                    />
+                    <SliderField
+                      label="Vignette Strength"
+                      min={0}
+                      max={1}
+                      step={0.01}
+                      value={activeProjectView.finish.vignetteStrength}
+                      defaultValue={DEFAULT_FINISH.vignetteStrength}
+                      formatter={formatPercentValue}
+                      onChange={(value) =>
+                        patchFinishSetting("vignetteStrength", value)
+                      }
+                    />
+                    <SourceColorField
+                      id="finish-vignette-color"
+                      label="Vignette Color"
+                      value={activeProjectView.finish.vignetteColor}
+                      onChange={(value) =>
+                        patchFinishSetting("vignetteColor", value)
+                      }
+                    />
+                    <SliderField
+                      label="Vignette Midpoint"
+                      min={0}
+                      max={1}
+                      step={0.01}
+                      value={activeProjectView.finish.vignetteMidpoint}
+                      defaultValue={DEFAULT_FINISH.vignetteMidpoint}
+                      formatter={formatPercentValue}
+                      onChange={(value) =>
+                        patchFinishSetting("vignetteMidpoint", value)
+                      }
+                    />
+                    <SliderField
+                      label="Vignette Roundness"
+                      min={-1}
+                      max={1}
+                      step={0.01}
+                      value={activeProjectView.finish.vignetteRoundness}
+                      defaultValue={DEFAULT_FINISH.vignetteRoundness}
+                      formatter={formatPercentValue}
+                      onChange={(value) =>
+                        patchFinishSetting("vignetteRoundness", value)
+                      }
+                    />
+                    <SliderField
+                      label="Vignette Feather"
+                      min={0}
+                      max={1}
+                      step={0.01}
+                      value={activeProjectView.finish.vignetteFeather}
+                      defaultValue={DEFAULT_FINISH.vignetteFeather}
+                      formatter={formatPercentValue}
+                      onChange={(value) =>
+                        patchFinishSetting("vignetteFeather", value)
+                      }
+                    />
+                    <SliderField
+                      className="sm:col-span-2"
+                      label="Invert"
+                      min={0}
+                      max={1}
+                      step={0.01}
+                      value={activeProjectView.finish.invert}
+                      defaultValue={DEFAULT_FINISH.invert}
+                      formatter={formatPercentValue}
+                      onChange={(value) =>
+                        patchProject((project) => ({
+                          ...project,
+                          finish: {
+                            ...project.finish,
+                            invert: value,
+                          },
+                        }))
+                      }
+                    />
+                  </InspectorFieldGrid>
+                </InspectorGroup>
+                <InspectorGroup title="Layer 3D" className="xl:col-span-2">
+                  <InspectorFieldGrid className="sm:grid-cols-2">
                     <ControlBlock
                       label="Layer 3D"
                       value={
@@ -4327,267 +4591,9 @@ export function RightSidebar({
                         }))
                       }
                     />
-                    <SliderField
-                      label="Brightness"
-                      min={0}
-                      max={2}
-                      step={0.01}
-                      value={activeProjectView.finish.brightness}
-                      defaultValue={DEFAULT_FINISH.brightness}
-                      formatter={formatPercentValue}
-                      onChange={(value) =>
-                        patchProject((project) => ({
-                          ...project,
-                          finish: {
-                            ...project.finish,
-                            brightness: value,
-                          },
-                        }))
-                      }
-                    />
-                    <SliderField
-                      label="Contrast"
-                      min={0}
-                      max={2}
-                      step={0.01}
-                      value={activeProjectView.finish.contrast}
-                      defaultValue={DEFAULT_FINISH.contrast}
-                      formatter={formatPercentValue}
-                      onChange={(value) =>
-                        patchProject((project) => ({
-                          ...project,
-                          finish: {
-                            ...project.finish,
-                            contrast: value,
-                          },
-                        }))
-                      }
-                    />
-                    <SliderField
-                      label="Saturate"
-                      min={0}
-                      max={2}
-                      step={0.01}
-                      value={activeProjectView.finish.saturate}
-                      defaultValue={DEFAULT_FINISH.saturate}
-                      formatter={formatPercentValue}
-                      onChange={(value) =>
-                        patchProject((project) => ({
-                          ...project,
-                          finish: {
-                            ...project.finish,
-                            saturate: value,
-                          },
-                        }))
-                      }
-                    />
-                    <SliderField
-                      label="Hue Rotate"
-                      min={-180}
-                      max={180}
-                      step={1}
-                      value={activeProjectView.finish.hueRotate}
-                      defaultValue={DEFAULT_FINISH.hueRotate}
-                      formatter={formatDegreeValue}
-                      onChange={(value) =>
-                        patchProject((project) => ({
-                          ...project,
-                          finish: {
-                            ...project.finish,
-                            hueRotate: value,
-                          },
-                        }))
-                      }
-                    />
-                    <SliderField
-                      label="Noise"
-                      min={0}
-                      max={1}
-                      step={0.01}
-                      value={activeProjectView.finish.noise}
-                      defaultValue={DEFAULT_FINISH.noise}
-                      formatter={formatPercentValue}
-                      onChange={(value) =>
-                        patchProject((project) => ({
-                          ...project,
-                          finish: {
-                            ...project.finish,
-                            noise: value,
-                          },
-                        }))
-                      }
-                    />
-                    <SliderField
-                      label="Monochromatic Noise"
-                      min={0}
-                      max={1}
-                      step={0.01}
-                      value={activeProjectView.finish.noiseMonochrome}
-                      defaultValue={DEFAULT_FINISH.noiseMonochrome}
-                      formatter={formatPercentValue}
-                      onChange={(value) =>
-                        patchProject((project) => ({
-                          ...project,
-                          finish: {
-                            ...project.finish,
-                            noiseMonochrome: value,
-                          },
-                        }))
-                      }
-                    />
-                    <SliderField
-                      label="Pixel Swap Density"
-                      min={0}
-                      max={1}
-                      step={0.01}
-                      value={activeProjectView.finish.pixelSwapDensity}
-                      defaultValue={DEFAULT_FINISH.pixelSwapDensity}
-                      formatter={formatPercentValue}
-                      onChange={(value) =>
-                        patchFinishSetting("pixelSwapDensity", value)
-                      }
-                    />
-                    <SliderField
-                      label="Pixel Swap Width"
-                      min={1}
-                      max={100}
-                      step={1}
-                      value={activeProjectView.finish.pixelSwapWidth}
-                      defaultValue={DEFAULT_FINISH.pixelSwapWidth}
-                      formatter={formatPixelValue}
-                      onChange={(value) =>
-                        patchFinishSetting("pixelSwapWidth", Math.round(value))
-                      }
-                    />
-                    <SliderField
-                      label="Pixel Swap Height"
-                      min={1}
-                      max={100}
-                      step={1}
-                      value={activeProjectView.finish.pixelSwapHeight}
-                      defaultValue={DEFAULT_FINISH.pixelSwapHeight}
-                      formatter={formatPixelValue}
-                      onChange={(value) =>
-                        patchFinishSetting("pixelSwapHeight", Math.round(value))
-                      }
-                    />
-                    <ControlBlock
-                      label="Pixel Swap Spectrum"
-                      value={
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs text-text-muted">
-                            {activeProjectView.finish.pixelSwapMode ===
-                            "spectrum"
-                              ? "Spectrum"
-                              : "Uniform"}
-                          </span>
-                          <Switch
-                            aria-label="Pixel Swap Spectrum"
-                            checked={
-                              activeProjectView.finish.pixelSwapMode ===
-                              "spectrum"
-                            }
-                            onCheckedChange={(checked) =>
-                              patchFinishSetting(
-                                "pixelSwapMode",
-                                checked ? "spectrum" : "uniform",
-                              )
-                            }
-                          />
-                        </div>
-                      }
-                    >
-                      <div className="h-px bg-border-subtle" />
-                    </ControlBlock>
-                    <SliderField
-                      label="Pixel Swap Seed"
-                      min={0}
-                      max={999999}
-                      step={1}
-                      value={activeProjectView.finish.pixelSwapSeed}
-                      defaultValue={DEFAULT_FINISH.pixelSwapSeed}
-                      formatter={(value) => Math.round(value).toString()}
-                      onChange={(value) =>
-                        patchFinishSetting("pixelSwapSeed", Math.round(value))
-                      }
-                    />
-                    <SliderField
-                      label="Vignette Strength"
-                      min={0}
-                      max={1}
-                      step={0.01}
-                      value={activeProjectView.finish.vignetteStrength}
-                      defaultValue={DEFAULT_FINISH.vignetteStrength}
-                      formatter={formatPercentValue}
-                      onChange={(value) =>
-                        patchFinishSetting("vignetteStrength", value)
-                      }
-                    />
-                    <SourceColorField
-                      id="finish-vignette-color"
-                      label="Vignette Color"
-                      value={activeProjectView.finish.vignetteColor}
-                      onChange={(value) =>
-                        patchFinishSetting("vignetteColor", value)
-                      }
-                    />
-                    <SliderField
-                      label="Vignette Midpoint"
-                      min={0}
-                      max={1}
-                      step={0.01}
-                      value={activeProjectView.finish.vignetteMidpoint}
-                      defaultValue={DEFAULT_FINISH.vignetteMidpoint}
-                      formatter={formatPercentValue}
-                      onChange={(value) =>
-                        patchFinishSetting("vignetteMidpoint", value)
-                      }
-                    />
-                    <SliderField
-                      label="Vignette Roundness"
-                      min={-1}
-                      max={1}
-                      step={0.01}
-                      value={activeProjectView.finish.vignetteRoundness}
-                      defaultValue={DEFAULT_FINISH.vignetteRoundness}
-                      formatter={formatPercentValue}
-                      onChange={(value) =>
-                        patchFinishSetting("vignetteRoundness", value)
-                      }
-                    />
-                    <SliderField
-                      label="Vignette Feather"
-                      min={0}
-                      max={1}
-                      step={0.01}
-                      value={activeProjectView.finish.vignetteFeather}
-                      defaultValue={DEFAULT_FINISH.vignetteFeather}
-                      formatter={formatPercentValue}
-                      onChange={(value) =>
-                        patchFinishSetting("vignetteFeather", value)
-                      }
-                    />
-                    <SliderField
-                      className="sm:col-span-2"
-                      label="Invert"
-                      min={0}
-                      max={1}
-                      step={0.01}
-                      value={activeProjectView.finish.invert}
-                      defaultValue={DEFAULT_FINISH.invert}
-                      formatter={formatPercentValue}
-                      onChange={(value) =>
-                        patchProject((project) => ({
-                          ...project,
-                          finish: {
-                            ...project.finish,
-                            invert: value,
-                          },
-                        }))
-                      }
-                    />
                   </InspectorFieldGrid>
                 </InspectorGroup>
+                </>
                 ) : null}
               </div>
             </section>

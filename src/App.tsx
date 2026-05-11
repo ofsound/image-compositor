@@ -195,6 +195,7 @@ function App() {
     addWaveSource,
     removeSource,
     updateImageSourceFitMode,
+    updateImageSourceCrop,
     updateGeneratedSource,
     randomizeVariant,
     saveVersion,
@@ -756,6 +757,7 @@ function App() {
               handleRemoveSource={handleRemoveSource}
               updateSourceWeight={updateSourceWeight}
               updateImageSourceFitMode={updateImageSourceFitMode}
+              updateImageSourceCrop={updateImageSourceCrop}
               toggleAssetEnabled={toggleAssetEnabled}
               addLayer={addLayer}
               duplicateLayer={duplicateLayer}

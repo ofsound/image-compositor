@@ -72,7 +72,7 @@ export type SourceKind =
   | "cellular"
   | "reaction"
   | "waves";
-export type ImageSourceFitMode = "stretch" | "natural";
+export type ImageSourceFitMode = "stretch" | "natural" | "custom";
 export type GradientMode = "linear" | "radial" | "conic";
 export type GradientDirection =
   | "horizontal"
@@ -138,6 +138,7 @@ export interface BaseSourceAsset {
 export interface ImageSourceAsset extends BaseSourceAsset {
   kind: "image";
   fitMode: ImageSourceFitMode;
+  crop: NormalizedRect | null;
 }
 
 export interface SolidSourceAsset extends BaseSourceAsset {

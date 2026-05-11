@@ -52,6 +52,7 @@ export function useWorkspaceActions() {
       addWaveSource: state.addWaveSource,
       removeSource: state.removeSource,
       updateImageSourceFitMode: state.updateImageSourceFitMode,
+      updateImageSourceCrop: state.updateImageSourceCrop,
       updateGeneratedSource: state.updateGeneratedSource,
       randomizeVariant: state.randomizeVariant,
       saveVersion: state.saveVersion,

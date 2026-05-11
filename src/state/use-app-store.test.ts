@@ -201,6 +201,7 @@ function createImageAsset(projectId: string, id: string): SourceAsset {
     id,
     kind: "image",
     fitMode: "stretch",
+    crop: null,
     projectId,
     name: `Image ${id}`,
     originalFileName: `${id}.jpg`,
@@ -1287,6 +1288,7 @@ describe("useAppStore import progress", () => {
     expect(useAppStore.getState().assets[0]).toEqual({
       ...asset,
       fitMode: "natural",
+      crop: null,
     });
     expect(persistAssetUpdatesAtomically).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -1295,6 +1297,7 @@ describe("useAppStore import progress", () => {
             asset: {
               ...asset,
               fitMode: "natural",
+              crop: null,
             },
             blobs: {
               original: null,
@@ -1306,6 +1309,44 @@ describe("useAppStore import progress", () => {
       }),
     );
     expect(useAppStore.getState().status).toBe("Image source fit updated.");
+  });
+
+  it("updates image source custom crop metadata", async () => {
+    const project = useAppStore.getState().projects[0]!;
+    const asset = createImageAsset(project.id, "asset_image");
+    const crop = { x: 0.2, y: 0.1, width: 0.5, height: 0.6 };
+    useAppStore.setState((state) => ({
+      ...state,
+      assets: [asset],
+      projects: [{ ...project, sourceIds: [asset.id] }],
+    }));
+
+    await useAppStore.getState().updateImageSourceCrop(asset.id, crop);
+
+    expect(useAppStore.getState().assets[0]).toEqual({
+      ...asset,
+      fitMode: "custom",
+      crop,
+    });
+    expect(persistAssetUpdatesAtomically).toHaveBeenCalledWith(
+      expect.objectContaining({
+        assets: [
+          {
+            asset: {
+              ...asset,
+              fitMode: "custom",
+              crop,
+            },
+            blobs: {
+              original: null,
+              normalized: null,
+              preview: null,
+            },
+          },
+        ],
+      }),
+    );
+    expect(useAppStore.getState().status).toBe("Image source crop updated.");
   });
 
   it("updates generated perlin sources while keeping the asset id", async () => {

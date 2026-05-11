@@ -9,6 +9,7 @@ import { LeftSidebar } from "./left-sidebar";
 
 vi.mock("@/components/app/source-thumbnail", () => ({
   SourceThumbnail: ({ label }: { label: string }) => <div>{label}</div>,
+  useObjectUrl: () => "blob:preview",
 }));
 
 vi.mock("@/components/app/sortable-layer-row", () => ({
@@ -21,6 +22,7 @@ function createImageAsset(): ImageSourceAsset {
     projectId: "project-1",
     kind: "image",
     fitMode: "stretch",
+    crop: null,
     name: "Reference",
     originalFileName: "reference.png",
     mimeType: "image/png",
@@ -56,6 +58,11 @@ describe("LeftSidebar", () => {
     updateImageSourceFitMode?: (
       assetId: string,
       fitMode: ImageSourceAsset["fitMode"],
+      crop?: ImageSourceAsset["crop"],
+    ) => Promise<void>;
+    updateImageSourceCrop?: (
+      assetId: string,
+      crop: ImageSourceAsset["crop"],
     ) => Promise<void>;
   }) {
     const project = createProjectDocument("Left Sidebar");
@@ -81,6 +88,9 @@ describe("LeftSidebar", () => {
         updateSourceWeight={options?.updateSourceWeight ?? vi.fn()}
         updateImageSourceFitMode={
           options?.updateImageSourceFitMode ?? vi.fn(async () => undefined)
+        }
+        updateImageSourceCrop={
+          options?.updateImageSourceCrop ?? vi.fn(async () => undefined)
         }
         toggleAssetEnabled={vi.fn()}
         addLayer={vi.fn()}
@@ -122,6 +132,7 @@ describe("LeftSidebar", () => {
         handleRemoveSource={vi.fn(async () => undefined)}
         updateSourceWeight={updateSourceWeight}
         updateImageSourceFitMode={vi.fn(async () => undefined)}
+        updateImageSourceCrop={vi.fn(async () => undefined)}
         toggleAssetEnabled={vi.fn()}
         addLayer={vi.fn()}
         duplicateLayer={vi.fn()}
@@ -140,19 +151,35 @@ describe("LeftSidebar", () => {
     expect(updateSourceWeight).toHaveBeenCalledWith(asset.id, 1.65);
   });
 
-  it("toggles natural crop for image sources", async () => {
+  it("selects image fit modes for image sources", async () => {
     const user = userEvent.setup();
     const updateImageSourceFitMode = vi.fn(async () => undefined);
     const { asset } = renderLeftSidebar({ updateImageSourceFitMode });
 
-    await user.click(screen.getByRole("switch", { name: "Reference natural crop" }));
+    await user.click(screen.getByRole("button", { name: "natural" }));
 
     expect(updateImageSourceFitMode).toHaveBeenCalledWith(asset.id, "natural");
   });
 
-  it("does not show natural crop for generated sources", () => {
+  it("initializes custom crop for image sources", async () => {
+    const user = userEvent.setup();
+    const updateImageSourceFitMode = vi.fn(async () => undefined);
+    const { asset } = renderLeftSidebar({ updateImageSourceFitMode });
+
+    await user.click(screen.getByRole("button", { name: "custom" }));
+
+    expect(updateImageSourceFitMode).toHaveBeenCalledWith(asset.id, "custom", {
+      x: 0,
+      y: 0,
+      width: 1,
+      height: 1,
+    });
+    expect(screen.getByRole("dialog", { name: "Custom crop" })).toBeInTheDocument();
+  });
+
+  it("does not show image fit modes for generated sources", () => {
     renderLeftSidebar({ asset: createSolidAsset() });
 
-    expect(screen.queryByRole("switch", { name: /natural crop/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "natural" })).not.toBeInTheDocument();
   });
 });

@@ -97,6 +97,7 @@ describe("normalizeSourceAsset", () => {
       throw new Error("Expected an image source asset.");
     }
     expect(asset.fitMode).toBe("stretch");
+    expect(asset.crop).toBeNull();
   });
 
   it("normalizes image fit mode to supported values", () => {
@@ -120,13 +121,57 @@ describe("normalizeSourceAsset", () => {
     };
 
     const naturalAsset = normalizeSourceAsset({ ...baseAsset, fitMode: "natural" });
+    const customAsset = normalizeSourceAsset({ ...baseAsset, fitMode: "custom" });
     const invalidAsset = normalizeSourceAsset({ ...baseAsset, fitMode: "invalid" });
 
-    if (naturalAsset.kind !== "image" || invalidAsset.kind !== "image") {
+    if (
+      naturalAsset.kind !== "image" ||
+      customAsset.kind !== "image" ||
+      invalidAsset.kind !== "image"
+    ) {
       throw new Error("Expected image source assets.");
     }
     expect(naturalAsset.fitMode).toBe("natural");
+    expect(customAsset.fitMode).toBe("custom");
     expect(invalidAsset.fitMode).toBe("stretch");
+  });
+
+  it("normalizes image custom crop rectangles", () => {
+    const asset = normalizeSourceAsset({
+      id: "asset_a",
+      kind: "image",
+      fitMode: "custom",
+      crop: {
+        x: 0.9,
+        y: -0.5,
+        width: 0.4,
+        height: 2,
+      },
+      projectId: "project_test",
+      name: "Legacy Asset",
+      originalFileName: "legacy.png",
+      mimeType: "image/png",
+      width: 100,
+      height: 100,
+      orientation: 1,
+      originalPath: "assets/original/asset_a.png",
+      normalizedPath: "assets/normalized/asset_a.png",
+      previewPath: "assets/previews/asset_a.webp",
+      averageColor: "#112233",
+      palette: ["#112233"],
+      luminance: 0.2,
+      createdAt: "2026-04-01T00:00:00.000Z",
+    });
+
+    if (asset.kind !== "image") {
+      throw new Error("Expected an image source asset.");
+    }
+    expect(asset.crop).toEqual({
+      x: 0.6,
+      y: 0,
+      width: 0.4,
+      height: 1,
+    });
   });
 
   it("normalizes legacy gradient assets to linear mode defaults", () => {
@@ -958,6 +1003,37 @@ describe("generated sources", () => {
       getSourceContentSignature(naturalAsset),
     );
     expect(getSourceContentSignature(naturalAsset)).toContain("|image|natural|");
+  });
+
+  it("includes image custom crop in source signatures", () => {
+    const baseAsset = normalizeSourceAsset({
+      id: "asset_image",
+      kind: "image",
+      fitMode: "custom",
+      crop: { x: 0.1, y: 0.2, width: 0.3, height: 0.4 },
+      projectId: "project_test",
+      name: "Image",
+      originalFileName: "image.png",
+      mimeType: "image/png",
+      width: 320,
+      height: 240,
+      orientation: 1,
+      originalPath: "assets/original/asset_image.png",
+      normalizedPath: "assets/normalized/asset_image.png",
+      previewPath: "assets/previews/asset_image.webp",
+      averageColor: "#225577",
+      palette: ["#225577", "#88aacc"],
+      luminance: 0.2,
+      createdAt: "2026-04-01T00:00:00.000Z",
+    });
+    const nextAsset = normalizeSourceAsset({
+      ...baseAsset,
+      crop: { x: 0.2, y: 0.2, width: 0.3, height: 0.4 },
+    });
+
+    expect(getSourceContentSignature(baseAsset)).not.toBe(
+      getSourceContentSignature(nextAsset),
+    );
   });
 
   it("includes the perlin recipe in source signatures", () => {

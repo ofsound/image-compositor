@@ -1,5 +1,6 @@
 import { closestCenter, DndContext, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
+import { useState } from "react";
 import { ImagePlus, Plus } from "lucide-react";
 
 import { EditableSliderValue } from "@/components/app/editable-slider-value";
@@ -9,7 +10,6 @@ import { SourceAssetCard } from "@/components/app/source-asset-card";
 import { SourceThumbnail } from "@/components/app/source-thumbnail";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
-import { Switch } from "@/components/ui/switch";
 import { getSourceContentSignature } from "@/lib/assets";
 import {
   formatSourceWeightValue,
@@ -19,11 +19,17 @@ import {
 import type { ProjectEditorView } from "@/lib/project-editor-view";
 import { DEFAULT_SOURCE_WEIGHT, getSourceWeight } from "@/lib/source-weights";
 import type {
+  ImageSourceAsset,
   ImageSourceFitMode,
+  NormalizedRect,
   ProjectDocument,
   SourceAsset,
   SourceKind,
 } from "@/types/project";
+import {
+  getDefaultImageSourceCrop,
+  SourceCropDialog,
+} from "./source-crop-dialog";
 
 interface LeftSidebarProps {
   previewExpanded: boolean;
@@ -42,6 +48,11 @@ interface LeftSidebarProps {
   updateImageSourceFitMode: (
     assetId: string,
     fitMode: ImageSourceFitMode,
+    crop?: NormalizedRect | null,
+  ) => Promise<void>;
+  updateImageSourceCrop: (
+    assetId: string,
+    crop: NormalizedRect | null,
   ) => Promise<void>;
   toggleAssetEnabled: (assetId: string) => void;
   addLayer: () => void;
@@ -66,6 +77,7 @@ export function LeftSidebar({
   handleRemoveSource,
   updateSourceWeight,
   updateImageSourceFitMode,
+  updateImageSourceCrop,
   toggleAssetEnabled,
   addLayer,
   duplicateLayer,
@@ -73,7 +85,26 @@ export function LeftSidebar({
   toggleLayerVisibility,
   deleteLayer,
 }: LeftSidebarProps) {
+  const [cropAssetId, setCropAssetId] = useState<string | null>(null);
   if (previewExpanded) return null;
+
+  const cropAsset = projectAssets.find(
+    (asset): asset is ImageSourceAsset =>
+      asset.kind === "image" && asset.id === cropAssetId,
+  ) ?? null;
+
+  const setImageFitMode = (asset: ImageSourceAsset, fitMode: ImageSourceFitMode) => {
+    const nextCrop =
+      fitMode === "custom" && !asset.crop ? getDefaultImageSourceCrop() : undefined;
+    if (nextCrop) {
+      void updateImageSourceFitMode(asset.id, fitMode, nextCrop);
+    } else {
+      void updateImageSourceFitMode(asset.id, fitMode);
+    }
+    if (fitMode === "custom" && !asset.crop) {
+      setCropAssetId(asset.id);
+    }
+  };
 
   return (
     <>
@@ -160,20 +191,24 @@ export function LeftSidebar({
                           </div>
                         ) : null}
                         {asset.kind === "image" ? (
-                          <div className="flex items-center justify-between gap-3 rounded-md bg-surface-muted px-3 py-2">
-                            <span className="text-xs text-text-muted">
-                              Natural crop
-                            </span>
-                            <Switch
-                              aria-label={`${asset.name} natural crop`}
-                              checked={asset.fitMode === "natural"}
-                              onCheckedChange={(checked) =>
-                                void updateImageSourceFitMode(
-                                  asset.id,
-                                  checked ? "natural" : "stretch",
-                                )
-                              }
-                            />
+                          <div className="grid grid-cols-3 gap-1 rounded-md bg-surface-muted p-1">
+                            {(["stretch", "natural", "custom"] as const).map(
+                              (fitMode) => (
+                                <Button
+                                  key={fitMode}
+                                  type="button"
+                                  variant={
+                                    asset.fitMode === fitMode ? "secondary" : "ghost"
+                                  }
+                                  size="sm"
+                                  className="h-7 px-1.5 text-[11px] capitalize"
+                                  aria-pressed={asset.fitMode === fitMode}
+                                  onClick={() => setImageFitMode(asset, fitMode)}
+                                >
+                                  {fitMode}
+                                </Button>
+                              ),
+                            )}
                           </div>
                         ) : null}
                       </div>
@@ -182,7 +217,9 @@ export function LeftSidebar({
                   onToggle={toggleAssetEnabled}
                   onRemove={(assetId) => void handleRemoveSource(assetId)}
                   onEdit={
-                    asset.kind === "image" ? undefined : openEditSourceDialog
+                    asset.kind === "image"
+                      ? (assetId) => setCropAssetId(assetId)
+                      : openEditSourceDialog
                   }
                   thumbnail={
                     <SourceThumbnail
@@ -241,6 +278,15 @@ export function LeftSidebar({
           </SortableContext>
         </DndContext>
       </PanelShell>
+
+      <SourceCropDialog
+        asset={cropAsset}
+        open={Boolean(cropAsset)}
+        onOpenChange={(open) => {
+          if (!open) setCropAssetId(null);
+        }}
+        onApply={updateImageSourceCrop}
+      />
     </>
   );
 }

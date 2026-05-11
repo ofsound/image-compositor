@@ -181,6 +181,7 @@ const asset: SourceAsset = {
   id: "asset_a",
   kind: "image",
   fitMode: "stretch",
+  crop: null,
   projectId: "project_test",
   name: "A",
   originalFileName: "a.jpg",
@@ -1336,6 +1337,63 @@ describe("renderProjectToCanvas", () => {
     )).toBe(true);
   });
 
+  it("uses custom image source crops before applying crop zoom", async () => {
+    const customAsset: SourceAsset = {
+      ...asset,
+      width: 200,
+      height: 100,
+      fitMode: "custom",
+      crop: {
+        x: 0.25,
+        y: 0.2,
+        width: 0.5,
+        height: 0.6,
+      },
+    };
+    const project = createProjectView("Custom Image Crop");
+    project.canvas.width = 100;
+    project.canvas.height = 100;
+    project.sourceIds = [customAsset.id];
+    project.layers[0]!.sourceIds = [customAsset.id];
+    project.layout.family = "grid";
+    project.layout.columns = 1;
+    project.layout.rows = 1;
+    project.layout.symmetryMode = "none";
+    project.layout.shapeMode = "rect";
+    project.compositing.overlap = 0;
+    project.effects.rotationJitter = 0;
+    project.effects.scaleJitter = 0;
+    project.effects.displacement = 0;
+    project.effects.distortion = 0;
+    project.effects.sharpen = 0;
+    project.effects.kaleidoscopeSegments = 1;
+    project.sourceMapping.cropZoom = 2;
+    project.sourceMapping.cropDistribution = "center";
+    project.sourceMapping.preserveAspect = true;
+
+    const context = createMockContext();
+    const canvas = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn(() => context),
+    } as unknown as HTMLCanvasElement;
+
+    await renderProjectToCanvas(
+      project,
+      [customAsset],
+      new Map([[customAsset.id, { asset: customAsset, bitmap: {} as ImageBitmap }]]),
+      canvas,
+    );
+
+    expect(context.drawImage).toHaveBeenCalled();
+    expect(context.drawImage.mock.calls.some((call) =>
+      call[1] === 75 &&
+      call[2] === 35 &&
+      call[3] === 50 &&
+      call[4] === 30,
+    )).toBe(true);
+  });
+
   it("uses centered cover crops for natural portrait and landscape image sources", async () => {
     const project = createProjectView("Natural Image Fit");
     project.canvas.width = 100;
@@ -1998,6 +2056,63 @@ describe("renderProjectToCanvas", () => {
 
     expect(transparentPixelIndex).not.toBe(15);
     expect(transparentPixelCount).toBe(1);
+  });
+
+  it("applies layer blur after pixel swap when both are active", async () => {
+    const project = createProjectView("Pixel Swap Blur Order");
+    project.canvas.width = 2;
+    project.canvas.height = 1;
+    project.effects.blur = 6;
+    project.layers[0]!.effects.blur = 6;
+    project.finish.pixelSwapDensity = 1;
+    project.finish.pixelSwapWidth = 1;
+    project.finish.pixelSwapHeight = 1;
+    project.layers[0]!.finish.pixelSwapDensity = 1;
+    project.layers[0]!.finish.pixelSwapWidth = 1;
+    project.layers[0]!.finish.pixelSwapHeight = 1;
+
+    const context = createMockContext();
+    const layerContext = createMockContext();
+    const blurContext = createMockContext();
+    layerContext.getImageData.mockImplementation(() => ({
+      data: new Uint8ClampedArray([
+        255, 0, 0, 255,
+        0, 0, 255, 255,
+      ]),
+      width: 2,
+      height: 1,
+    }) as ImageData);
+    const canvas = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn(() => context),
+    } as unknown as HTMLCanvasElement;
+    const layerCanvas = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn(() => layerContext),
+    } as unknown as HTMLCanvasElement;
+    const blurCanvas = {
+      width: 0,
+      height: 0,
+      getContext: vi.fn(() => blurContext),
+    } as unknown as HTMLCanvasElement;
+    const createElementSpy = vi
+      .spyOn(document, "createElement")
+      .mockReturnValueOnce(layerCanvas as never)
+      .mockReturnValueOnce(blurCanvas as never);
+
+    try {
+      await renderProjectToCanvas(project, [], new Map(), canvas);
+    } finally {
+      createElementSpy.mockRestore();
+    }
+
+    expect(layerContext.putImageData).toHaveBeenCalled();
+    expect(blurContext.filterAssignments).toContain("blur(6px)");
+    expect(
+      layerContext.putImageData.mock.invocationCallOrder[0],
+    ).toBeLessThan(blurContext.drawImage.mock.invocationCallOrder[0]!);
   });
 
   it("translates layer content by canvas width and height fractions on the direct composite path", async () => {

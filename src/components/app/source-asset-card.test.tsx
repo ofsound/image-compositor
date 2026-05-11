@@ -9,6 +9,7 @@ const imageAsset: SourceAsset = {
   id: "asset_a",
   kind: "image",
   fitMode: "stretch",
+  crop: null,
   projectId: "project_test",
   name: "Asset A",
   originalFileName: "asset-a.jpg",

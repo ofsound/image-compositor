@@ -926,17 +926,19 @@ function getSourceRect(
   const zoom = project.sourceMapping.cropZoom;
   const assetRatio = asset.width / asset.height;
   const rectRatio = targetRect.width / targetRect.height;
-  let sourceWidth = asset.width;
-  let sourceHeight = asset.height;
-  let sourceX = 0;
-  let sourceY = 0;
+  const customCrop =
+    asset.kind === "image" && asset.fitMode === "custom" ? asset.crop : null;
+  let sourceWidth = customCrop ? customCrop.width * asset.width : asset.width;
+  let sourceHeight = customCrop ? customCrop.height * asset.height : asset.height;
+  let sourceX = customCrop ? customCrop.x * asset.width : 0;
+  let sourceY = customCrop ? customCrop.y * asset.height : 0;
 
   const preserveAspect =
     asset.kind === "image"
       ? asset.fitMode === "natural"
       : project.sourceMapping.preserveAspect;
 
-  if (preserveAspect) {
+  if (preserveAspect && !customCrop) {
     if (assetRatio > rectRatio) {
       sourceHeight = asset.height;
       sourceWidth = sourceHeight * rectRatio;
@@ -2035,6 +2037,36 @@ function applyPixelSwap(
   return sourceCanvas;
 }
 
+function applyLayerBlur(
+  sourceCanvas: RenderCanvas,
+  blur: number,
+) {
+  const blurAmount = Math.max(0, blur);
+  if (blurAmount <= 0) {
+    return sourceCanvas;
+  }
+
+  const blurredCanvas = createRenderCanvas(sourceCanvas.width, sourceCanvas.height);
+  const blurredContext = getRenderContext(blurredCanvas);
+  blurredContext.filter = `blur(${blurAmount}px)`;
+  blurredContext.drawImage(sourceCanvas, 0, 0);
+  blurredContext.filter = "none";
+  return blurredCanvas;
+}
+
+function applyPostSwapLayerEffects(
+  sourceCanvas: RenderCanvas,
+  project: LayerRenderProject,
+) {
+  const blurredCanvas = applyLayerBlur(sourceCanvas, project.effects.blur);
+  applySharpen(
+    getRenderContext(blurredCanvas),
+    blurredCanvas,
+    project.effects.sharpen,
+  );
+  return blurredCanvas;
+}
+
 function smoothstep(edge0: number, edge1: number, value: number) {
   if (edge0 === edge1) {
     return value < edge0 ? 0 : 1;
@@ -2446,8 +2478,19 @@ async function renderCompositorLayer(
     return;
   }
 
+  const shouldDeferLayerEffects = layerProject.finish.pixelSwapDensity > 0;
+  const prePixelSwapLayer = shouldDeferLayerEffects
+    ? {
+        ...layer,
+        effects: {
+          ...layer.effects,
+          blur: 0,
+          sharpen: 0,
+        },
+      }
+    : layer;
   const neutralLayerProject = createLayerRenderProject(project, {
-    ...layer,
+    ...prePixelSwapLayer,
     compositing: {
       ...layer.compositing,
       blendMode: "source-over",
@@ -2460,8 +2503,11 @@ async function renderCompositorLayer(
   );
   await renderLayerToCanvas(neutralLayerProject, layerAssets, bitmaps, layerCanvas);
   const pixelSwappedLayerCanvas = applyPixelSwap(layerCanvas, layerProject, layer.id);
+  const layerEffectedCanvas = shouldDeferLayerEffects
+    ? applyPostSwapLayerEffects(pixelSwappedLayerCanvas, layerProject)
+    : pixelSwappedLayerCanvas;
   const colorAdjustedLayerCanvas = applyLayerColorAdjustments(
-    pixelSwappedLayerCanvas,
+    layerEffectedCanvas,
     layerProject,
   );
   const finishedLayerCanvas = applyFinishNoise(

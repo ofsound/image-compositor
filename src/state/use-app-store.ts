@@ -64,6 +64,7 @@ import type {
   GradientSourceAsset,
   ImageSourceAsset,
   ImageSourceFitMode,
+  NormalizedRect,
   PerlinSourceAsset,
   ProjectDocument,
   ProjectSnapshot,
@@ -300,6 +301,11 @@ interface AppState {
   updateImageSourceFitMode: (
     assetId: string,
     fitMode: ImageSourceFitMode,
+    crop?: NormalizedRect | null,
+  ) => Promise<void>;
+  updateImageSourceCrop: (
+    assetId: string,
+    crop: NormalizedRect | null,
   ) => Promise<void>;
   updateGeneratedSource: (
     assetId: string,
@@ -1956,7 +1962,7 @@ export const useAppStore = create<AppState>((set, get) => {
     );
   },
 
-  async updateImageSourceFitMode(assetId, fitMode) {
+  async updateImageSourceFitMode(assetId, fitMode, crop) {
     await runWorkspaceAction(
       async () => {
         const activeProject = getActiveProject(get());
@@ -1968,12 +1974,15 @@ export const useAppStore = create<AppState>((set, get) => {
             entry.projectId === activeProject.id &&
             entry.kind === "image",
         );
-        if (!asset || asset.fitMode === fitMode) return;
+        if (!asset) return;
+        const nextCrop = crop === undefined ? asset.crop : crop;
+        if (asset.fitMode === fitMode && asset.crop === nextCrop) return;
 
         const updatedAsset: PreparedAssetRecord = {
           asset: {
             ...asset,
             fitMode,
+            crop: nextCrop,
           },
           blobs: {
             original: null,
@@ -2024,6 +2033,75 @@ export const useAppStore = create<AppState>((set, get) => {
           error instanceof Error
             ? `Could not update source fit: ${error.message}`
             : "Could not update source fit.",
+      },
+    );
+  },
+
+  async updateImageSourceCrop(assetId, crop) {
+    await runWorkspaceAction(
+      async () => {
+        const activeProject = getActiveProject(get());
+        if (!activeProject) return;
+
+        const asset = get().assets.find(
+          (entry): entry is ImageSourceAsset =>
+            entry.id === assetId &&
+            entry.projectId === activeProject.id &&
+            entry.kind === "image",
+        );
+        if (!asset) return;
+
+        const updatedAsset: PreparedAssetRecord = {
+          asset: {
+            ...asset,
+            fitMode: "custom",
+            crop,
+          },
+          blobs: {
+            original: null,
+            normalized: null,
+            preview: null,
+          },
+        };
+        const updatedProject = normalizeProjectDocument({
+          ...createProjectMutationBase(activeProject),
+          updatedAt: new Date().toISOString(),
+        });
+
+        await persistAssetUpdatesAtomically({
+          projectDoc: updatedProject,
+          assets: [updatedAsset],
+        });
+
+        set((state) => {
+          const historyByProject = clearProjectHistory(
+            state.historyByProject,
+            updatedProject.id,
+          );
+          return {
+            assets: sortAssetsByCreated(
+              state.assets.map((entry) =>
+                entry.id === updatedAsset.asset.id ? updatedAsset.asset : entry,
+              ),
+            ),
+            projects: sortByUpdated(
+              state.projects.map((entry) =>
+                entry.id === updatedProject.id ? updatedProject : entry,
+              ),
+            ),
+            historyByProject,
+            status: "Image source crop updated.",
+            ...getHistoryFlags(historyByProject, state.activeProjectId),
+          };
+        });
+      },
+      {
+        busy: true,
+        startStatus: "Updating image source crop…",
+        getErrorStatus: (error) =>
+          error instanceof Error
+            ? `Could not update image source crop: ${error.message}`
+            : "Could not update image source crop.",
       },
     );
   },

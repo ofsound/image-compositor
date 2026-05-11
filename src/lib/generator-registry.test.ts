@@ -15,6 +15,7 @@ const assets: SourceAsset[] = [
     id: "asset_a",
     kind: "image",
     fitMode: "stretch",
+    crop: null,
     projectId: "project_test",
     name: "A",
     originalFileName: "a.jpg",
@@ -34,6 +35,7 @@ const assets: SourceAsset[] = [
     id: "asset_b",
     kind: "image",
     fitMode: "stretch",
+    crop: null,
     projectId: "project_test",
     name: "B",
     originalFileName: "b.jpg",
@@ -847,10 +849,12 @@ describe("buildRenderSlices", () => {
     const naturalAsset: ImageSourceAsset = {
       ...baseAsset,
       fitMode: "natural",
+      crop: null,
     };
     const stretchAsset: ImageSourceAsset = {
       ...baseAsset,
       fitMode: "stretch",
+      crop: null,
     };
     const project = createProjectView("Distributed Natural Crop");
     project.sourceIds = [naturalAsset.id];
@@ -877,6 +881,47 @@ describe("buildRenderSlices", () => {
       width: 1,
       height: 1,
     });
+  });
+
+  it("distributes crops inside custom image source crop bounds", () => {
+    const customAsset: ImageSourceAsset = {
+      ...(assets[0] as ImageSourceAsset),
+      fitMode: "custom",
+      crop: {
+        x: 0.2,
+        y: 0.1,
+        width: 0.5,
+        height: 0.6,
+      },
+    };
+    const project = createProjectView("Distributed Custom Crop");
+    project.sourceIds = [customAsset.id];
+    project.layout.family = "grid";
+    project.layout.columns = 2;
+    project.layout.rows = 1;
+    project.layout.symmetryMode = "none";
+    project.sourceMapping.cropDistribution = "distributed";
+    project.sourceMapping.preserveAspect = false;
+    project.sourceMapping.cropZoom = 1;
+
+    const slices = buildRenderSlices(project, [customAsset]);
+
+    expect(slices.map((slice) => slice.sourceCrop)).toEqual(
+      expect.arrayContaining([
+        {
+          x: 0.2,
+          y: expect.closeTo(0.1, 6),
+          width: 0.25,
+          height: 0.6,
+        },
+        {
+          x: expect.closeTo(0.45, 6),
+          y: expect.closeTo(0.1, 6),
+          width: 0.25,
+          height: 0.6,
+        },
+      ]),
+    );
   });
 
   it("builds staggered interlock grids with alternating triangle rotation", () => {

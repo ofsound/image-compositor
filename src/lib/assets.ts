@@ -8,6 +8,7 @@ import type {
   GradientMode,
   GradientSourceRecipe,
   ImageSourceFitMode,
+  NormalizedRect,
   PerlinSourceRecipe,
   ProcessedAssetPayload,
   ReactionSourceRecipe,
@@ -148,6 +149,7 @@ export interface PreparedAssetRecord {
 type LegacySourceAsset = Omit<SourceAsset, "kind"> & {
   kind?: SourceKind | "noise";
   fitMode?: unknown;
+  crop?: unknown;
   recipe?: unknown;
 };
 
@@ -168,9 +170,38 @@ function clampRange(value: number, min: number, max: number, fallback: number) {
 }
 
 function normalizeImageSourceFitMode(value: unknown): ImageSourceFitMode {
-  return value === "natural" || value === "stretch"
+  return value === "custom" || value === "natural" || value === "stretch"
     ? value
     : DEFAULT_IMAGE_SOURCE_FIT_MODE;
+}
+
+export function normalizeImageSourceCrop(value: unknown): NormalizedRect | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const rect = value as Partial<NormalizedRect>;
+  const x = clampNormalized(typeof rect.x === "number" ? rect.x : Number.NaN, 0);
+  const y = clampNormalized(typeof rect.y === "number" ? rect.y : Number.NaN, 0);
+  const width = clampRange(
+    typeof rect.width === "number" ? rect.width : Number.NaN,
+    0.001,
+    1,
+    1,
+  );
+  const height = clampRange(
+    typeof rect.height === "number" ? rect.height : Number.NaN,
+    0.001,
+    1,
+    1,
+  );
+
+  return {
+    x: clamp(x, 0, 1 - width),
+    y: clamp(y, 0, 1 - height),
+    width,
+    height,
+  };
 }
 
 function getDefaultGradientRecipe(): GradientSourceRecipe {
@@ -1265,6 +1296,9 @@ export function getSourceContentSignature(asset: SourceAsset) {
     asset.id,
     asset.kind,
     asset.kind === "image" ? asset.fitMode : "",
+    asset.kind === "image" && asset.crop
+      ? `${asset.crop.x},${asset.crop.y},${asset.crop.width},${asset.crop.height}`
+      : "",
     asset.normalizedPath,
     asset.previewPath,
     asset.averageColor,
@@ -1568,6 +1602,7 @@ export function normalizeSourceAsset(asset: LegacySourceAsset): SourceAsset {
     ...asset,
     kind: "image",
     fitMode: normalizeImageSourceFitMode(asset.fitMode),
+    crop: normalizeImageSourceCrop(asset.crop),
   };
 }
 
@@ -1619,6 +1654,7 @@ export async function persistProcessedAsset(
       id: assetId,
       kind: "image",
       fitMode: DEFAULT_IMAGE_SOURCE_FIT_MODE,
+      crop: null,
       projectId,
       name: file.name.replace(/\.[^.]+$/, ""),
       originalFileName: file.name,

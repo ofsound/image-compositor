@@ -3894,6 +3894,23 @@ function applyCropZoom(crop: NormalizedRect, bounds: NormalizedRect, zoom: numbe
   };
 }
 
+function getAssetCropBounds(asset: SourceAsset | undefined): NormalizedRect {
+  if (asset?.kind === "image" && asset.fitMode === "custom" && asset.crop) {
+    return asset.crop;
+  }
+
+  return { x: 0, y: 0, width: 1, height: 1 };
+}
+
+function mapCropToBounds(crop: NormalizedRect, bounds: NormalizedRect): NormalizedRect {
+  return {
+    x: bounds.x + crop.x * bounds.width,
+    y: bounds.y + crop.y * bounds.height,
+    width: crop.width * bounds.width,
+    height: crop.height * bounds.height,
+  };
+}
+
 function shouldPreserveAssetAspect(
   project: LayerRenderProject,
   asset: SourceAsset | undefined,
@@ -4000,19 +4017,21 @@ function assignDistributedCrops(
           ? { x: 0, y: cursor, width: 1, height: span }
           : { x: cursor, y: 0, width: span, height: 1 };
       const asset = assets.find((entry) => entry.id === slice.assetId);
+      const assetBounds = getAssetCropBounds(asset);
+      const boundedAtlasCell = mapCropToBounds(atlasCell, assetBounds);
       const baseCrop = shouldPreserveAssetAspect(project, asset)
         ? fitCropToAspect(
-            atlasCell,
+            boundedAtlasCell,
             getNormalizedCropAspectRatio(
               asset,
               slice.rect.width / slice.rect.height,
             ),
           )
-        : atlasCell;
+        : boundedAtlasCell;
 
       cropBySliceId.set(
         slice.id,
-        applyCropZoom(baseCrop, atlasCell, project.sourceMapping.cropZoom),
+        applyCropZoom(baseCrop, boundedAtlasCell, project.sourceMapping.cropZoom),
       );
       cursor += span;
     }
@@ -4049,18 +4068,20 @@ function assignDistributedCrops(
         width: 1 / atlas.columns,
         height: 1 / atlas.rows,
       };
+      const assetBounds = getAssetCropBounds(asset);
+      const boundedAtlasCell = mapCropToBounds(atlasCell, assetBounds);
       const baseCrop = shouldPreserveAssetAspect(project, asset)
         ? fitCropToAspect(
-            atlasCell,
+            boundedAtlasCell,
             getNormalizedCropAspectRatio(
               asset,
               slice.rect.width / slice.rect.height,
             ),
           )
-        : atlasCell;
+        : boundedAtlasCell;
       cropBySliceId.set(
         slice.id,
-        applyCropZoom(baseCrop, atlasCell, project.sourceMapping.cropZoom),
+        applyCropZoom(baseCrop, boundedAtlasCell, project.sourceMapping.cropZoom),
       );
     }
   }

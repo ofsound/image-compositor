@@ -32,6 +32,7 @@ function createImageAsset(projectId: string, id: string): SourceAsset {
     id,
     kind: "image",
     fitMode: "stretch",
+    crop: null,
     projectId,
     name: id,
     originalFileName: `${id}.png`,

@@ -456,6 +456,12 @@ function expectSliderHidden(label: string) {
   expect(screen.queryByLabelText(label)).not.toBeInTheDocument();
 }
 
+function selectInspectorTab(name: "Pattern" | "Cells" | "Layer" | "Finish") {
+  const tab = screen.getByRole("tab", { name });
+  fireEvent.pointerDown(tab, { button: 0, ctrlKey: false });
+  fireEvent.click(tab);
+}
+
 describe("App layer thumbnails", () => {
   const revokeObjectUrlSpy = vi.fn();
 
@@ -672,6 +678,7 @@ describe("App conditional sliders", () => {
     expectSliderHidden("Symmetry Center Y");
     expectSliderHidden("Symmetry Angle Offset");
     expectSliderHidden("Clone Drift");
+    selectInspectorTab("Cells");
     expectSliderEnabled("Hide Percentage");
     expectSliderEnabled("Letterbox");
     expect(screen.queryByText("Tone Direction")).not.toBeInTheDocument();
@@ -727,6 +734,7 @@ describe("App conditional sliders", () => {
     expectSliderEnabled("Symmetry Center Y");
     expectSliderHidden("Symmetry Angle Offset");
     expectSliderEnabled("Clone Drift");
+    selectInspectorTab("Cells");
     expectSliderEnabled("Hide Percentage");
     expectSliderEnabled("Letterbox");
     expectSliderHidden("Distribution");
@@ -835,6 +843,7 @@ describe("App conditional sliders", () => {
     expectSliderEnabled("Symmetry Center Y");
     expectSliderEnabled("Symmetry Angle Offset");
     expectSliderEnabled("Clone Drift");
+    selectInspectorTab("Cells");
     expectSliderEnabled("Hide Percentage");
     expectSliderEnabled("Letterbox");
     expect(screen.getByText("Tone Direction")).toBeInTheDocument();
@@ -873,6 +882,7 @@ describe("App conditional sliders", () => {
     expectSliderEnabled("Symmetry Center Y");
     expectSliderHidden("Symmetry Angle Offset");
     expectSliderEnabled("Clone Drift");
+    selectInspectorTab("Cells");
     expectSliderEnabled("Hide Percentage");
     expectSliderEnabled("Letterbox");
     expect(screen.queryByText("Tone Direction")).not.toBeInTheDocument();
@@ -885,6 +895,7 @@ describe("App conditional sliders", () => {
     const user = userEvent.setup();
     renderApp();
 
+    selectInspectorTab("Cells");
     const assignmentTrigger = screen.getByText("anti-repeat").closest("button");
     expect(assignmentTrigger).not.toBeNull();
     await user.click(assignmentTrigger!);
@@ -1171,6 +1182,7 @@ describe("App conditional sliders", () => {
     expectSliderHidden("Split Bias");
     expectSliderEnabled("Density");
     expectSliderEnabled("Distribution");
+    selectInspectorTab("Cells");
     expectSliderEnabled("Hide Percentage");
     expectSliderEnabled("Letterbox");
   });
@@ -1209,6 +1221,7 @@ describe("App conditional sliders", () => {
     expectSliderEnabled("Perspective");
     expectSliderEnabled("Billboard");
     expectSliderEnabled("Z Jitter");
+    selectInspectorTab("Cells");
     expectSliderEnabled("Rotation Jitter");
     expectSliderEnabled("Scale Jitter");
     expectSliderEnabled("Distortion");
@@ -1232,6 +1245,7 @@ describe("App conditional sliders", () => {
 
     render(<App />);
 
+    selectInspectorTab("Cells");
     expect(screen.getByText("Algorithmic Variation")).toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: "Modulation Target" })).toBeInTheDocument();
     expect(screen.getByRole("combobox", { name: "Modulation Pattern" })).toBeInTheDocument();
@@ -1341,6 +1355,7 @@ describe("App conditional sliders", () => {
 
     render(<App />);
 
+    selectInspectorTab("Finish");
     expect(screen.getByRole("switch", { name: "Layer 3D" })).not.toBeChecked();
     expect(screen.getByLabelText("3D Rotate X")).toHaveAttribute("data-disabled");
     expect(screen.getByLabelText("3D Rotate Y")).toHaveAttribute("data-disabled");
@@ -1456,30 +1471,39 @@ describe("App inspector grouping", () => {
       name: "Project Settings",
     });
 
-    expect(within(layerControls).getByText("Editing Layer 1")).toBeInTheDocument();
+    expect(screen.getByText("Editing Layer 1")).toBeInTheDocument();
+    expect(within(layerControls).queryByText("Editing Layer 1")).not.toBeInTheDocument();
     expect(within(layerControls).getByText("Shape")).toBeInTheDocument();
+    expect(within(layerControls).queryByText("Assignment")).not.toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Pattern" })).toHaveAttribute(
+      "data-state",
+      "active",
+    );
+
+    selectInspectorTab("Cells");
     expect(within(layerControls).getByText("Assignment")).toBeInTheDocument();
     expect(within(layerControls).getByText("Motion")).toBeInTheDocument();
-    expect(within(layerControls).getByText("Shadow and Glow")).toBeInTheDocument();
-    expect(within(layerControls).getByText("Layer Finish")).toBeInTheDocument();
     const getInspectorGroup = (title: string) => {
       const group = within(layerControls).getByText(title).closest("section");
       expect(group).not.toBeNull();
       return group as HTMLElement;
     };
     const motionGroup = getInspectorGroup("Motion");
-    const shadowGlowGroup = getInspectorGroup("Shadow and Glow");
-    const layerFinishGroup = getInspectorGroup("Layer Finish");
+    expect(within(motionGroup).getByLabelText("Rotation Jitter")).toBeInTheDocument();
     expect(within(motionGroup).queryByLabelText("Blur")).not.toBeInTheDocument();
     expect(within(motionGroup).queryByLabelText("Sharpen")).not.toBeInTheDocument();
-    expect(within(shadowGlowGroup).getByLabelText("Drop Shadow X")).toBeInTheDocument();
-    expect(within(shadowGlowGroup).getByLabelText("Outer Glow X")).toBeInTheDocument();
-    expect(within(shadowGlowGroup).getByLabelText("Inner Glow X")).toBeInTheDocument();
-    expect(within(shadowGlowGroup).getByLabelText("Inner Shadow X")).toBeInTheDocument();
-    expect(within(layerFinishGroup).getByLabelText("Blur")).toBeInTheDocument();
-    expect(within(layerFinishGroup).getByLabelText("Sharpen")).toBeInTheDocument();
+
+    selectInspectorTab("Finish");
+    const finishShadowGlowGroup = getInspectorGroup("Shadow and Glow");
+    const finishLayerFinishGroup = getInspectorGroup("Layer Finish");
+    expect(within(finishShadowGlowGroup).getByLabelText("Drop Shadow X")).toBeInTheDocument();
+    expect(within(finishShadowGlowGroup).getByLabelText("Outer Glow X")).toBeInTheDocument();
+    expect(within(finishShadowGlowGroup).getByLabelText("Inner Glow X")).toBeInTheDocument();
+    expect(within(finishShadowGlowGroup).getByLabelText("Inner Shadow X")).toBeInTheDocument();
+    expect(within(finishLayerFinishGroup).getByLabelText("Blur")).toBeInTheDocument();
+    expect(within(finishLayerFinishGroup).getByLabelText("Sharpen")).toBeInTheDocument();
     expect(
-      within(layerFinishGroup).queryByLabelText("Drop Shadow X"),
+      within(finishLayerFinishGroup).queryByLabelText("Drop Shadow X"),
     ).not.toBeInTheDocument();
     expect(
       within(layerControls).queryByText("Canvas Background"),
@@ -1501,6 +1525,50 @@ describe("App inspector grouping", () => {
     expect(
       screen.queryByRole("heading", { name: "Project Settings" }),
     ).not.toBeInTheDocument();
+  });
+
+  it("remembers the active inspector tab per selected layer", () => {
+    const state = createStoreState();
+    const firstLayer = state.projects[0]!.layers[0]!;
+    state.projects[0]!.layers.push({
+      ...structuredClone(firstLayer),
+      id: "layer_two",
+      name: "Layer 2",
+    });
+    mockStoreState(state);
+
+    const { rerender } = render(<App />);
+
+    selectInspectorTab("Finish");
+    expect(screen.getByRole("tab", { name: "Finish" })).toHaveAttribute(
+      "data-state",
+      "active",
+    );
+
+    state.projects = [{ ...state.projects[0]!, selectedLayerId: "layer_two" }];
+    mockStoreState(state);
+    rerender(<App />);
+    expect(screen.getByRole("tab", { name: "Pattern" })).toHaveAttribute(
+      "data-state",
+      "active",
+    );
+
+    selectInspectorTab("Cells");
+    state.projects = [{ ...state.projects[0]!, selectedLayerId: firstLayer.id }];
+    mockStoreState(state);
+    rerender(<App />);
+    expect(screen.getByRole("tab", { name: "Finish" })).toHaveAttribute(
+      "data-state",
+      "active",
+    );
+
+    state.projects = [{ ...state.projects[0]!, selectedLayerId: "layer_two" }];
+    mockStoreState(state);
+    rerender(<App />);
+    expect(screen.getByRole("tab", { name: "Cells" })).toHaveAttribute(
+      "data-state",
+      "active",
+    );
   });
 
   it("renders sources, layers, and preview in main-grid order", () => {
@@ -2097,6 +2165,7 @@ describe("App kaleidoscope controls", () => {
   it("hides advanced kaleidoscope controls when the effect is inactive", () => {
     renderApp({ kaleidoscopeSegments: 1 });
 
+    selectInspectorTab("Layer");
     expectSliderEnabled("Kaleidoscope");
     expectSliderHidden("Center X");
     expectSliderHidden("Center Y");
@@ -2111,6 +2180,7 @@ describe("App kaleidoscope controls", () => {
   it("shows advanced kaleidoscope controls when segments exceed one", () => {
     renderApp({ kaleidoscopeSegments: 3 });
 
+    selectInspectorTab("Layer");
     expectSliderEnabled("Kaleidoscope");
     expectSliderEnabled("Center X");
     expectSliderEnabled("Center Y");

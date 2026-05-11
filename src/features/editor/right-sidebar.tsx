@@ -1,5 +1,5 @@
 import { useRef, useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { SourceColorField } from "@/components/app/source-color-field";
 import { Textarea } from "@/components/ui/textarea";
@@ -10,6 +10,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   SliderField,
   ControlBlock,
@@ -112,6 +113,19 @@ interface RightSidebarProps {
   showGeometryControls: boolean;
   geometryOptions: GeometryShape[];
   geometryValue: GeometryShape;
+}
+
+type InspectorTab = "pattern" | "cells" | "layer" | "finish";
+
+const INSPECTOR_TABS: Array<{ value: InspectorTab; label: string }> = [
+  { value: "pattern", label: "Pattern" },
+  { value: "cells", label: "Cells" },
+  { value: "layer", label: "Layer" },
+  { value: "finish", label: "Finish" },
+];
+
+function isInspectorTab(value: string): value is InspectorTab {
+  return INSPECTOR_TABS.some((tab) => tab.value === value);
 }
 
 const ELEMENT_MODULATION_TARGET_OPTIONS: Array<{
@@ -288,8 +302,19 @@ export function RightSidebar({
   const [svgUploadError, setSvgUploadError] = useState<string | null>(null);
   const [selectedModulationTarget, setSelectedModulationTarget] =
     useState<ElementModulationTarget>("rotation");
+  const [inspectorTabsByLayerId, setInspectorTabsByLayerId] = useState<
+    Record<string, InspectorTab>
+  >({});
 
   if (previewExpanded) return null;
+
+  const selectedLayerId = activeProjectView.selectedLayerId ?? "project";
+  const activeInspectorTab =
+    inspectorTabsByLayerId[selectedLayerId] ?? "pattern";
+  const isPatternTab = activeInspectorTab === "pattern";
+  const isCellsTab = activeInspectorTab === "cells";
+  const isLayerTab = activeInspectorTab === "layer";
+  const isFinishTab = activeInspectorTab === "finish";
 
   const fractalIterationMax = getFractalIterationLimit(
     activeProjectView.layout.fractalVariant,
@@ -332,29 +357,46 @@ export function RightSidebar({
       },
     }));
   };
+  const handleInspectorTabChange = (value: string) => {
+    if (!isInspectorTab(value)) return;
+
+    setInspectorTabsByLayerId((tabsByLayerId) => ({
+      ...tabsByLayerId,
+      [selectedLayerId]: value,
+    }));
+  };
 
   return (
     <div className="flex min-h-0 flex-col gap-3">
       <section aria-label="Inspector" className="flex min-h-0 flex-1 flex-col">
         <Card className="flex min-h-0 flex-1 flex-col overflow-hidden">
-          <CardHeader>
-            <CardTitle>Inspector</CardTitle>
+          <Tabs
+            value={activeInspectorTab}
+            onValueChange={handleInspectorTabChange}
+            className="flex min-h-0 flex-1 flex-col"
+          >
+          <CardHeader className="gap-3">
+            <div className="rounded-md border border-border-subtle bg-surface-sunken/70 px-3 py-2.5">
+              <div className="text-sm font-medium text-text">
+                Editing {inspectorLayerName}
+              </div>
+            </div>
+            <TabsList className="grid w-full grid-cols-4">
+              {INSPECTOR_TABS.map((tab) => (
+                <TabsTrigger
+                  key={tab.value}
+                  value={tab.value}
+                  onClick={() => handleInspectorTabChange(tab.value)}
+                >
+                  {tab.label}
+                </TabsTrigger>
+              ))}
+            </TabsList>
           </CardHeader>
           <CardContent className="flex min-h-0 flex-1 flex-col overflow-y-auto px-3 pb-3">
             <section aria-label="Layer Controls" className="space-y-4">
-              <div className="rounded-md border border-border-subtle bg-surface-sunken/70 px-3 py-2.5">
-                <div
-                  id="layer-controls-heading"
-                  className="font-mono text-[10px] font-medium uppercase tracking-[0.08em] text-text-muted"
-                >
-                  Layer Controls
-                </div>
-                <div className="mt-1 text-sm font-medium text-text">
-                  Editing {inspectorLayerName}
-                </div>
-              </div>
-
               <div className="grid grid-cols-1 gap-3 xl:grid-cols-2 [grid-auto-flow:dense]">
+                {isPatternTab ? (
                 <InspectorGroup title="Shape">
                   <InspectorFieldGrid className="sm:grid-cols-2">
                     <ControlBlock label="Family">
@@ -507,8 +549,9 @@ export function RightSidebar({
                     ) : null}
                   </InspectorFieldGrid>
                 </InspectorGroup>
+                ) : null}
 
-                {isDrawFamily ? (
+                {isPatternTab && isDrawFamily ? (
                   <InspectorGroup title="Brush">
                     <InspectorFieldGrid>
                       <SliderField
@@ -549,7 +592,7 @@ export function RightSidebar({
                   </InspectorGroup>
                 ) : null}
 
-                {isSvgShapeMode ? (
+                {isPatternTab && isSvgShapeMode ? (
                   <InspectorGroup title="SVG">
                     <InspectorFieldGrid className="sm:grid-cols-2">
                       <ControlBlock label="Shape File" className="sm:col-span-2">
@@ -834,7 +877,7 @@ export function RightSidebar({
                   </InspectorGroup>
                 ) : null}
 
-                {isWordsFamily || isTextShapeMode ? (
+                {isPatternTab && (isWordsFamily || isTextShapeMode) ? (
                   <InspectorGroup title={isWordsFamily ? "Words" : "Text"}>
                     <InspectorFieldGrid className="sm:grid-cols-2">
                       {isWordsFamily ? (
@@ -932,7 +975,7 @@ export function RightSidebar({
                   </InspectorGroup>
                 ) : null}
 
-                {isGridFamily ? (
+                {isPatternTab && isGridFamily ? (
                   <InspectorGroup title="Grid">
                     <InspectorFieldGrid className="sm:grid-cols-2">
                       <SliderField
@@ -1029,7 +1072,7 @@ export function RightSidebar({
                   </InspectorGroup>
                 ) : null}
 
-                {isStripsFamily ? (
+                {isPatternTab && isStripsFamily ? (
                   <InspectorGroup title="Strips">
                     <InspectorFieldGrid>
                       <SliderField
@@ -1272,7 +1315,7 @@ export function RightSidebar({
                   </InspectorGroup>
                 ) : null}
 
-                {isBlocksFamily ? (
+                {isPatternTab && isBlocksFamily ? (
                   <InspectorGroup title="Blocks">
                     <InspectorFieldGrid className="sm:grid-cols-2">
                       <SliderField
@@ -1374,7 +1417,7 @@ export function RightSidebar({
                   </InspectorGroup>
                 ) : null}
 
-                {isRadialFamily ? (
+                {isPatternTab && isRadialFamily ? (
                   <InspectorGroup title="Radial">
                     <InspectorFieldGrid className="sm:grid-cols-2">
                       <SliderField
@@ -1500,7 +1543,7 @@ export function RightSidebar({
                   </InspectorGroup>
                 ) : null}
 
-                {isOrganicFamily ? (
+                {isPatternTab && isOrganicFamily ? (
                   <InspectorGroup title="Organic">
                     <InspectorFieldGrid>
                       <SliderField
@@ -1546,7 +1589,7 @@ export function RightSidebar({
                   </InspectorGroup>
                 ) : null}
 
-                {isFlowFamily ? (
+                {isPatternTab && isFlowFamily ? (
                   <InspectorGroup title="Flow">
                     <InspectorFieldGrid>
                       <SliderField
@@ -1647,7 +1690,7 @@ export function RightSidebar({
                   </InspectorGroup>
                 ) : null}
 
-                {isThreeDFamily ? (
+                {isPatternTab && isThreeDFamily ? (
                   <InspectorGroup title="3D Scene" className="xl:col-span-2">
                     <InspectorFieldGrid className="sm:grid-cols-2">
                       <SliderField
@@ -1882,7 +1925,7 @@ export function RightSidebar({
                   </InspectorGroup>
                 ) : null}
 
-                {isFractalFamily ? (
+                {isPatternTab && isFractalFamily ? (
                   <InspectorGroup title="Fractal" className="xl:col-span-2">
                     <InspectorFieldGrid className="sm:grid-cols-2">
                       <ControlBlock
@@ -2329,7 +2372,7 @@ export function RightSidebar({
                   </InspectorGroup>
                 ) : null}
 
-                {isCurvesFamily ? (
+                {isPatternTab && isCurvesFamily ? (
                   <InspectorGroup title="Curves" className="xl:col-span-2">
                     <InspectorFieldGrid className="sm:grid-cols-2">
                       <ControlBlock
@@ -2895,7 +2938,7 @@ export function RightSidebar({
                   </InspectorGroup>
                 ) : null}
 
-                {!isDrawFamily ? (
+                {isPatternTab && !isDrawFamily ? (
                   <InspectorGroup title="Symmetry">
                     <InspectorFieldGrid>
                       <ControlBlock label="Symmetry" className="sm:col-span-2">
@@ -3041,7 +3084,7 @@ export function RightSidebar({
                   </InspectorGroup>
                 ) : null}
 
-                {!isDrawFamily ? (
+                {isCellsTab && !isDrawFamily ? (
                   <InspectorGroup title="Visibility">
                     <InspectorFieldGrid>
                       <SliderField
@@ -3084,6 +3127,7 @@ export function RightSidebar({
                   </InspectorGroup>
                 ) : null}
 
+                {isLayerTab ? (
                 <InspectorGroup title="Position">
                   <InspectorFieldGrid>
                     <SliderField
@@ -3143,7 +3187,9 @@ export function RightSidebar({
                     />
                   </InspectorFieldGrid>
                 </InspectorGroup>
+                ) : null}
 
+                {isCellsTab ? (
                 <InspectorGroup title="Assignment">
                   <InspectorFieldGrid>
                     <ControlBlock
@@ -3232,7 +3278,9 @@ export function RightSidebar({
                     ) : null}
                   </InspectorFieldGrid>
                 </InspectorGroup>
+                ) : null}
 
+                {isCellsTab ? (
                 <InspectorGroup title="Crop">
                   <InspectorFieldGrid>
                     <ControlBlock label="Crop Distribution">
@@ -3304,7 +3352,9 @@ export function RightSidebar({
                     </ControlBlock>
                   </InspectorFieldGrid>
                 </InspectorGroup>
+                ) : null}
 
+                {isLayerTab ? (
                 <InspectorGroup title="Blend">
                   <InspectorFieldGrid>
                     <ControlBlock label="Blend Mode" className="sm:col-span-2">
@@ -3369,7 +3419,9 @@ export function RightSidebar({
                     />
                   </InspectorFieldGrid>
                 </InspectorGroup>
+                ) : null}
 
+                {isCellsTab ? (
                 <InspectorGroup title="Motion">
                   <InspectorFieldGrid>
                     <SliderField
@@ -3588,7 +3640,9 @@ export function RightSidebar({
                     </ControlBlock>
                   </InspectorFieldGrid>
                 </InspectorGroup>
+                ) : null}
 
+                {isLayerTab ? (
                 <InspectorGroup title="Kaleidoscope">
                   <InspectorFieldGrid>
                     <SliderField
@@ -3769,7 +3823,9 @@ export function RightSidebar({
                     ) : null}
                   </InspectorFieldGrid>
                 </InspectorGroup>
+                ) : null}
 
+                {isFinishTab ? (
                 <InspectorGroup title="Shadow and Glow" className="xl:col-span-2">
                   <InspectorFieldGrid className="sm:grid-cols-2">
                     {SHADOW_GLOW_FIELD_CONFIGS.map((effect) => (
@@ -3838,7 +3894,9 @@ export function RightSidebar({
                     ))}
                   </InspectorFieldGrid>
                 </InspectorGroup>
+                ) : null}
 
+                {isFinishTab ? (
                 <InspectorGroup title="Layer Finish" className="xl:col-span-2">
                   <InspectorFieldGrid className="sm:grid-cols-2">
                     <SliderField
@@ -4530,9 +4588,11 @@ export function RightSidebar({
                     />
                   </InspectorFieldGrid>
                 </InspectorGroup>
+                ) : null}
               </div>
             </section>
           </CardContent>
+          </Tabs>
         </Card>
       </section>
     </div>

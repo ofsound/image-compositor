@@ -1406,6 +1406,27 @@ describe("App conditional sliders", () => {
     expect(nextProject.layout.organicVariation).toBe(4096);
   });
 
+  it("stores overlap from the cells crop group", () => {
+    const state = createStoreState({
+      family: "grid",
+      shapeMode: "rect",
+      symmetryMode: "none",
+      strategy: "random",
+    });
+    mockStoreState(state);
+
+    render(<App />);
+
+    selectInspectorTab("Cells");
+    fireEvent.keyDown(screen.getByLabelText("Overlap"), { key: "End" });
+
+    expect(state.updateProject).toHaveBeenCalledTimes(1);
+
+    const [[update]] = state.updateProject.mock.calls;
+    const nextProject = createProjectEditorView(update(structuredClone(state.projects[0]!)));
+    expect(nextProject.compositing.overlap).toBe(1);
+  });
+
   it("shows a side-by-side source mix area for enabled sources only", () => {
     renderApp({
       assets: [
@@ -1493,9 +1514,22 @@ describe("App inspector grouping", () => {
       return group as HTMLElement;
     };
     const motionGroup = getInspectorGroup("Motion");
+    const cropGroup = getInspectorGroup("Crop");
+    const cropControlLabels = Array.from(cropGroup.querySelectorAll("label")).map(
+      (node) => node.textContent,
+    );
     expect(within(motionGroup).getByLabelText("Rotation Jitter")).toBeInTheDocument();
     expect(within(motionGroup).queryByLabelText("Blur")).not.toBeInTheDocument();
     expect(within(motionGroup).queryByLabelText("Sharpen")).not.toBeInTheDocument();
+    expect(cropControlLabels[0]).toBe("Overlap");
+    expect(within(cropGroup).getByLabelText("Overlap")).toBeInTheDocument();
+    expect(within(cropGroup).getByText("Crop Distribution")).toBeInTheDocument();
+
+    selectInspectorTab("Layer");
+    const blendGroup = getInspectorGroup("Blend");
+    expect(within(blendGroup).getByText("Blend Mode")).toBeInTheDocument();
+    expect(within(blendGroup).getByLabelText("Opacity")).toBeInTheDocument();
+    expect(within(blendGroup).queryByLabelText("Overlap")).not.toBeInTheDocument();
 
     selectInspectorTab("Finish");
     const finishShadowGlowGroup = getInspectorGroup("Shadow and Glow");

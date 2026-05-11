@@ -3283,6 +3283,23 @@ export function RightSidebar({
                 {isCellsTab ? (
                 <InspectorGroup title="Crop">
                   <InspectorFieldGrid>
+                    <SliderField
+                      label="Overlap"
+                      min={0}
+                      max={1}
+                      step={0.01}
+                      value={activeProjectView.compositing.overlap}
+                      defaultValue={DEFAULT_COMPOSITING.overlap}
+                      onChange={(value) =>
+                        patchProject((project) => ({
+                          ...project,
+                          compositing: {
+                            ...project.compositing,
+                            overlap: value,
+                          },
+                        }))
+                      }
+                    />
                     <ControlBlock label="Crop Distribution">
                       <Select
                         value={activeProjectView.sourceMapping.cropDistribution}
@@ -3396,23 +3413,6 @@ export function RightSidebar({
                           compositing: {
                             ...project.compositing,
                             opacity: value,
-                          },
-                        }))
-                      }
-                    />
-                    <SliderField
-                      label="Overlap"
-                      min={0}
-                      max={1}
-                      step={0.01}
-                      value={activeProjectView.compositing.overlap}
-                      defaultValue={DEFAULT_COMPOSITING.overlap}
-                      onChange={(value) =>
-                        patchProject((project) => ({
-                          ...project,
-                          compositing: {
-                            ...project.compositing,
-                            overlap: value,
                           },
                         }))
                       }
